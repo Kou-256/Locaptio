@@ -1,0 +1,11 @@
+# Translation-only environment; avoids competing ONNX Runtime distributions.
+ctranslate2==4.6.0
+transformers==4.57.1
+sentencepiece==0.2.1
+torch==2.8.0
+huggingface-hub==0.36.0
+setuptools==80.9.0
+onnx==1.19.0
+optimum-onnx==0.1.0
+optimum==2.1.0
+onnxruntime-directml==1.23.0

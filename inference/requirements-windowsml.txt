@@ -1,0 +1,11 @@
+# Translation environment; keep competing ONNX Runtime wheels separate.
+ctranslate2==4.6.0
+transformers==4.57.1
+sentencepiece==0.2.1
+torch==2.8.0
+huggingface-hub==0.36.0
+setuptools==80.9.0
+onnx==1.19.0
+onnxruntime-windowsml==1.25.2.202605110140
+wasdk-Microsoft.Windows.AI.MachineLearning[all]==2.3.0
+wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.3.0

@@ -1,0 +1,20 @@
+name: Bug report / 不具合報告
+description: Report a reproducible problem / 再現できる不具合を報告
+body:
+  - type: textarea
+    attributes:
+      label: What happened? / 症状
+      description: Describe expected and actual behavior. Do not upload private recordings or personal transcripts.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction / 再現手順
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment / 環境
+      description: Windows version, Locaptio version, input, engine, model, GPU/NPU and displayed backend.
+    validations:
+      required: true

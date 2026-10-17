@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Locaptio.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Locaptio.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
