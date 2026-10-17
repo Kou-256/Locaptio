@@ -7,7 +7,7 @@ function FullPath([string]$path) {
 }
 $build = FullPath $BuildOutputDirectory
 $distribution = FullPath $Destination
-[xml]$project = Get-Content (Join-Path $projectRoot 'src/WinUI/Locaptio.WinUI.csproj') -Raw
+[xml]$project = Get-Content (Join-Path $projectRoot 'src/WinUI/Locaptio.WinUI.csproj') -Raw -Encoding UTF8
 $version = @($project.Project.PropertyGroup.Version | Where-Object { $_ })[0]
 if (-not $version) { throw 'Project version missing' }
 Push-Location $projectRoot
@@ -48,12 +48,12 @@ try {
     # Include actual license/notice texts from the resolved NuGet packages and runtime packs.
     $packages = @{}
     foreach ($assetsPath in @('src/WinUI/obj/project.assets.json','src/Locaptio.Bridge/obj/project.assets.json')) {
-        $assets = Get-Content (Join-Path $projectRoot $assetsPath) -Raw | ConvertFrom-Json
+        $assets = Get-Content (Join-Path $projectRoot $assetsPath) -Raw -Encoding UTF8 | ConvertFrom-Json
         $packageFolders = @($assets.packageFolders.PSObject.Properties.Name)
         $paths = @($assets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' } | ForEach-Object { $_.Value.path })
         foreach ($framework in $assets.project.frameworks.PSObject.Properties.Value) {
             foreach ($dependency in $framework.downloadDependencies) {
-                $packageVersion = ($dependency.version.Trim('[',']').Split(',')[0]).Trim()
+                $packageVersion = ($dependency.version.Trim([char[]]'[]').Split(',')[0]).Trim()
                 $paths += $dependency.name.ToLowerInvariant() + '/' + $packageVersion
             }
         }
