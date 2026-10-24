@@ -1,7 +1,7 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-win-x64.zip">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバーレイ・録音アプリです。動画や会議の音声を読みながら、必要な文章と音声を保存できます。
 
@@ -20,6 +20,8 @@ Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバ�
 - Windowsライブキャプションが認識した文章の取り込み。
 
 ## ダウンロード・必要環境
+
+[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版ZIPを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-win-x64.zip)
 
 [**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から `Locaptio-<version>-win-x64.zip` をダウンロードし、**ZIP全体を展開**して `Locaptio.exe` を起動してください。exeだけを取り出すと動作しません。
 

@@ -1,5 +1,7 @@
 # Locaptio official website / 公式サイト
 
+Live: https://locaptio.vercel.app · English: https://locaptio.vercel.app/en
+
 Japanese: `/` · English: `/en`
 
 This dependency-free static site is deployed on Vercel from the `website` directory of `Kou-256/Locaptio`. The Windows application remains in the repository root. No audio is captured or processed by the website. There are no analytics, cookies or external font requests.
