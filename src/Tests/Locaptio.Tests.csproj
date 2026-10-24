@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
- <PropertyGroup><Product>Locaptio</Product><Title>Locaptio.Tests</Title><Version>1.0.17</Version></PropertyGroup>
+ <PropertyGroup><Product>Locaptio</Product><Title>Locaptio.Tests</Title><Version>1.0.19</Version></PropertyGroup>
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
  <ItemGroup><ProjectReference Include="../Core/Locaptio.Core.csproj" /></ItemGroup>
+ <ItemGroup><Compile Include="../Locaptio.Bridge/CaptionConnectionMonitor.cs" Link="CaptionConnectionMonitor.cs" /></ItemGroup>
+ <ItemGroup><Compile Include="../WinUI/WindowsCaptionRecovery.cs" Link="WindowsCaptionRecovery.cs" /></ItemGroup>
 </Project>

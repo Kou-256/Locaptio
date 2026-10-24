@@ -29,3 +29,6 @@ transcripts/
 *.cer
 original-*-signature.txt
 docs/validation.md
+node_modules/
+website/dist/
+.vercel/

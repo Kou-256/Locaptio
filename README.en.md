@@ -46,6 +46,10 @@ This path requires neither Python nor a Whisper model.
 
 Keep the Windows caption window open. Integration reads caption text exposed by Windows; it does not embed Microsoft's recognition model. Windows updates or language settings can affect availability. English-to-Japanese translation also needs the local translation model below; select English in Windows captions.
 
+If the Windows caption window closes or disconnects, Locaptio displays a warning and restores its main window when minimized. Existing text is retained and recording continues. Reopen Windows captions to reconnect automatically. Silence does not trigger the warning.
+
+**Automatic recovery is ON by default.** About 20 seconds of PC output activity without caption text updates triggers a restart of Windows captions and its bridge, followed by a visible-window check. Transcript history, recording and translation models remain active. Retries are at least 60 seconds apart, with three attempts per ten minutes; failures leave a warning. Disable it using **PC音声があるのにWindows字幕が20秒以上止まったら自動復旧** in Settings. Detection uses output volume rather than speech classification, so music, sound effects or a mismatched recognition language may trigger it. It monitors the default PC output during Windows captions integration.
+
 ## Prepare Whisper and translation
 
 Install uv, for example:

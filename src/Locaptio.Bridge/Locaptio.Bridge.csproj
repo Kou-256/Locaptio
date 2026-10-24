@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
- <PropertyGroup><Product>Locaptio</Product><Title>Locaptio.Bridge</Title><Version>1.0.17</Version></PropertyGroup>
+ <PropertyGroup><Product>Locaptio</Product><Title>Locaptio.Bridge</Title><Version>1.0.19</Version></PropertyGroup>
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><ShouldBeValidatedAsExecutableReference>false</ShouldBeValidatedAsExecutableReference><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
 </Project>

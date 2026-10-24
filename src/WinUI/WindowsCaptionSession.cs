@@ -6,13 +6,14 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "") : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false) : IDisposable
 {
     private Process? worker;
     private readonly LocalBackend translation = new();
     private readonly LocalLlmBackend llm = new();
     public event Action<CaptionUpdate>? Caption;
     public event Action<string>? Status;
+    public event Action<bool, string>? ConnectionChanged;
     public async Task RunAsync(CancellationToken token)
     {
         string executable = Path.Combine(directory, "bridge", "Locaptio.Bridge.exe");
@@ -39,29 +40,71 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         var translating = translator?.RunAsync(linked.Token) ?? Task.CompletedTask;
         try
         {
-            // Windows belongs to the user session, not to the disposable bridge's
-            // process tree. Stopping the bridge must leave Windows captions open.
-            var windowsProcesses = Process.GetProcessesByName("LiveCaptions");
-            bool windowsRunning = windowsProcesses.Length > 0; foreach (var process in windowsProcesses) process.Dispose();
-            if (!windowsRunning) Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "LiveCaptions.exe")) { UseShellExecute = false })?.Dispose();
-            worker = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false) }) ?? throw new InvalidOperationException("Windows連携を開始できませんでした。");
-            worker.ErrorDataReceived += (_, _) => { }; worker.BeginErrorReadLine();
-            using var registration = linked.Token.Register(KillWorker);
+            bool connectionWarning = false;
+            var recovery = new WindowsCaptionRecovery(autoRecovery ?? (() => true), s => Status?.Invoke(s), s => { connectionWarning = true; ConnectionChanged?.Invoke(false, s); }, readSystemAudio);
+            await recovery.EnsureStartedAsync(linked.Token);
             var tracker = new WindowsCaptionTracker(japanese); string snapshot = "";
-            while (await worker.StandardOutput.ReadLineAsync(linked.Token) is { } line)
+            bool textChanged = false;
+            bool blockFirstBridge = verifyBlockedBridge;
+            while (!linked.IsCancellationRequested)
             {
-                using var message = JsonDocument.Parse(line); var data = message.RootElement;
-                string type = data.GetProperty("type").GetString() ?? "";
-                if (type == "error") throw new InvalidOperationException(data.GetProperty("text").GetString());
-                if (type == "status") { Status?.Invoke(data.GetProperty("text").GetString()!); continue; }
-                if (type is "baseline" or "snapshot") snapshot = data.GetProperty("text").GetString() ?? "";
-                if (type == "baseline") { tracker.ResetBaseline(snapshot); Status?.Invoke("Windowsライブキャプション接続済み。認識言語はWindows側で設定してください。"); continue; }
-                foreach (var update in tracker.Observe(snapshot, Stopwatch.GetTimestamp()))
+                // Windows is deliberately launched outside this disposable bridge's
+                // process tree. Stop/exit only terminates the bridge.
+                var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false) };
+                if (blockFirstBridge) { start.ArgumentList.Add("--verify-blocked-pipe"); blockFirstBridge = false; }
+                worker = Process.Start(start) ?? throw new InvalidOperationException("Windows連携を開始できませんでした。");
+                worker.ErrorDataReceived += (_, _) => { }; worker.BeginErrorReadLine();
+                using var reading = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
+                using var registration = linked.Token.Register(KillWorker);
+                var pending = worker.StandardOutput.ReadLineAsync(reading.Token).AsTask();
+                var heartbeat = Task.Delay(1000, linked.Token);
+                try
                 {
-                    if (translator is null) Caption?.Invoke(update); else translator.Submit(update);
+                    while (true)
+                    {
+                        await Task.WhenAny(pending, heartbeat);
+                        linked.Token.ThrowIfCancellationRequested();
+                        // An unresponsive UI Automation provider can block the pipe
+                        // indefinitely. The watchdog must not depend on receiving ticks.
+                        if (heartbeat.IsCompleted && !pending.IsCompleted)
+                        {
+                            bool changed = textChanged; textChanged = false;
+                            if (await recovery.TickAsync(Environment.TickCount64, changed, linked.Token)) { snapshot = ""; break; }
+                            heartbeat = Task.Delay(1000, linked.Token);
+                        }
+                        if (!pending.IsCompleted) continue;
+                        string? line = await pending;
+                        if (line is null) throw new InvalidOperationException("Windows字幕連携が終了しました。Windowsのライブキャプションが起動しているか確認してください。");
+                        pending = worker.StandardOutput.ReadLineAsync(reading.Token).AsTask();
+                        using var message = JsonDocument.Parse(line); var data = message.RootElement;
+                        string type = data.GetProperty("type").GetString() ?? "";
+                        if (type == "error") throw new InvalidOperationException(data.GetProperty("text").GetString());
+                        if (type == "disconnected") { snapshot = ""; connectionWarning = true; ConnectionChanged?.Invoke(false, data.GetProperty("text").GetString()!); continue; }
+                        if (type == "status") { Status?.Invoke(data.GetProperty("text").GetString()!); continue; }
+                        if (type is "baseline" or "snapshot")
+                        {
+                            string next = data.GetProperty("text").GetString() ?? "";
+                            if (type == "snapshot" && next != snapshot && !string.IsNullOrWhiteSpace(next))
+                            {
+                                textChanged = true;
+                                if (connectionWarning) { connectionWarning = false; ConnectionChanged?.Invoke(true, ""); Status?.Invoke("Windowsライブキャプションの更新が再開しました。"); }
+                            }
+                            snapshot = next;
+                        }
+                        if (type == "baseline") { tracker.ResetBaseline(snapshot); connectionWarning = false; ConnectionChanged?.Invoke(true, ""); Status?.Invoke("Windowsライブキャプション接続済み。認識言語はWindows側で設定してください。"); continue; }
+                        foreach (var update in tracker.Observe(snapshot, Stopwatch.GetTimestamp()))
+                        {
+                            if (translator is null) Caption?.Invoke(update); else translator.Submit(update);
+                        }
+                    }
+                }
+                finally
+                {
+                    KillWorker(); reading.Cancel();
+                    try { await pending; } catch (Exception) { /* Observe the canceled/closed pipe. */ }
+                    worker.Dispose(); worker = null;
                 }
             }
-            if (!token.IsCancellationRequested) throw new InvalidOperationException("Windows字幕連携が終了しました。Windowsのライブキャプションが起動しているか確認してください。");
         }
         finally { linked.Cancel(); KillWorker(); try { await translating; } catch (OperationCanceledException) { } await Task.WhenAll(fastObserver, qualityObserver); }
     }

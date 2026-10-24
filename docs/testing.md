@@ -10,11 +10,14 @@ Windows, .NET 10 SDK and .NET 8 Runtime are required. These commands do not down
 dotnet build src/WinUI/Locaptio.WinUI.csproj -c Release -p:Platform=x64
 dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release -- --windows-captions
 dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --streaming-translation
+dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --windows-recovery
 ```
 
 The first test checks baselines, revisions, reconnects, rolling captions and retention over 20,000 Japanese/English phrases. The second uses fake translation backends to check immediate source updates, stale-result rejection, context, glossary and refined-result ordering. GitHub Actions runs both after building the WinUI app and packages a portable ZIP.
 
 ## Local hardware checks
+
+`--windows-recovery` uses fake audio levels and window operations to verify the stall threshold, silence, text updates, cooldown, retry budget, cancellation and failure handling. It does not restart Windows or capture audio. The built WinUI exe's **`--verify-windows-recovery`** self-check deliberately blocks its first bridge, simulates sustained audio activity, waits for the watchdog, **restarts the real Windows Live Captions process**, verifies the visible window and real replacement bridge connection, and checks retained transcript/recording state. It plays/records no audio; run it only when interrupting Windows captions is acceptable. An actual hung Windows recognizer is not required or reproduced by that fixture.
 
 ```powershell
 dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release -- --mixed-input
@@ -23,7 +26,7 @@ dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release -- --features
 
 These commands capture real microphone/system/application audio and play test tones. Run them only on a suitable Windows desktop; they are excluded from hosted CI. Output fixtures are written to the ignored `artifacts` folder.
 
-WinUI self-checks include `--verify-opacity`, `--verify-caption-style` and `--verify-history --verify-scroll-only` on the built exe. They temporarily change settings and restore their values on normal completion. Test copies are preferable to interrupting a real caption/recording session.
+WinUI self-checks include `--verify-opacity`, `--verify-caption-style` and `--verify-history --verify-scroll-only` on the built exe. `--verify-windows-warning` checks the persistent warning, restoration from minimized state, preserved transcript/recording state, and clearing the warning after reconnection, without closing the user's Windows captions or recording audio. The `--windows-captions` tests also cover disconnect debounce, silence and repeated reconnections. Self-checks temporarily change settings and restore their values on normal completion. Test copies are preferable to interrupting a real caption/recording session.
 
 ## Validation limits / 検証範囲
 

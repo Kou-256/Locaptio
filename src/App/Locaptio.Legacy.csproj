@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
- <PropertyGroup><Product>Locaptio</Product><Title>Locaptio.Legacy</Title><Version>1.0.17</Version></PropertyGroup>
+ <PropertyGroup><Product>Locaptio</Product><Title>Locaptio.Legacy</Title><Version>1.0.19</Version></PropertyGroup>
  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>Locaptio.Legacy</AssemblyName></PropertyGroup>
  <PropertyGroup><ApplicationIcon>../WinUI/Assets/Locaptio.ico</ApplicationIcon></PropertyGroup>
  <ItemGroup><ProjectReference Include="../Core/Locaptio.Core.csproj" /></ItemGroup>

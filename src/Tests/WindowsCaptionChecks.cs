@@ -5,6 +5,17 @@ internal static class WindowsCaptionChecks
 {
     internal static void Run()
     {
+        var connection = new Locaptio.Bridge.CaptionConnectionMonitor();
+        if (connection.Observe(false, 0) || connection.Observe(false, 1000)) throw new Exception("Initial startup warned before connecting");
+        connection.Observe(true, 1100);
+        if (connection.Observe(true, 90000)) throw new Exception("Silence triggered a disconnect");
+        if (connection.Observe(false, 90100) || connection.Observe(false, 90400)) throw new Exception("Transient loss was not debounced");
+        connection.Observe(true, 90450);
+        if (connection.Observe(false, 90500) || !connection.Observe(false, 91000)) throw new Exception("Closed window was not reported");
+        if (connection.Observe(false, 92000)) throw new Exception("Disconnect warning repeated");
+        connection.Observe(true, 93000);
+        if (connection.Observe(false, 94000) || !connection.Observe(false, 94500)) throw new Exception("Reconnection did not rearm warning");
+        Console.WriteLine("PASS: closed-window warning, silent stream, debounce, single warning and reconnection");
         var tracker = new WindowsCaptionTracker(true); long now = Stopwatch.GetTimestamp();
         long Ms(int ms) => now + (long)(Stopwatch.Frequency * ms / 1000.0);
         var transcript = new TranscriptBuffer();

@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
- <PropertyGroup><Product>Locaptio</Product><Title>Locaptio</Title><Version>1.0.17</Version></PropertyGroup>
+ <PropertyGroup><Product>Locaptio</Product><Title>Locaptio</Title><Version>1.0.19</Version></PropertyGroup>
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>

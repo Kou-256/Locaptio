@@ -26,6 +26,7 @@ public sealed class Settings
     public string CaptionSurfaceColor { get; set; } = "#363636";
     public string CaptionBorderColor { get; set; } = "#858585";
     public string SpeechEngine { get; set; } = "whisper";
+    public bool AutoRestartWindowsCaptions { get; set; } = true;
     public string RealtimePreviewModel { get; set; } = "base";
     public string CaptionCorrectedColor { get; set; } = "#70E1C4";
     public double CaptionHideSeconds { get; set; } = 5;

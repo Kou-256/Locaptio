@@ -105,6 +105,8 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-opacity")) await VerifyOpacityAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-mixed")) await VerifyMixedInputAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-history")) await VerifyHistoryAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-warning")) await VerifyWindowsWarningAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-recovery")) await VerifyWindowsRecoveryAsync(); };
     }
     private async Task ShutdownAsync()
     {
@@ -144,12 +146,24 @@ public sealed partial class MainWindow : Window
     }
     private static bool IsRuntime(string path) => !string.IsNullOrEmpty(path) && File.Exists(Path.Combine(path, "inference", "worker.py"));
     private void Status(string text) => DispatcherQueue.TryEnqueue(() => { if (!closing) { if (text.StartsWith("Windowsライブキャプション接続済み")) windowsBridgeConnected = true; StatusText.Text = text; if (text.StartsWith("AI確認済み") || text.StartsWith("AI文脈補正を反映")) correctionChecked = true; } });
+    private void WindowsConnectionChanged(bool connected, string message)
+    {
+        windowsBridgeConnected = connected;
+        WindowsCaptionWarning.IsOpen = !connected;
+        if (connected) return;
+        WindowsCaptionWarning.Message = message + " 現在の文章は保持されます。録音中の場合、録音は継続しています。";
+        StatusText.Text = "Windows字幕の再接続を待っています。";
+        captionWindow?.Update([]);
+        var presenter = (OverlappedPresenter)AppWindow.Presenter;
+        if (presenter.State == OverlappedPresenterState.Minimized) presenter.Restore();
+        Activate();
+    }
     private async void StartClick(object sender, RoutedEventArgs e) => await StartAsync();
     private async Task StartAsync()
     {
         if (captionStop is not null || closing) return; root = FindRoot();
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
-        ClearCaptions(); correctionChecked = false; captionStop = new(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
+        ClearCaptions(); WindowsCaptionWarning.IsOpen = false; correctionChecked = false; captionStop = new(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
         StatusText.Text = "ローカルモデルを読み込み中…"; captionTask = RunCaptionsAsync(captionStop.Token); await Task.Yield();
     }
     private async Task RunCaptionsAsync(CancellationToken token)
@@ -162,8 +176,12 @@ public sealed partial class MainWindow : Window
                 if (settings.AudioInputKind != "system") throw new InvalidOperationException("Windows連携はWindows側が選んだ音声を使います。音声入力を「PC全体の音声」にしてください。マイクや個別アプリを指定する場合はWhisperに切り替えてください。");
                 prepared?.Dispose(); prepared = null; preparedKey = ""; speech = translation = accurateSpeech = null; llm = null;
                 windowsBridgeConnected = false;
-                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary);
+                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions);
                 live.Caption += update => DispatcherQueue.TryEnqueue(() => UpdateCaption(update)); live.Status += Status;
+                live.ConnectionChanged += (connected, message) => DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!closing && !token.IsCancellationRequested) WindowsConnectionChanged(connected, message);
+                });
                 sttMs = translationMs = totalMs = 0;
                 BackendText.Text = "Windowsライブキャプション連携（Windows側の認識結果）" + (!japanese ? " · FuguMT速報翻訳" + (settings.UseLocalLlm ? " → Qwen文脈翻訳: ON" : " · 文脈LLM翻訳: OFF") : "");
                 StatusText.Text = "Windowsの認識言語を本アプリのモードと合わせてください。接続前の履歴は保存しません。";
@@ -194,6 +212,7 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { StatusText.Text = ex.Message; if (!closing && captionWindow is not null) { ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); } }
         finally
         {
+            WindowsCaptionWarning.IsOpen = false; windowsBridgeConnected = false;
             speech = null; accurateSpeech = null; translation = null; pipeline = null; llm = null; llmReady = null;
             captionWindow?.Update([]);
             captionStop?.Dispose(); captionStop = null; StartButton.IsEnabled = true; StopButton.IsEnabled = recordingStop is not null;
@@ -608,6 +627,8 @@ public sealed partial class MainWindow : Window
             ja.Click += (_, _) => { settings.Japanese = ja.IsChecked == true; if (!settings.English && !settings.Japanese) { settings.English = true; en.IsChecked = true; } ApplySettings(); };
             content.Children.Add(en); content.Children.Add(ja);
             Choice("音声認識エンジン（次回Startから）", ["Whisper（アプリ単独で認識）", "Windowsライブキャプション連携（Windowsも起動）"], settings.SpeechEngine == "windows-live" ? 1 : 0, i => settings.SpeechEngine = i == 1 ? "windows-live" : "whisper");
+            Toggle("PC音声があるのにWindows字幕が20秒以上止まったら自動復旧", settings.AutoRestartWindowsCaptions, v => settings.AutoRestartWindowsCaptions = v);
+            content.Children.Add(new TextBlock { Text = "自動復旧は既定でON。Windows字幕と連携用プロセスを再起動し、ウィンドウを再表示します。再試行は60秒以上空け、10分で3回まで。PCの音量で判定するため、音楽などでも作動する場合はOFFにしてください。録音と保存済みの文章は保持します。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "Windows連携はWindowsの字幕を読み取り、本体・独立字幕・保存に反映します。Windows側の認識言語を合わせてください。入力・マイク・認識デバイスはWindows側に従います。「PC内音声＋マイク」の同時入力を選ぶと、混合音声を認識するため自動的にWhisperを使います。連携前の履歴は取り込みません。認識結果のAI補正は行いません。英日翻訳はAI翻訳モデルで速報を出し、ローカルLLMがONなら文脈を使って後から訳を改善します。Windows更新で連携できなくなる場合があります。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "音声認識に使うデバイス（Whisper／次回Startから）" });
             var device = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "GPU自動（使えない場合はCPU）", "NVIDIA GPU（CUDA）", "AMD XDNA 2 NPU", "CPU" }, SelectedIndex = settings.CpuOnly || settings.InferenceDevice == "cpu" ? 3 : settings.InferenceDevice == "npu" ? 2 : settings.InferenceDevice == "cuda" ? 1 : 0 };
@@ -869,6 +890,74 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) { File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), ex.ToString()); }
         finally { settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; settings.CaptionCorrectedSameColor = sameColor; settings.CaptionMode = mode; settings.CaptionCorrectedColor = color; settings.CaptionLineGap = gap; settings.CaptionLayout = layout; settings.English = english; settings.Japanese = japanese; settings.Save(); Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync(); }
+    }
+    private async Task VerifyWindowsRecoveryAsync()
+    {
+        bool passed = false;
+        try
+        {
+            // Real OS-window recovery + bridge connection; simulated energy means
+            // no fixture sound is played and no audio is recorded by this check.
+            captionStop = new(); recordingStop = new();
+            var recording = recordingStop;
+            UpdateCaption(new CaptionUpdate(1, 1, "復旧前の文章を保持", null, true, Stopwatch.GetTimestamp(), 0, 0));
+            string before = transcript.Export(true);
+            var messages = new List<string>();
+            var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var live = new WindowsCaptionSession(AppContext.BaseDirectory, true, root, "cpu", true, false, autoRecovery: () => true, readSystemAudio: () => true, verifyBlockedBridge: true);
+            live.ConnectionChanged += (ready, text) => { WindowsConnectionChanged(ready, text); if (ready) connected.TrySetResult(); };
+            live.Status += messages.Add;
+            var elapsed = Stopwatch.StartNew();
+            var running = live.RunAsync(captionStop.Token);
+            try { await connected.Task.WaitAsync(TimeSpan.FromSeconds(45)); }
+            finally { captionStop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
+            bool visible = messages.Any(s => s.Contains("ウィンドウを再表示しました"));
+            bool replaceBridge = connected.Task.IsCompletedSuccessfully && elapsed.Elapsed.TotalSeconds >= 20;
+            bool preserved = transcript.Export(true) == before && history.Count == 1 && ReferenceEquals(recordingStop, recording) && !recording.IsCancellationRequested;
+            passed = visible && replaceBridge && connected.Task.IsCompletedSuccessfully && preserved && !WindowsCaptionWarning.IsOpen;
+            File.WriteAllText(Path.Combine(root, "artifacts", "windows-recovery-verification.txt"), $"PASS={passed}; windowVisible={visible}; replaceBlockedBridge={replaceBridge}; actualBridgeReconnected={connected.Task.IsCompletedSuccessfully}; historyAndRecordingStatePreserved={preserved}; warningCleared={!WindowsCaptionWarning.IsOpen}; elapsed={elapsed.Elapsed.TotalSeconds:F1}s");
+        }
+        catch (Exception ex) { File.WriteAllText(Path.Combine(root, "artifacts", "windows-recovery-verification.txt"), ex.ToString()); }
+        finally
+        {
+            captionStop?.Dispose(); captionStop = null; recordingStop?.Dispose(); recordingStop = null;
+            Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync();
+        }
+    }
+    private async Task VerifyWindowsWarningAsync()
+    {
+        bool passed = false;
+        try
+        {
+            // Exercise the notification without closing the user's Windows app,
+            // starting inference, or capturing audio.
+            captionStop = new(); recordingStop = new();
+            var recording = recordingStop;
+            UpdateCaption(new CaptionUpdate(1, 1, "保持する文章", null, true, Stopwatch.GetTimestamp(), 0, 0));
+            string before = transcript.Export(true);
+            WindowsConnectionChanged(true, "");
+            var presenter = (OverlappedPresenter)AppWindow.Presenter;
+            presenter.Minimize(); await Task.Delay(150);
+            WindowsConnectionChanged(false, "Windowsライブキャプションが閉じられました。");
+            await Task.Delay(150);
+            bool warned = WindowsCaptionWarning.IsOpen && !windowsBridgeConnected && WindowsCaptionWarning.Message.Contains("閉じられました");
+            bool restored = presenter.State != OverlappedPresenterState.Minimized;
+            Status("翻訳の状態更新"); await Task.Delay(100);
+            bool persistent = WindowsCaptionWarning.IsOpen;
+            bool preserved = transcript.Export(true) == before && history.Count == 1 && ReferenceEquals(recordingStop, recording) && !recording.IsCancellationRequested;
+            WindowsConnectionChanged(true, "");
+            bool reconnected = !WindowsCaptionWarning.IsOpen && windowsBridgeConnected;
+            passed = warned && restored && persistent && preserved && reconnected;
+            File.WriteAllText(Path.Combine(root, "artifacts", "windows-warning-verification.txt"), $"PASS={passed}; warning={warned}; restored={restored}; persistent={persistent}; historyAndRecordingPreserved={preserved}; reconnected={reconnected}");
+        }
+        catch (Exception ex) { File.WriteAllText(Path.Combine(root, "artifacts", "windows-warning-verification.txt"), ex.ToString()); }
+        finally
+        {
+            captionStop?.Dispose(); captionStop = null;
+            recordingStop?.Dispose(); recordingStop = null;
+            Environment.ExitCode = passed ? 0 : 1;
+            await ShutdownAsync();
+        }
     }
     private async Task VerifyCaptionIdleAsync()
     {

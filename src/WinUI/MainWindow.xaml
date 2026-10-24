@@ -34,6 +34,9 @@
    <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="IsTabStop" Value="False"/></Style></ListView.ItemContainerStyle>
    <ListView.ItemTemplate><DataTemplate><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding English}" TextWrapping="Wrap"/><TextBlock Grid.Column="1" Text="{Binding Japanese}" TextWrapping="Wrap"/></Grid></DataTemplate></ListView.ItemTemplate>
   </ListView>
-  <StackPanel Grid.Row="5" Spacing="3"><TextBlock x:Name="StatusText" Text="Startで字幕開始。録音は単独で使えます。" TextWrapping="Wrap" FontSize="12" Foreground="#C8C8C8"/><TextBlock x:Name="BackendText" FontSize="12" Foreground="#C8C8C8" TextWrapping="Wrap"/><TextBlock x:Name="MetricsText" FontSize="11" Foreground="#C8C8C8" TextWrapping="Wrap" Visibility="Collapsed"/></StackPanel>
+  <StackPanel Grid.Row="5" Spacing="3">
+   <InfoBar x:Name="WindowsCaptionWarning" Severity="Warning" IsOpen="False" IsClosable="False" Title="Windowsライブキャプションとの接続が切れました"/>
+   <TextBlock x:Name="StatusText" Text="Startで字幕開始。録音は単独で使えます。" TextWrapping="Wrap" FontSize="12" Foreground="#C8C8C8"/><TextBlock x:Name="BackendText" FontSize="12" Foreground="#C8C8C8" TextWrapping="Wrap"/><TextBlock x:Name="MetricsText" FontSize="11" Foreground="#C8C8C8" TextWrapping="Wrap" Visibility="Collapsed"/>
+  </StackPanel>
  </Grid>
 </Window>

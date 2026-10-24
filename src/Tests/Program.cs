@@ -9,6 +9,7 @@ if (args.Contains("--mixed-input")) { await MixedInputChecks.RunAsync(); return;
 if (args.Contains("--streaming-translation")) { await StreamingTranslationChecks.RunAsync(); return; }
 if (args.Contains("--translation-quality")) { await TranslationQualityChecks.RunAsync(); return; }
 if (args.Contains("--windows-captions")) { WindowsCaptionChecks.Run(); return; }
+if (args.Contains("--windows-recovery")) { await WindowsRecoveryChecks.RunAsync(); return; }
 if (args.Contains("--features")) { await FeatureChecks.RunAsync(); return; }
 if (args.Contains("--correction-recovery")) { await FeatureChecks.CorrectionRecoveryAsync(); return; }
 if (args.Contains("--realtime-isolation")) { await FeatureChecks.RealtimeIsolationAsync(); return; }
