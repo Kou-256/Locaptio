@@ -1,7 +1,7 @@
 {
-  "version": "1.0.19",
+  "version": "1.0.33",
   "repository": "https://github.com/Kou-256/Locaptio",
   "download": "https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-win-x64.zip",
-  "release": "https://github.com/Kou-256/Locaptio/releases/tag/v1.0.19",
-  "sha256": "9413a7bf7d61961f00ee8c8c21b034a138868f48708fe24da14a2c311684feec"
+  "release": "https://github.com/Kou-256/Locaptio/releases/tag/v1.0.33",
+  "sha256": "3acbbcd0005236213b9abfff2b001402504e75663017ddd2655d2c9e1e4e8df1"
 }
