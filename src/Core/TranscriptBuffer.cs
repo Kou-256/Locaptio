@@ -19,6 +19,7 @@ public sealed class TranscriptBuffer
         var result = new StringBuilder();
         foreach (var entry in entries.Values)
         {
+            if (entry.SpeakerId > 0) result.Append($"[話者{entry.SpeakerId}] ");
             if (includeJapanese) result.Append(entry.SourceLanguage == "ja" ? "日本語: " : "English: ");
             result.AppendLine(entry.English);
             if (includeJapanese && !string.IsNullOrWhiteSpace(entry.Japanese)) result.AppendLine("日本語: " + entry.Japanese);

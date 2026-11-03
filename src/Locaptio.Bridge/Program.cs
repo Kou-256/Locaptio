@@ -15,6 +15,19 @@ AutomationElement? window = null, captionText = null;
 string last = ""; bool reported = false, needsBaseline = true;
 var connection = new CaptionConnectionMonitor();
 nint windowHandle = 0;
+string? requestedLanguage = args.SkipWhile(a => a != "--language").Skip(1).FirstOrDefault();
+bool languageHandled = requestedLanguage is null;
+var languageRecovery = new CaptionLanguageRecoveryState(requestedLanguage ?? "");
+long lastLanguageObservation = 0;
+void ObserveManualLanguage(bool captionUpdated = false)
+{
+    if (!languageRecovery.WarningPending || windowHandle == 0) return;
+    if (!captionUpdated && Environment.TickCount64 - lastLanguageObservation < 1000) return;
+    lastLanguageObservation = Environment.TickCount64;
+    string? label = new CaptionLanguageUi(windowHandle).ReadyLabel;
+    if (languageRecovery.Observe(label, captionUpdated) is { } type)
+        Send(new { type, text = type == "language-ready" ? "手動変更後のWindows字幕言語を確認しました。" : "Windows字幕の更新が再開しました。手動で選択した言語を使用します。" });
+}
 void ObserveConnection(bool available)
 {
     if (connection.Observe(available, Environment.TickCount64))
@@ -43,6 +56,24 @@ try
                 }
                 if (window is not null)
                 {
+                    if (!languageHandled)
+                    {
+                        languageHandled = true;
+                        Send(new { type = "status", text = "Windows字幕の言語を本体のモードに合わせています…" });
+                        var operation = Task.Run(() => CaptionLanguagePolicy.Synchronize(new CaptionLanguageUi(windowHandle), requestedLanguage!));
+                        // UI Automation providers can hang even on a read. Bound
+                        // the operation independently of the audible-stall watchdog.
+                        if (!operation.Wait(TimeSpan.FromSeconds(20)))
+                        {
+                            Send(new { type = "language-error", text = "Windows字幕の言語操作がタイムアウトしました。Windows側で言語を選択して続行し、LocaptioでStartし直してください。" });
+                            Send(new { type = "error", text = "Windowsの言語画面を確認してください。Stop／終了はすぐに実行できます。" });
+                            Environment.Exit(1);
+                        }
+                        var result = operation.GetAwaiter().GetResult();
+                        if (!result.Success) languageRecovery.Failed(); else languageRecovery.Verified();
+                        Send(new { type = result.Success ? "language-ready" : "language-error", text = result.Message });
+                        window = AutomationElement.FromHandle(windowHandle);
+                    }
                     needsBaseline = true;
                     captionText = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CaptionsTextBlock"));
                     last = captionText?.Current.Name ?? "";
@@ -60,8 +91,16 @@ try
                 reported = true; Thread.Sleep(300); continue;
             }
             captionText ??= window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CaptionsTextBlock"));
+            ObserveManualLanguage();
             if (captionText is null)
             {
+                if (window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "ReadyToCaptionTextBlock")) is not null)
+                {
+                    ObserveConnection(true);
+                    if (needsBaseline) { needsBaseline = false; last = ""; reported = false; Send(new { type = "baseline", text = "" }); }
+                    else Send(new { type = "tick" });
+                    Thread.Sleep(100); continue;
+                }
                 ObserveConnection(false);
                 window = null; windowHandle = 0;
                 Thread.Sleep(100); continue;
@@ -75,7 +114,7 @@ try
                 Send(new { type = "baseline", text });
                 continue;
             }
-            if (text != last) { Send(new { type = "snapshot", text }); last = text; }
+            if (text != last) { ObserveManualLanguage(!string.IsNullOrWhiteSpace(text)); Send(new { type = "snapshot", text }); last = text; }
             else Send(new { type = "tick" });
         }
         catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException)

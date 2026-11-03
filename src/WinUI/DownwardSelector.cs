@@ -62,7 +62,7 @@ public sealed class DownwardSelector : UserControl
         row.Children.Add(label);
         var arrow = new FontIcon { Glyph = "\uE70D", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(arrow, 1); row.Children.Add(arrow);
-        button = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, MinHeight = 40 };
+        button = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, MinHeight = 32, CornerRadius = new CornerRadius(4) };
         Content = button;
         menu = new Border
         {

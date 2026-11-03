@@ -28,6 +28,7 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
     public int? ProcessId => process is { HasExited: false } ? process.Id : null;
     public double CpuMilliseconds { get { try { return inferenceProcess?.TotalProcessorTime.TotalMilliseconds ?? 0; } catch { return 0; } } }
     public event Action<string>? Status;
+    public event Action<PreparationProgress>? PreparationChanged;
 
     public async Task StartAsync(string root, string kind, bool cpu, CancellationToken token, bool preferNpu = true, string speechLanguage = "en", string model = "legacy", string prompt = "", string device = "auto", bool fast = false, bool draft = false)
     {
@@ -50,6 +51,8 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
     private async Task StartProcessAsync(string root, string kind, bool cpu, CancellationToken token, bool preferNpu)
     {
         modelRoot = root; modelKind = kind; cpuOnly = cpu;
+        int preparationStages = accelerator == "npu" && kind == "speech" ? 6 : 3;
+        PreparationChanged?.Invoke(new(kind, 0, preparationStages, "推論環境を確認中"));
         inferenceProcess?.Dispose(); inferenceProcess = null;
         Backend = cpu ? "CPU 初期化中" : accelerator == "npu" && kind == "speech" ? "AMD NPU 準備中" : "GPU/CPU 確認中";
         bool directMl = accelerator != "cuda" && kind == "translation" && File.Exists(Path.Combine(root, "models", "translation-onnx", "encoder_model.onnx")) && File.Exists(Path.Combine(root, ".venv-dml", "Scripts", "python.exe"));
@@ -57,6 +60,7 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
         bool npuSpeech = accelerator == "npu" && kind == "speech";
         var python = Path.Combine(root, windowsMl || npuSpeech ? ".venv-winml" : directMl ? ".venv-dml" : ".venv", "Scripts", "python.exe");
         if (!File.Exists(python)) throw new InvalidOperationException("Python環境がありません。scripts/setup.ps1を実行してください。");
+        PreparationChanged?.Invoke(new(kind, 1, preparationStages, "モデル読み込み／実行環境を初期化中"));
         var start = new ProcessStartInfo(python) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false), StandardInputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false), WorkingDirectory = root };
         if (npuSpeech)
         {
@@ -82,7 +86,8 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
             using var response = await ReadAsync(token);
             var item = response.RootElement;
             string? type = item.GetProperty("type").GetString();
-            if (type == "ready") { Backend = item.GetProperty("backend").GetString()!; Model = item.TryGetProperty("model", out var model) ? model.GetString()! : "—"; AvailableProviders = string.Join(", ", item.GetProperty("providers").EnumerateArray().Select(p => p.GetString())); inferenceProcess = Process.GetProcessById(item.GetProperty("pid").GetInt32()); return; }
+            if (type == "ready") { Backend = item.GetProperty("backend").GetString()!; Model = item.TryGetProperty("model", out var model) ? model.GetString()! : "—"; AvailableProviders = string.Join(", ", item.GetProperty("providers").EnumerateArray().Select(p => p.GetString())); inferenceProcess = Process.GetProcessById(item.GetProperty("pid").GetInt32()); PreparationChanged?.Invoke(new(kind, preparationStages, preparationStages, "準備完了")); return; }
+            if (type == "progress") PreparationChanged?.Invoke(new(kind, item.GetProperty("completed").GetInt32(), item.GetProperty("total").GetInt32(), item.GetProperty("stage").GetString() ?? "準備中"));
             if (type == "error") throw new InvalidOperationException(item.GetProperty("message").GetString());
             if (type == "status") Status?.Invoke(item.GetProperty("message").GetString()!);
         }

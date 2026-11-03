@@ -27,6 +27,7 @@ public sealed class Settings
     public string CaptionBorderColor { get; set; } = "#858585";
     public string SpeechEngine { get; set; } = "whisper";
     public bool AutoRestartWindowsCaptions { get; set; } = true;
+    public bool AutoSwitchWindowsCaptionLanguage { get; set; } = true;
     public string RealtimePreviewModel { get; set; } = "base";
     public string CaptionCorrectedColor { get; set; } = "#70E1C4";
     public double CaptionHideSeconds { get; set; } = 5;
@@ -54,6 +55,9 @@ public sealed class Settings
     public bool RealtimeCaptions { get; set; } = true;
     public bool RealtimePreviewOnGpu { get; set; }
     public bool CorrectTranscriptWithAi { get; set; }
+    public bool SpeakerDiarization { get; set; }
+    public double SpeakerThreshold { get; set; } = .55;
+    public string[] SpeakerColors { get; set; } = ["#7DD3FC", "#FCA5A5", "#86EFAC", "#FDE68A", "#C4B5FD", "#FDBA74", "#F9A8D4", "#5EEAD4"];
     public string CaptionMode { get; set; } = "translate";
     public string SpeechModel { get; set; } = "large-v3-turbo";
     public string SpeechPrompt { get; set; } = "";

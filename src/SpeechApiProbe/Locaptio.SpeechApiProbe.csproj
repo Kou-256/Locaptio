@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.26100.0</TargetPlatformMinVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableWinAppRunSupport>false</EnableWinAppRunSupport>
+    <ProbeSdkVersion Condition="'$(ProbeSdkVersion)' == ''">2.5.4-experimental</ProbeSdkVersion>
+    <DefineConstants Condition="'$(ProbeSdkVersion)' == '2.4.1-experimental'">$(DefineConstants);LEGACY_SPEECH_API</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(ProbeSdkVersion)" />
+  </ItemGroup>
+</Project>

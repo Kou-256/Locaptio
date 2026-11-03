@@ -1,5 +1,92 @@
 # Changelog
 
+## 1.0.33 — Continue after Japanese caption notice / 日本語切替時の続行待ちを修正
+
+- 「キャプションのみ」の案内が遅れて出る・再表示される場合も、案内内の閉じるボタンだけを操作し、消えたことを待って続行を再試行します。非表示の操作項目を避け、字幕画面に戻ったことを確認します。
+- 日本語の選択を確認できた後は、続行の失敗だけで元の言語へ戻しません。処理全体にはタイムアウトを設けます。
+- Japanese language confirmation now handles delayed/reappearing informational tips and bounded Continue retries, without accepting download/privacy prompts or undoing an already verified target language.
+
+## 1.0.32 — Hide completed preparation / モデル準備100%の表示残りを修正
+
+- 音声認識・翻訳・AIの全モデルが準備完了したら進捗欄を非表示にします。準備中止時も表示を片付け、失敗時の説明は保持します。
+- Completed model preparation now hides its progress panel instead of leaving the last 100% message visible. Translation/AI preparation remains visible until all tracked components finish.
+
+## 1.0.31 — Natural checkbox spacing / 録音・AI補正の余白を調整
+
+- 録音とAI補正のチェックボックスの最小幅を解除し、文字に合わせた幅と共通の操作間隔で並べます。
+- Toolbar checkboxes now fit their content instead of reserving a 120-DIP minimum width.
+
+## 1.0.30 — Small corner status link / 状態を右下の小さなリンクに変更
+
+- 「状態」を右下の小さな文字リンクに移動し、矢印とボタンの枠を廃止。ホバー表示をやめ、クリックでON/OFFします。
+- 詳細欄は内容に合わせた幅に縮小し、本文の配置を動かさず表示します。
+- Replaced the toolbar dropdown with a small bottom-right status link. Clicking toggles compact, content-sized diagnostics; hovering does not open them.
+
+## 1.0.29 — Consistent rounded controls / 操作ボタンの丸角を統一
+
+- 下段ボタン・チェックボックスにWinUI標準スタイルを継承し、上段の選択欄と揃う丸角に修正。コンパクトな余白は保持します。
+- Toolbar buttons and checkboxes now inherit the standard WinUI styles and use rounded corners consistent with the input selectors.
+
+## 1.0.28 — Name before recording / ファイル名を指定してから録音開始
+
+- 録音チェックで保存画面を開き、ファイル名と保存先の確定後に録音と文字起こしを開始します。キャンセルでは開始しません。設定の録音フォルダーを初期表示します。
+- Checking Record now opens a filename/destination dialog. Capture and transcription start only after confirmation; cancel does not start recording.
+
+## 1.0.27 — Stable hover details and multi-row copy / 状態表示の位置固定・複数行コピー
+
+- 下端の折りたたみ欄を上部の「状態 ▾」へ移動。ホバーで下方向に重ねて表示し、ボタンや本文の位置は動かしません。クリックで固定・解除、Escで閉じます。警告・モデル準備は従来どおり表示します。
+- 本文の途中から別の行の途中までドラッグしてコピーできます。選択方向へのスクロール、表示外へ移動した選択の保持、Ctrl+C・右クリックのコピーに対応。仮想化を維持し、選択行の補正表示は解除まで保留します。
+- Diagnostics now appear below a stationary toolbar anchor on hover. Cross-row partial text selection works with the virtualized history, language columns, edge scrolling, correction deferral and keyboard/context-menu copying.
+
+## 1.0.26 — Recording shortcut and selectable transcript / 録音開始・コンパクト表示・本文選択
+
+- 録音チェックで録音と文字起こしを開始。保存ダイアログを省き、設定の保存先（未設定ならミュージック/Locaptio）へ日時付きのファイルを自動作成します。チェック解除は録音のみ停止、Stopは両方停止します。
+- メニュー・操作ボタンの余白を縮め、下部の状態・話者識別・診断表示を初期状態で折りたたみます。モデル準備と接続警告は引き続き表示します。
+- 録音・文字起こし中も本文を選択してコピーできます。選択中の行の更新は選択解除まで保留し、認識・録音・独立字幕は継続します。
+- The recording checkbox starts capture and transcription with automatic filenames. Compact controls and collapsed diagnostics give more space to transcripts. Text selection remains stable while recognition updates arrive; clearing selection applies the latest revision.
+
+## 1.0.25 — Language recovery, preparation progress and grouped settings / 言語警告・準備進捗・設定整理
+
+- Windows字幕が希望言語で準備済みなら言語画面を開かずに接続します。自動切り替えの失敗後も、手動変更による準備完了または字幕の更新を確認したら警告を解除します。内部の操作項目IDを警告に表示しません。
+- モデル準備の完了工程％・残り工程％・現在の工程・経過時間を本体に表示します。WhisperのCPU/CUDA、AMD NPUの環境・encoder・decoder・検証、翻訳モデル、ローカルLLMを通知します。割合は完了工程に基づくもので、残り時間やNPUコンパイル内部の割合を推測しません。
+- 設定を8つの折りたたみカテゴリに整理し、認識モデルをエンジン・デバイスと同じカテゴリへ移動しました。スクロールバーの余白を保持します。
+- Fixed stale language warnings after manual recovery, added stage-based preparation reporting and grouped settings. Added tests for manual readiness/recovery, real CPU Whisper progress notifications and the WinUI progress/category layout.
+
+## 1.0.24 — Windows caption language sync / Windows字幕の言語同期
+
+- Windows連携のStart時に、本体モードに合わせてWindowsの字幕言語を自動選択するオプションを追加（初期値ON）。英日翻訳は英語（米国）、日本語文字起こしは日本語（日本）に合わせます。実行中のモード変更では既存の停止・再開処理を通じて同期します。
+- Windows UIの既知の操作項目のみを使用し、選択の検証・準備完了の確認を行います。未対応UI・言語未準備などの失敗は専用警告を表示。ダウンロードやプライバシー同意は自動で実行しません。既存Windows字幕の画面は引き続き必要です。
+- Added optional Windows caption language synchronization on Start and session mode changes, with exact locale matching, selection verification, fallback and a persistent language warning. This automates the known Windows UI and may need updates after Windows changes; it is not a public caption-language API or headless recognition engine.
+
+## 1.0.23 — Local speaker colors / ローカル話者識別と色分け
+
+- 音声から話者を識別するオプションを追加。CAMPPlusの声の特徴とSilero VADをローカルCPUで処理し、セッション内の最大8話者を色分けします。設定で有効化し、各話者の色・一致しきい値を変更できます。
+- 字幕は先に表示し、話者の判定後に本体・独立字幕を更新します。補正・翻訳でも色を保持し、保存テキストに話者番号を付けます。話者色は補正色より優先します。
+- Whisperは認識と同じ音声を共有。Windows連携は選択したPC音声を並行解析し、字幕の取得時刻から近似対応します。語単位の話者分離、氏名の特定、重複発話の分離には対応しません。
+- Added optional, local CPU speaker embeddings and bounded anonymous clustering (up to eight session-local speakers), configurable colors/threshold, subtitle/history colors and saved speaker numbers. Audio is never uploaded or saved by the speaker worker. Windows caption alignment is approximate; mixed-speaker rows use a dominant speaker or stay unassigned. Recognition continues if speaker setup/inference fails.
+- Added hash-verified model setup, bounded-work/cancellation/fallback tests, real two-speaker sample checks and a WinUI color/export check.
+
+## 1.0.22 — Main-screen AI correction switch / 本体画面のAI補正チェックボックス
+
+- 本体画面の録音チェックボックスの隣に「AI補正」を追加。設定画面と双方向に同期し、選択状態を保存します。Windows連携は即時、Whisperは次回Startから反映します。
+- Added an AI correction checkbox beside Recording on the main screen. It shares the persisted setting with the Settings window; Windows captions apply changes immediately, Whisper on the next Start.
+
+## 1.0.21 — Optional Windows caption correction / Windows字幕のAI補正
+
+- Windowsライブキャプション連携でも、日本語・英語の文字起こしをローカルLLMで文脈補正できます。設定のON/OFFは連携中も即時反映します。
+- 認識原文を先に表示し、補正結果は同じ行へ反映。OFF後の未反映結果は破棄し、補正済みの文章は保持します。LLMが使えない場合も原文表示を続けます。
+- Added live ON/OFF control for local AI correction of Japanese and English Windows captions. Raw text appears immediately; corrections update the same row and feed English-to-Japanese translation. Pending results are discarded when disabled; previously applied corrections remain.
+- Correction work and context are bounded. Added regression checks for toggling, stale results, cancellation, failure fallback and translation integration.
+
+## 1.0.20 — Stable recording UI and scroll position / 録音表示とスクロールの安定化
+
+- Keep caption rows and text controls in place during partial recognition and translation updates.
+- Pause automatic following on wheel, scrollbar, keyboard and touch input. Layout changes no longer re-enable it. Use **最新へ** or End to resume.
+- Update only the recording clock, keep the file path stable, and assign diagnostics text once only when changed.
+- Retain the main window's native backing surface during ordinary repaint; clear it at creation/resize instead of every clock/text update.
+
+録音中の本体のちらつきを抑え、少しスクロールしただけで最新位置へ戻される問題を修正しました。「最新へ」で自動スクロールを再開できます。
+
 ## 1.0.19 — Automatic Windows captions recovery / Windows字幕の自動復旧
 
 - Add a Japanese/English official download website, a stable direct ZIP link and checksum verification.

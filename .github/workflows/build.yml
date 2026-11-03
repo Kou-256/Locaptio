@@ -24,8 +24,18 @@ jobs:
         run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release -- --windows-captions
       - name: Check streaming translation coordination
         run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --streaming-translation
+      - name: Check live Windows caption AI correction
+        run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --windows-correction
+      - name: Check speaker clustering and bounded work
+        run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --speakers
+      - name: Check Windows caption language switching policy
+        run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --windows-language
+      - name: Check model preparation reporting
+        run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --preparation
       - name: Check Windows captions recovery
         run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --windows-recovery
+      - name: Check stable caption rows
+        run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --caption-history
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'

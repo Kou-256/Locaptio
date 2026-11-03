@@ -6,7 +6,7 @@ using Locaptio.Core.Audio;
 
 namespace Locaptio.Core;
 
-public sealed record CaptionUpdate(long Id, int Revision, string English, string? Japanese, bool Final, long Started, double SttMs, double TranslationMs, string SourceLanguage = "en", bool TranslationRefined = false, bool SourceCorrected = false, long AudioThrough = 0);
+public sealed record CaptionUpdate(long Id, int Revision, string English, string? Japanese, bool Final, long Started, double SttMs, double TranslationMs, string SourceLanguage = "en", bool TranslationRefined = false, bool SourceCorrected = false, long AudioThrough = 0, int SpeakerId = 0, double SpeakerConfidence = 0);
 internal sealed record SpeechJob(long Id, int Revision, float[] Samples, bool Final, long Started, long AudioThrough);
 internal sealed record TranslationJob(CaptionUpdate Caption);
 
@@ -23,6 +23,7 @@ public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBacke
     private readonly ConcurrentDictionary<long, string> context = new();
     public event Action<CaptionUpdate>? Caption;
     public event Action<string>? Status;
+    public event Action<AudioFrame>? AudioFrameCaptured;
     public long DroppedAudio { get; private set; }
     private LoopbackSource? audioSource;
     public int BufferedAudioMs => audioSource?.Frames.CanCount == true ? audioSource.Frames.Count * 20 : 0;
@@ -77,6 +78,7 @@ public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBacke
             {
                 while (source.Frames.TryRead(out var frame))
                 {
+                    AudioFrameCaptured?.Invoke(frame);
                     audioThrough = frame.Timestamp;
                     if (frame.Generation != generation) { samples.Clear(); revision = 0; lastSnapshot = 0; generation = frame.Generation; }
                     double rms = Math.Sqrt(frame.Samples.Sum(v => (double)v * v) / frame.Samples.Length);

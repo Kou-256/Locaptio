@@ -47,6 +47,7 @@ def main():
     if not (folder / 'encoder_model.onnx').is_file():
         raise RuntimeError('AMD NPU用Whisperモデルがありません。scripts/setup-amd-speech.ps1を実行してください。')
     import numpy as np
+    emit({'type': 'progress', 'completed': 1, 'total': 6, 'stage': 'Windows ML・AMD NPU実行環境を準備中'})
     import winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap as bootstrap
     with bootstrap.initialize():
         import onnxruntime as ort
@@ -64,11 +65,13 @@ def main():
         if not devices:
             raise RuntimeError('AMD NPU EPが準備されていません。scripts/setup-npu.ps1を実行してください。')
         from transformers import WhisperFeatureExtractor, WhisperTokenizer
+        emit({'type': 'progress', 'completed': 2, 'total': 6, 'stage': '音声前処理・トークナイザーを読み込み中'})
         features = WhisperFeatureExtractor.from_pretrained(folder / 'tokenizer', local_files_only=True)
         tokenizer = WhisperTokenizer.from_pretrained(folder / 'tokenizer', local_files_only=True)
         tokenizer.set_prefix_tokens(language=args.language, task='transcribe', predict_timestamps=False)
         sessions = []
         for name in ('encoder', 'decoder'):
+            emit({'type': 'progress', 'completed': 3 if name == 'encoder' else 4, 'total': 6, 'stage': name + 'モデルをNPU向けに準備中（初回コンパイルの内部進捗は取得できません）'})
             options = ort.SessionOptions()
             options.log_severity_level = 3
             options.enable_profiling = True
@@ -79,6 +82,7 @@ def main():
             emit({'type': 'status', 'message': 'AMD NPU: ' + name + 'を準備中（初回コンパイルは時間がかかります）'})
             sessions.append(ort.InferenceSession(str(folder / (name + '_model.onnx')), sess_options=options))
         encoder, decoder = sessions
+        emit({'type': 'progress', 'completed': 5, 'total': 6, 'stage': '動作確認・NPU演算の割り当てを検証中'})
         ids_input = next(item for item in decoder.get_inputs() if item.type == 'tensor(int64)')
         state_input = next(item for item in decoder.get_inputs() if item.type != 'tensor(int64)')
         length = int(ids_input.shape[1])

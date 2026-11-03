@@ -13,6 +13,10 @@ Locaptio's own code is MIT-licensed. The model weights and optional Python/CUDA/
 * NVIDIA CUDA / cuDNN: proprietary NVIDIA runtime licenses supplied in the downloaded component directories. Explicit optional setup only; these libraries are external to the MSIX.
 * Translation: [FuguMT en-ja](https://huggingface.co/staka/fugumt-en-ja), author staka. [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). モデル重みをCTranslate2形式、INT8に変換した。変換モデルを再配布する際はCC BY-SA 4.0、作者・出典・変更表示を保持する。オリジナルのモデルカードはmodels/fugumt-source/README.md。
 * NAudio: https://github.com/naudio/NAudio — MIT.
+* Speaker embeddings: [3D-Speaker / CAMPPlus](https://github.com/modelscope/3D-Speaker), Apache-2.0 project; the optional zh/en common advanced ONNX model is downloaded from the [sherpa-onnx speaker-model release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models). Source URL and SHA256 are recorded in models/speakers/manifest.json. Model weights are not redistributed with Locaptio.
+* [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx): Apache-2.0; optional Python/CPU runtime for speaker embedding and VAD. Its ONNX Runtime and dependency notices apply separately.
+* [Silero VAD](https://github.com/snakers4/silero-vad): MIT, optional voice activity model downloaded from the sherpa-onnx release; hash recorded in the speaker manifest.
+* [NumPy](https://github.com/numpy/numpy): BSD-3-Clause, optional speaker runtime dependency.
 * faster-whisper: https://github.com/SYSTRAN/faster-whisper — MIT.
 * CTranslate2: https://github.com/OpenNMT/CTranslate2 — MIT.
 * Transformers: https://github.com/huggingface/transformers — Apache-2.0.

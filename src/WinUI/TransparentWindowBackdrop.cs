@@ -15,7 +15,12 @@ internal sealed class TransparentWindowBackdrop : SystemBackdrop
     private CompositionColorBrush? brush;
     private nint window;
     private readonly SubclassProc procedure;
-    public TransparentWindowBackdrop() { procedure = WindowProcedure; }
+    private readonly bool retainSurface;
+    private bool surfaceNeedsClear = true;
+    private int surfaceWidth, surfaceHeight;
+    internal int SurfaceClearCount { get; private set; }
+    internal int EraseRequestCount { get; private set; }
+    public TransparentWindowBackdrop(bool retainSurface = false) { this.retainSurface = retainSurface; procedure = WindowProcedure; }
     protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
     {
         if (Windows.System.DispatcherQueue.GetForCurrentThread() is null && queue is null)
@@ -29,6 +34,7 @@ internal sealed class TransparentWindowBackdrop : SystemBackdrop
         brush = compositor.CreateColorBrush(Color.FromArgb(0, 0, 0, 0));
         target.SystemBackdrop = brush;
         window = Microsoft.UI.Win32Interop.GetWindowFromWindowId(xamlRoot.ContentIslandEnvironment.AppWindowId);
+        surfaceNeedsClear = true;
         SetWindowSubclass(window, procedure, 103, 0);
         ConfigureTransparency();
     }
@@ -46,9 +52,21 @@ internal sealed class TransparentWindowBackdrop : SystemBackdrop
     {
         if (message == 0x0014) // WM_ERASEBKGND: a black GDI surface leaves composition alpha intact.
         {
-            GetClientRect(hwnd, out var rect); FillRect(wParam, ref rect, GetStockObject(4)); return 1;
+            EraseRequestCount++;
+            // The main window already has a cleared backing surface. Repeated
+            // GDI clears during clock/text invalidations can flash through XAML.
+            GetClientRect(hwnd, out var rect);
+            int width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
+            if (!retainSurface || surfaceNeedsClear || width != surfaceWidth || height != surfaceHeight)
+            {
+                FillRect(wParam, ref rect, GetStockObject(4));
+                SurfaceClearCount++;
+                surfaceWidth = width; surfaceHeight = height;
+                surfaceNeedsClear = false;
+            }
+            return 1;
         }
-        if (message == 0x031E) ConfigureTransparency();
+        if (message == 0x031E) { surfaceNeedsClear = true; ConfigureTransparency(); }
         return DefSubclassProc(hwnd, message, wParam, lParam);
     }
     protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)

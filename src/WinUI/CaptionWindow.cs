@@ -98,6 +98,11 @@ public sealed class CaptionWindow : Window
     {
         if (captions.Length == 0 || lastRecognition == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(lastRecognition).TotalSeconds >= settings.CaptionHideSeconds) AppWindow.Hide();
     }
+    public static SolidColorBrush SpeakerBrush(Settings settings, int speakerId)
+    {
+        var colors = settings.SpeakerColors ?? [];
+        return speakerId > 0 && speakerId <= colors.Length ? Brush(ParseColor(colors[speakerId - 1], 0xFFFFFF)) : OrdinaryBrush(settings, false);
+    }
     public void ApplyAppearance()
     {
         bool light = settings.CaptionBackground == "light";
@@ -124,6 +129,7 @@ public sealed class CaptionWindow : Window
             var translation = Text(caption.Japanese ?? "", true);
             if (!settings.CaptionCorrectedSameColor && caption.SourceCorrected) source.Foreground = CorrectedBrush(settings);
             if (!settings.CaptionCorrectedSameColor && (caption.TranslationRefined || caption.SourceCorrected)) translation.Foreground = CorrectedBrush(settings);
+            if (settings.SpeakerDiarization && caption.SpeakerId > 0) source.Foreground = translation.Foreground = SpeakerBrush(settings, caption.SpeakerId);
             Border Bubble(TextBlock block)
             {
                 var bubble = new Border { Child = block, Padding = new Thickness(8, 1, 8, 1), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),

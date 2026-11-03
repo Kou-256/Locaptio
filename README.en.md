@@ -79,7 +79,8 @@ This prepares Python 3.12, base/small Whisper models and FuguMT. Downloads and c
 | Clear | Clear displayed/savable transcript history; recording continues |
 | 字幕 (Captions) | Open floating captions and minimize the main window; retain text in both |
 | テキスト保存 (Save text) | Export the full session as UTF-8 TXT |
-| 録音 (Record checkbox) | Select a destination and start recording; uncheck to stop recording only |
+| 録音 (Record checkbox) | Choose a filename and destination, then confirm to start recording and transcription; cancel starts neither, and uncheck stops recording only |
+| Scroll history | Pause automatic following and retain the reading position. Use **最新へ** (Latest) or End to resume |
 | Change input/mode | Clear caption history; changing input splits recording into a new file |
 
 Captions appear when recognition updates arrive and hide after a configurable idle interval. Drag their background to move them; Escape closes them. Translation and correction update existing lines.
@@ -102,9 +103,23 @@ This input **automatically uses Whisper**, even when Windows integration is sele
 | English → Japanese | FuguMT preview + optional Qwen3 with recent context and terminology notes |
 | Revise recognized source text | Enable context correction; requires an LLM and is OFF by default |
 
+Use **AI補正** beside Recording on the main screen to toggle correction directly. Its state stays synchronized with Settings and is saved for the next launch.
+
+AI source correction also supports Windows Live Captions integration. Toggle **文字起こしをAIで補正** in Settings during a session; Windows integration applies the change immediately (Whisper applies it on the next Start). Raw Japanese or English text appears first. The local LLM checks finalized speech against up to eight preceding utterances and updates the same row. Disabling correction discards pending results and retains already applied corrections. The Windows caption window itself is unchanged. If the LLM environment or model is unavailable, raw captions continue and the status explains the required setup.
+
 Corrections and translations can be wrong. Speed depends on the model, PC load, utterance length and initial loading. The same recognition model or speed as Windows captions is not guaranteed.
 
 ### Optional components
+
+Settings are grouped into eight expandable categories: main appearance, subtitles, recognition/Windows integration, AI correction, speaker colors, translation/LLM, saving/recording and diagnostics. Model loading shows completed/remaining stage percentages, the current stage and elapsed time. Percentages represent completed preparation stages, not a time estimate or an unavailable internal NPU compiler percentage.
+
+After automatic language selection fails, confirming the requested Windows caption language is ready or receiving resumed caption updates clears the stale warning. An already-ready language bypasses unnecessary picker automation.
+
+Windows caption language synchronization is ON by default. Starting a session or changing its mode selects English (United States) for translation or Japanese (Japan) for Japanese transcription. Disable **本体のモードにWindows字幕の言語を自動で合わせる** in Settings to keep manual control. The Windows language UI may briefly appear. Complete any first-time language download in Windows yourself. Unsupported UI or setup failures display a dedicated warning. This integration still requires the Windows caption window; use the independent Whisper CPU/GPU/AMD NPU path for recognition without launching Windows captions.
+
+**Speaker colors:** run `scripts/setup-speakers.ps1`, enable **音声から話者を識別し、話者ごとに色分け** in Settings, then Start. This is OFF by default. Configure colors for up to eight anonymous speakers and the matching threshold. Text appears first; local audio analysis later updates history/popout colors and adds `[話者1]`-style speaker numbers to saved text. IDs reset each session and do not identify real names. Speaker colors take priority over correction colors.
+
+CAMPPlus speaker embeddings and Silero VAD run on the CPU. The speaker worker processes audio in memory, without saving or uploading it. Whisper shares its recognition input; Windows integration separately analyzes the selected PC audio and approximately aligns it with caption arrival times. Windows must use the same audio input. Short speech, overlapping voices, similar voices, noise, recognition delay and speaker changes within a row can cause errors. This estimates the dominant speaker per caption row rather than performing exact word-level diarization. Unassigned rows use the ordinary color. Japanese speaker accuracy has not been evaluated.
 
 Run only the components you need, from the repository or extracted release root:
 
@@ -117,6 +132,8 @@ powershell -ExecutionPolicy Bypass -File scripts/setup-speech.ps1 -Model large-v
 powershell -ExecutionPolicy Bypass -File scripts/setup-directml.ps1
 # Qwen3-4B Q4_K_M + llama.cpp, Vulkan
 powershell -ExecutionPolicy Bypass -File scripts/setup-llm.ps1
+# Local CPU speaker identification, approximately 29MB of models
+powershell -ExecutionPolicy Bypass -File scripts/setup-speakers.ps1
 # CPU-only LLM alternative
 powershell -ExecutionPolicy Bypass -File scripts/setup-llm.ps1 -Backend cpu
 # Experimental AMD Ryzen AI / XDNA 2 Whisper-small
@@ -170,3 +187,7 @@ Solution: `Locaptio.sln`. WinUI 3 is current; WPF in `src/App` is retained for c
 ## License
 
 Locaptio's source is under the [MIT License](LICENSE). Models/dependencies retain their own licenses. Model weights, Python environments and CUDA/NPU libraries are not bundled in the repository or portable ZIP; setup downloads them separately. See [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Checking Record opens a Save dialog. Confirm the filename to start recording and transcription; cancel leaves recording stopped. The initial folder is the configured recording folder, or Music/Locaptio if unset. Click the small 状態 link in the bottom-right corner to toggle compact diagnostics without moving transcript content. Hover does not open it; Escape also closes it. Select transcript text while recording and use Ctrl+C or the native Copy context menu. Updates to the selected row wait until selection is cleared; recognition and recording continue. Use 最新へ to resume following new captions.
+
+Drag from the middle of one transcript row to another row to select a continuous range. Ctrl+C and the Copy selected range context menu include every intervening row, preserving the language column where the drag began. Drag near the viewport edges to scroll. Escape or clicking elsewhere in the transcript clears the selection.

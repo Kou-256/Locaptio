@@ -10,6 +10,11 @@ if (args.Contains("--streaming-translation")) { await StreamingTranslationChecks
 if (args.Contains("--translation-quality")) { await TranslationQualityChecks.RunAsync(); return; }
 if (args.Contains("--windows-captions")) { WindowsCaptionChecks.Run(); return; }
 if (args.Contains("--windows-recovery")) { await WindowsRecoveryChecks.RunAsync(); return; }
+if (args.Contains("--caption-history")) { CaptionHistoryChecks.Run(); return; }
+if (args.Contains("--windows-correction")) { await WindowsCorrectionChecks.RunAsync(); return; }
+if (args.Contains("--speakers")) { await SpeakerChecks.RunAsync(args.Contains("--real-models")); return; }
+if (args.Contains("--windows-language")) { WindowsLanguageChecks.Run(); return; }
+if (args.Contains("--preparation")) { await PreparationChecks.RunAsync(args.Contains("--real-worker")); return; }
 if (args.Contains("--features")) { await FeatureChecks.RunAsync(); return; }
 if (args.Contains("--correction-recovery")) { await FeatureChecks.CorrectionRecoveryAsync(); return; }
 if (args.Contains("--realtime-isolation")) { await FeatureChecks.RealtimeIsolationAsync(); return; }

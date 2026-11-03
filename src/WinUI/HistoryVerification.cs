@@ -33,22 +33,48 @@ public sealed partial class MainWindow
             for (int i = 20001; i <= 21000; i++)
                 UpdateCaption(new(i, 1, $"More history {i}", "追加字幕", true, Stopwatch.GetTimestamp(), 0, 0));
             // A delayed AI revision to a row in view must not jump to the end.
-            UpdateCaption(history[2] with { Revision = 2, English = "Revised earlier row" });
+            UpdateCaption(history[2].Caption with { Revision = 2, English = "Revised earlier row" });
             await Task.Delay(400);
             double drift = Math.Abs(historyScroll.VerticalOffset - offset);
             bool retained = paused && drift < 5 && history.Count == 21000;
             CaptionList.ScrollIntoView(history[0], ScrollIntoViewAlignment.Leading); await Task.Delay(200);
             bool firstAccessible = CaptionList.ContainerFromIndex(0) is ListViewItem;
             CaptionList.ScrollIntoView(history[^1]); await Task.Delay(400);
-            bool resumed = followLatest;
+            bool stillPausedAtBottom = !followLatest;
+            ResumeHistoryClick(ResumeHistoryButton, new RoutedEventArgs());
+            bool resumed = stillPausedAtBottom && followLatest;
             UpdateCaption(new(21001, 1, "Latest row", "最新の字幕", true, Stopwatch.GetTimestamp(), 0, 0));
             await Task.Delay(300);
             resumed &= historyScroll.ScrollableHeight - historyScroll.VerticalOffset < 5;
+            // Pause while still at the bottom, before the wheel's first frame.
+            // Old ViewChanged callbacks must not immediately re-arm following.
+            PauseHistoryFollowing(); await Task.Delay(100);
+            bool stayedPaused = !followLatest;
+            historyScroll.ChangeView(null, Math.Max(0, historyScroll.ScrollableHeight - 16), null, true);
+            await Task.Delay(150);
+            double nearBottomOffset = historyScroll.VerticalOffset;
+            var entry = history[^1];
+            var container = CaptionList.ContainerFromIndex(history.Count - 1) as ListViewItem;
+            var content = container?.ContentTemplateRoot;
+            int replaced = 0;
+            System.Collections.Specialized.NotifyCollectionChangedEventHandler changes = (_, e) => { if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace) replaced++; };
+            history.CollectionChanged += changes;
+            for (int i = 2; i < 42; i++)
+            {
+                UpdateCaption(entry.Caption with { Revision = i, English = $"Latest row {i:D2}" });
+                UpdateCaption(new(21000 + i, 1, "Incoming row", "追加字幕", true, Stopwatch.GetTimestamp(), 0, 0));
+            }
+            await Task.Delay(400); history.CollectionChanged -= changes;
+            double smallScrollDrift = Math.Abs(historyScroll.VerticalOffset - nearBottomOffset);
+            bool nearBottomRetained = stayedPaused && !followLatest && smallScrollDrift < 5 && ResumeHistoryButton.Visibility == Visibility.Visible;
+            bool stableRows = ReferenceEquals(entry, history[21000]) && ReferenceEquals(container?.ContentTemplateRoot, content) && replaced == 0;
+            ResumeHistoryClick(ResumeHistoryButton, new RoutedEventArgs()); await Task.Delay(400);
+            resumed &= followLatest && historyScroll.ScrollableHeight - historyScroll.VerticalOffset < 5;
             double historyLoadMs = clock.Elapsed.TotalMilliseconds;
             if (Environment.GetCommandLineArgs().Contains("--verify-scroll-only"))
             {
-                passed = unlimited && followed && retained && firstAccessible && resumed;
-                report = $"PASS={passed}; rows={history.Count}; realizedRows={realized}; unlimited={unlimited}; followed={followed}; scrollDrift={drift:F2}px; retained={retained}; firstAccessible={firstAccessible}; resumed={resumed}; offset={historyScroll.VerticalOffset}; height={historyScroll.ScrollableHeight}; initialHeight={initialHeight}; initial=({initial}); followFlag={followLatest}";
+                passed = unlimited && followed && retained && firstAccessible && resumed && nearBottomRetained && stableRows;
+                report = $"PASS={passed}; rows={history.Count}; realizedRows={realized}; unlimited={unlimited}; followed={followed}; scrollDrift={drift:F2}px; smallScrollDrift={smallScrollDrift:F2}px; nearBottomRetained={nearBottomRetained}; stableRows={stableRows}; replacements={replaced}; retained={retained}; firstAccessible={firstAccessible}; resumed={resumed}; offset={historyScroll.VerticalOffset}; height={historyScroll.ScrollableHeight}; initialHeight={initialHeight}; initial=({initial}); followFlag={followLatest}";
                 return;
             }
             // Isolate recording from other applications' audio and model inference.
@@ -85,7 +111,7 @@ public sealed partial class MainWindow
             while ((read = reader.Read(samples, 0, samples.Length)) > 0)
                 for (int i = 0; i < read; i++) peak = Math.Max(peak, Math.Abs(samples[i]));
             bool wave = reader.TotalTime.TotalSeconds >= 54 && peak > .001;
-            passed = unlimited && followed && retained && firstAccessible && resumed && recordOnlyStopEnabled && stopped && wave && memoryDelta < 64 * 1024 * 1024;
+            passed = unlimited && followed && retained && firstAccessible && resumed && nearBottomRetained && stableRows && recordOnlyStopEnabled && stopped && wave && memoryDelta < 64 * 1024 * 1024;
             report = $"PASS={passed}; rows={history.Count}; realizedRows={realized}; unlimited={unlimited}; followed={followed}; paused={paused}; scrollDrift={drift:F2}px; retained={retained}; firstAccessible={firstAccessible}; resumed={resumed}; recordingOnlyStop={recordOnlyStopEnabled}; stopBoth={stopped}; stopMs={stopping.Elapsed.TotalMilliseconds:F0}; WAV={reader.TotalTime.TotalSeconds:F2}s; peak={peak:F3}; recordingCpuPercentOfOneCore={cpu:F2}; privateMemoryDeltaMB={memoryDelta / 1048576d:F2}; historyLoadMs={historyLoadMs:F0}";
         }
         catch (Exception ex) { report = ex.ToString(); }

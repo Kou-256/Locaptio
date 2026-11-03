@@ -27,9 +27,11 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
     private string runtimeRoot = "", configuredModel = "";
     private bool configuredCpu;
     public string Backend { get; private set; } = "未初期化";
+    public event Action<PreparationProgress>? PreparationChanged;
     public async Task StartAsync(string root, string modelPath, bool cpu, CancellationToken token)
     {
         runtimeRoot = root; configuredModel = modelPath; configuredCpu = cpu;
+        PreparationChanged?.Invoke(new("llm", 0, 2, "LLM環境を確認中"));
         Kill(); process?.Dispose(); process = null;
         var python = Path.Combine(root, ".venv-llm", "Scripts", "python.exe");
         if (!File.Exists(python)) throw new InvalidOperationException("LLM環境がありません。scripts/setup-llm.ps1を実行してください。");
@@ -38,10 +40,12 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
         foreach (string arg in new[] { "-u", Path.Combine(root, "inference", "llm_worker.py"), "--model", modelPath }) start.ArgumentList.Add(arg);
         if (cpu) start.ArgumentList.Add("--cpu");
         process = new() { StartInfo = start }; process.ErrorDataReceived += (_, _) => { }; process.Start(); process.BeginErrorReadLine();
+        PreparationChanged?.Invoke(new("llm", 1, 2, "LLMモデルを読み込み中"));
         using var registration = token.Register(Kill);
         using var response = await ReadAsync(token);
         if (response.RootElement.GetProperty("type").GetString() != "ready") throw new InvalidOperationException(response.RootElement.GetProperty("message").GetString());
         Backend = response.RootElement.GetProperty("backend").GetString()!;
+        PreparationChanged?.Invoke(new("llm", 2, 2, "準備完了"));
     }
     public Task<InferenceResult> RefineAsync(string source, CancellationToken token) => RequestAsync(new { mode = "translate", text = source }, token);
     public Task<InferenceResult> RefineAsync(string source, string[] context, string glossary, CancellationToken token) => RequestAsync(new { mode = "translate", text = source, context, glossary }, token);

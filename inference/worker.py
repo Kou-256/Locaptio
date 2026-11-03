@@ -108,6 +108,7 @@ def main():
             result.model_name = actual_model
             return result
         return MarianBackend(path, device)
+    emit({'type': 'progress', 'completed': 1, 'total': 3, 'stage': '実行デバイス確認・モデル読み込み中'})
     try:
         cuda_count = ctranslate2.get_cuda_device_count()
         device = 'cuda' if args.device == 'auto' and cuda_count > 0 else 'cpu'
@@ -132,6 +133,7 @@ def main():
     try:
         if device != 'npu':
             backend = factory(path, device)
+        emit({'type': 'progress', 'completed': 2, 'total': 3, 'stage': 'モデルのウォームアップ・動作確認中'})
         if args.kind == 'speech':
             backend.recognize(np.zeros(16000, dtype=np.float32), vad=False, final=False)
         else:
