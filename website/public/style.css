@@ -7,3 +7,17 @@
 /* Direct feature headings stay readable before the mobile breakpoint. */
 .hero h1{font-size:clamp(30px,3.4vw,44px);line-height:1.45}html[lang=en] .hero h1{font-size:clamp(30px,3.2vw,44px);line-height:1.25}
 @media(max-width:960px){.hero{grid-template-columns:1fr;gap:32px}.hero-copy{max-width:720px}.hero h1,html[lang=en] .hero h1{font-size:clamp(26px,4.2vw,40px)}.preview-art{min-height:360px}.caption-stage{min-height:208px}}
+
+/* Restore the owner-requested Windows-style background; retain readable controls. */
+.preview-art{background:var(--color-background-muted) url('/assets/waves.png') center/cover}
+.preview-heading{background:rgba(255,255,255,.92);padding:10px 12px;border-radius:8px}
+.demo-tabs [role=tablist]{background:rgba(255,255,255,.94);border-radius:8px;padding:0 8px}
+.preview-bottom{align-self:flex-start;background:rgba(255,255,255,.94);border-radius:6px;padding:6px 10px;margin-top:16px}
+strong{font-weight:700;color:var(--color-text-primary)}
+.hero h1,.section h2,.settings-showcase h2{font-weight:600}
+@keyframes page-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.hero-copy{animation:page-enter 420ms cubic-bezier(.2,.8,.2,1) both}
+.preview{animation:page-enter 420ms cubic-bezier(.2,.8,.2,1) 70ms both}
+.download{transition:background .16s ease-out,transform .16s ease-out}
+.download:hover{transform:translateY(-1px)}.download:active{transform:translateY(0)}
+@media(prefers-reduced-motion:reduce){.hero-copy,.preview{animation:none}.download{transition:none}.download:hover{transform:none}}

@@ -13,14 +13,14 @@
 The original site already had a coherent light palette and split hero. This was a polish and content expansion, not a new visual identity. The owner-supplied icon and teal were preserved.
 
 1. Spacing: a four-pixel rhythm, consistent section gaps, matching controls and mobile stacking.
-2. Color: one neutral role system with one teal accent. Replaced the abstract generated wallpaper with a quiet caption stage.
+2. Color: one neutral role system with one teal accent. Preserve the original Windows-style wallpaper in the caption stage at the owner's request, with light surfaces behind controls for legibility.
 3. Icons: one stroke family, no decorative emoji. The actual app screenshot keeps its original UI.
 4. Copy: a concrete headline and detailed feature descriptions instead of three short claims. Explain setup, optional models, device support and known limits.
-5. Type: reduced headline weight from 800 to 500, reduced negative tracking, separated body and supporting text, and removed forced no-wrap text.
+5. Type: use 600-weight headings and selective bold emphasis for important features and instructions, reduced negative tracking, separated body and supporting text, and removed forced no-wrap text.
 6. Layout: retain hero, features, setup and distribution order; expand features with four keyboard-accessible categories and add settings/FAQ content.
 7. Details: preserve a single direct ZIP action, accessible focus, checksums, language links and native details controls. Mobile navigation has expanded state and Escape dismissal.
 8. Visuals: caption demo is labeled as an illustration, not an actual live recognizer. The settings image is real, captured from the v1.0.38 release smoke test.
-9. Motion: only brief color feedback; reduced-motion respects user preference. No looping or scroll-driven animation.
+9. Motion: brief, one-time hero entry and user-triggered tab/menu/FAQ reveals, plus subtle button feedback. Reduced-motion disables movement. No looping or scroll-driven animation.
 
 ## References and attribution
 

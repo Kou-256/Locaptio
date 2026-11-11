@@ -24,6 +24,6 @@ Local preview: `http://127.0.0.1:4173`. Vercel project settings: Framework **Oth
 
 日本語・英語の内容は `content.mjs`、ページ生成は `build.mjs`、デザインは `public/style.css`、配布版の情報は `release.json` にあります。`dist` と `.vercel` はコミットしません。Windows用ZIPとモデルをVercelへアップロードせず、GitHub Releasesから配布します。
 
-Artwork: existing Locaptio icon supplied by the project owner. The caption preview is a labeled HTML illustration; the settings image is captured from the packaged app using synthetic verification data. The old abstract wallpaper is no longer rendered.
+Artwork: existing Locaptio icon supplied by the project owner. The caption preview is a labeled HTML illustration over the original Windows-style wallpaper, retained at the owner's request; the settings image is captured from the packaged app using synthetic verification data. Important copy uses selective bold emphasis. Short entry and interaction animations respect reduced-motion preferences.
 
 Design process: unslop by Damir Sokolovsky (CC BY 4.0), plus the official Astryx semantic-token and design-convention documentation. This existing static site does not install the Astryx React library. See DESIGN.md for decisions and attribution.
