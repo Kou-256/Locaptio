@@ -35,3 +35,5 @@ Astryx informs semantic color roles, spacing, typography, state consistency and 
 Build and static tests: `npm run build`, `npm test`. Browser walkthrough: caption-mode tabs, feature tabs, language switch, mobile menu and checksum copy. Japanese desktop 1440x1000 and mobile 390x844, plus English route. No missing images, horizontal page overflow or browser console errors in the checked states. Browser plugin was tagged during the task; subsequent interactive validation used its in-app browser through CUA. Initial baseline used an isolated Playwright headless browser before that browser became available.
 
 Download metadata stays in `release.json` and is changed only after the corresponding ZIP and checksum have been verified on GitHub Releases.
+
+Owner copy preference (2026-11-12): use explicit feature descriptions, not poetic slogans. The hero names Japanese transcription and English-to-Japanese translation; section headings name their functions.
