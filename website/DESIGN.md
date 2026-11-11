@@ -37,3 +37,5 @@ Build and static tests: `npm run build`, `npm test`. Browser walkthrough: captio
 Download metadata stays in `release.json` and is changed only after the corresponding ZIP and checksum have been verified on GitHub Releases.
 
 Owner copy preference (2026-11-12): use explicit feature descriptions, not poetic slogans. The hero names Japanese transcription and English-to-Japanese translation; section headings name their functions.
+
+Owner refinement (2026-11-12): remove design-reference links from the public footer; retain attribution in repository documentation. Use a gentler easing curve with 700ms entry, 420ms interaction reveals and 240ms button feedback.

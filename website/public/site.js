@@ -2,7 +2,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const reveal = element => {
   if (!element?.animate || reducedMotion.matches) return;
   element.getAnimations().forEach(animation => animation.cancel());
-  element.animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'translateY(0)'}], {duration:220,easing:'cubic-bezier(.2,.8,.2,1)'});
+  element.animate([{opacity:0,transform:'translateY(6px)'},{opacity:1,transform:'translateY(0)'}], {duration:420,easing:'cubic-bezier(.25,.1,.25,1)'});
 };
 reducedMotion.addEventListener('change',event=>{if(event.matches)document.getAnimations().forEach(animation=>animation.cancel());});
 const copy = document.querySelector('#copy-checksum');
