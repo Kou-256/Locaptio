@@ -13,7 +13,7 @@ internal interface IWindowsCaptionWindow
 
 internal sealed class WindowsCaptionRecovery(
     Func<bool> enabled, Action<string> status, Action<string> warning,
-    Func<bool>? readAudio = null, IWindowsCaptionWindow? captionWindow = null, long? startedAt = null)
+    Func<bool>? readAudio = null, IWindowsCaptionWindow? captionWindow = null, long? startedAt = null, Func<int>? restartSeconds = null)
 {
     private readonly WindowsCaptionWatchdog watchdog = new(startedAt ?? Environment.TickCount64);
     private readonly IWindowsCaptionWindow window = captionWindow ?? new WindowsCaptionWindow();
@@ -38,13 +38,14 @@ internal sealed class WindowsCaptionRecovery(
             if (!audioErrorReported) status("Windows字幕の自動復旧: 音量を確認できないため判定を保留します。" + ex.Message);
             audioErrorReported = true; return false;
         }
-        switch (watchdog.Observe(now, audible, textChanged))
+        int seconds = Math.Clamp(restartSeconds?.Invoke() ?? 180, 10, 1800);
+        switch (watchdog.Observe(now, audible, textChanged, seconds))
         {
             case CaptionRecoveryDecision.LimitReached:
                 warning("Windows字幕の自動復旧を10分間で3回試しましたが、音声があっても字幕が更新されません。自動再起動を一時停止します。Windows側の認識言語・音声入力を確認してください。");
                 return false;
             case CaptionRecoveryDecision.Restart:
-                warning("PC音声があるのに20秒以上字幕が更新されないため、Windowsライブキャプションを再起動しています。文章と録音は保持します。");
+                warning($"PC音声があるのに{seconds}秒以上字幕が更新されないため、Windowsライブキャプションを再起動しています。文章と録音は保持します。");
                 try
                 {
                     await window.RestartAsync(token);
@@ -144,5 +145,22 @@ internal sealed class WindowsCaptionWindow : IWindowsCaptionWindow
         }
         Launch(token);
         if (!await WaitVisibleAsync(10_000, token)) throw new TimeoutException("起動後10秒以内にウィンドウを確認できませんでした。");
+    }
+    public static async Task CloseCurrentAsync(CancellationToken token)
+    {
+        foreach (var process in Process.GetProcessesByName("LiveCaptions"))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.SessionId != Session || !string.Equals(process.MainModule?.FileName, Executable, StringComparison.OrdinalIgnoreCase)) continue;
+                    process.CloseMainWindow();
+                    try { await process.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(1), token); }
+                    catch (TimeoutException) { if (!process.HasExited) process.Kill(); await process.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(2), token); }
+                }
+                catch (InvalidOperationException) { /* Already exited. */ }
+            }
+        }
     }
 }

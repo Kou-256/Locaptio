@@ -19,6 +19,7 @@ public sealed class CaptionWindow : Window
     private string regionGeometry = "";
     private readonly ScrollViewer scroll;
     private readonly nint hwnd;
+    private int captionWidth;
     private CaptionUpdate[] captions = [];
     private readonly DispatcherTimer idleTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private long lastRecognition;
@@ -37,6 +38,8 @@ public sealed class CaptionWindow : Window
         double scale = GetDpiForWindow(hwnd) / 96.0;
         int width = Math.Clamp(settings.CaptionWindowWidth > 0 ? settings.CaptionWindowWidth : (int)(960 * scale), Math.Min((int)(360 * scale), work.Width), work.Width);
         int height = Math.Clamp(settings.CaptionWindowHeight > 0 ? settings.CaptionWindowHeight : (int)(260 * scale), Math.Min((int)(120 * scale), work.Height), work.Height);
+        captionWidth = width;
+        root.Width = width / scale; root.Height = height / scale;
         int left = settings.CaptionWindowLeft < 0 ? work.X + (work.Width - width) / 2 : settings.CaptionWindowLeft;
         int top = settings.CaptionWindowTop < 0 ? work.Y + work.Height - height - (int)(60 * scale) : settings.CaptionWindowTop;
         AppWindow.MoveAndResize(new RectInt32(Math.Clamp(left, work.X, work.X + work.Width - width), Math.Clamp(top, work.Y, work.Y + work.Height - height), width, height));
@@ -60,6 +63,7 @@ public sealed class CaptionWindow : Window
     }
     private void RememberBounds()
     {
+        if (AppWindow.Size.Width >= 360 * GetDpiForWindow(hwnd) / 96.0) captionWidth = AppWindow.Size.Width;
         settings.CaptionWindowLeft = AppWindow.Position.X; settings.CaptionWindowTop = AppWindow.Position.Y;
         settings.CaptionWindowWidth = AppWindow.Size.Width; settings.CaptionWindowHeight = AppWindow.Size.Height;
     }
@@ -111,16 +115,19 @@ public sealed class CaptionWindow : Window
         lines.Spacing = settings.CaptionLineGap;
         WindowAppearance.SetOpacity(hwnd, 1);
         lines.Children.Clear(); bubbles.Clear();
-        foreach (var caption in captions.TakeLast(settings.CaptionRows))
+        var visibleCaptions = captions.TakeLast(settings.CaptionSentenceMode ? 1 : settings.CaptionRows).ToArray();
+        foreach (var caption in visibleCaptions)
         {
             bool japanese = settings.CaptionMode == "japanese";
             uint enColor = OrdinaryColor(settings, false);
             uint jaColor = OrdinaryColor(settings, true);
             TextBlock Text(string text, bool ja) => new()
             {
-                Text = text, FontSize = ja ? settings.CaptionJapaneseSize : settings.CaptionEnglishSize,
+                Text = text, Tag = ja, FontSize = ja ? settings.CaptionJapaneseSize : settings.CaptionEnglishSize,
                 LineHeight = (ja ? settings.CaptionJapaneseSize : settings.CaptionEnglishSize) * settings.CaptionLineHeight,
-                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                LineStackingStrategy = LineStackingStrategy.MaxHeight,
+                MaxLines = Math.Max(1, settings.CaptionMaxLines / (!japanese && settings.English && settings.Japanese && !string.IsNullOrWhiteSpace(caption.Japanese) && settings.CaptionLayout != "side-by-side" ? 2 : 1)),
+                TextTrimming = TextTrimming.None,
                 TextWrapping = TextWrapping.Wrap, Opacity = settings.CaptionTextOpacity, Foreground = Brush(ja ? jaColor : enColor),
                 TextAlignment = settings.CaptionAlignment == "left" ? TextAlignment.Left : settings.CaptionAlignment == "right" ? TextAlignment.Right : TextAlignment.Center,
                 FontWeight = settings.CaptionBold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal
@@ -132,7 +139,7 @@ public sealed class CaptionWindow : Window
             if (settings.SpeakerDiarization && caption.SpeakerId > 0) source.Foreground = translation.Foreground = SpeakerBrush(settings, caption.SpeakerId);
             Border Bubble(TextBlock block)
             {
-                var bubble = new Border { Child = block, Padding = new Thickness(8, 1, 8, 1), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
+                var bubble = new Border { Child = block, Padding = new Thickness(8, 5, 8, 5), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
                     Background = BackgroundBrush(settings, settings.CaptionOpacity), BorderBrush = new SolidColorBrush(Brush(ParseColor(settings.CaptionBorderColor, 0x858585)).Color) { Opacity = settings.CaptionOpacity },
                     HorizontalAlignment = settings.CaptionAlignment == "left" ? HorizontalAlignment.Left : settings.CaptionAlignment == "right" ? HorizontalAlignment.Right : HorizontalAlignment.Center };
                 bubbles.Add(bubble); return bubble;
@@ -152,6 +159,7 @@ public sealed class CaptionWindow : Window
                 int row = 0;
                 foreach (var block in reverse ? new[] { translation, source } : new[] { source, translation })
                 {
+                    if (block == source && !japanese && settings.CaptionMaxLines == 1 && settings.Japanese && !string.IsNullOrWhiteSpace(translation.Text)) continue;
                     if (block == translation && (japanese || !settings.Japanese) || block == source && !japanese && !settings.English) continue;
                     if (string.IsNullOrWhiteSpace(block.Text)) continue;
                     var bubble = Bubble(block); Grid.SetRow(bubble, row++); pair.Children.Add(bubble);
@@ -159,8 +167,68 @@ public sealed class CaptionWindow : Window
             }
             lines.Children.Add(pair);
         }
-        scroll.UpdateLayout(); scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
+        // Keep the initial window dimensions until real text exists. Resizing
+        // an unactivated empty WinUI window to its padding can collapse its viewport.
+        if (lines.Children.Count == 0) { UpdateWindowShape(); return; }
+        // Allocate an actual total line limit across visible language blocks.
+        // Remove whole old utterances first; never crop the top of a block.
+        while (bubbles.Count > settings.CaptionMaxLines && lines.Children.Count > 1)
+        {
+            var oldest = (Grid)lines.Children[0];
+            foreach (var bubble in oldest.Children.OfType<Border>()) bubbles.Remove(bubble);
+            lines.Children.RemoveAt(0);
+        }
+        int remainingLines = settings.CaptionMaxLines;
+        for (int i = bubbles.Count - 1; i >= 0; i--)
+        {
+            int allocation = remainingLines > 0 ? Math.Max(1, remainingLines / (i + 1)) : 0;
+            bubbles[i].Visibility = allocation > 0 ? Visibility.Visible : Visibility.Collapsed;
+            ((TextBlock)bubbles[i].Child).MaxLines = Math.Max(1, allocation);
+            remainingLines -= allocation;
+        }
+        // Size to whole text blocks rather than scrolling through a fixed viewport.
+        // A partially scrolled first line must never become a subtitle.
+        double scale = root.XamlRoot?.RasterizationScale ?? GetDpiForWindow(hwnd) / 96.0;
+        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        double width = Math.Max(1, captionWidth / scale - 16);
+        root.Width = captionWidth / scale;
+        FitLatestText(width);
+        double budget = Math.Min(work.Height / scale - 16, settings.CaptionMaxLines * Math.Max(settings.CaptionEnglishSize, settings.CaptionJapaneseSize) * Math.Max(1.2, settings.CaptionLineHeight) + 24);
+        lines.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
+        while (lines.Children.Count > 1 && lines.DesiredSize.Height > budget)
+        {
+            var oldest = (Grid)lines.Children[0];
+            foreach (var bubble in oldest.Children.OfType<Border>()) bubbles.Remove(bubble);
+            lines.Children.RemoveAt(0); lines.InvalidateMeasure();
+            lines.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
+        }
+        while (lines.DesiredSize.Height > work.Height / scale - 8)
+        {
+            var blocks = bubbles.Select(b => (TextBlock)b.Child).Where(t => t.MaxLines > 1).ToArray();
+            if (blocks.Length == 0) break;
+            foreach (var block in blocks) block.MaxLines--;
+            FitLatestText(width);
+            lines.InvalidateMeasure(); lines.Measure(new Windows.Foundation.Size(width, double.PositiveInfinity));
+        }
+        int height = Math.Min(work.Height, (int)Math.Ceiling((lines.DesiredSize.Height + 8) * scale));
+        root.Height = height / scale;
+        if (height > 0 && (height != AppWindow.Size.Height || captionWidth != AppWindow.Size.Width))
+        {
+            int bottom = AppWindow.Position.Y + AppWindow.Size.Height;
+            AppWindow.MoveAndResize(new RectInt32(AppWindow.Position.X, Math.Clamp(bottom - height, work.Y, work.Y + work.Height - height), captionWidth, height));
+        }
+        scroll.UpdateLayout(); scroll.ChangeView(null, 0, null, true);
         UpdateWindowShape();
+    }
+    private void FitLatestText(double width)
+    {
+        foreach (var bubble in bubbles.Where(b => b.Visibility == Visibility.Visible))
+        {
+            var block = (TextBlock)bubble.Child;
+            double available = width - 18;
+            if (bubble.Parent is Grid pair && pair.ColumnDefinitions.Count > 1) available = (width - pair.ColumnSpacing) / 2 - 18;
+            block.Text = CaptionTail.Fit(block, block.Text, available, block.MaxLines);
+        }
     }
     public static SolidColorBrush CorrectedBrush(Settings settings)
     {
@@ -173,7 +241,7 @@ public sealed class CaptionWindow : Window
         if (root.XamlRoot is null || root.ActualWidth <= 0) return;
         double scale = root.XamlRoot.RasterizationScale;
         GetWindowRect(hwnd, out var window); var client = new NativePoint(); ClientToScreen(hwnd, ref client);
-        var bounds = bubbles.Where(b => b.ActualWidth > 0 && b.ActualHeight > 0).Select(b =>
+        var bounds = bubbles.Where(b => b.Visibility == Visibility.Visible && b.ActualWidth > 0 && b.ActualHeight > 0).Select(b =>
         {
             var p = b.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
             return new NativeRect { Left = (int)Math.Floor(p.X * scale) + client.X - window.Left, Top = (int)Math.Floor(p.Y * scale) + client.Y - window.Top,
@@ -198,6 +266,11 @@ public sealed class CaptionWindow : Window
         if (SetWindowRgn(hwnd, region, true) == 0) { DeleteObject(region); regionGeometry = ""; } // Success transfers ownership to Windows.
     }
     private static SolidColorBrush Brush(uint rgb) => new(Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+    internal bool HasWholeTextBlocks() => bubbles.All(b =>
+    {
+        var point = b.TransformToVisual(scroll).TransformPoint(new Windows.Foundation.Point());
+        return point.Y >= -.5 && point.Y + b.ActualHeight <= scroll.ActualHeight + .5;
+    });
     internal (string Text, double X, double Y)[] RenderedPositions() => bubbles.Select(b => (TextBlock)b.Child).Select(block =>
     {
         var position = block.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0));
@@ -217,6 +290,7 @@ public sealed class CaptionWindow : Window
         }
         finally { DeleteObject(region); }
     }
+    internal string ShapeDiagnostic() => $"size={AppWindow.Size}; root={root.ActualWidth}x{root.ActualHeight}; scroll={scroll.ActualWidth}x{scroll.ActualHeight}; geometry={regionGeometry}";
     internal static uint ParseColor(string hex, uint fallback) => uint.TryParse(hex.Trim().TrimStart('#'), System.Globalization.NumberStyles.HexNumber, null, out uint rgb) && hex.Trim().TrimStart('#').Length == 6 ? rgb : fallback;
     internal static uint OrdinaryColor(Settings value, bool japanese) => value.CaptionPalette == "custom" ? ParseColor(value.CaptionTextColor, 0xFFFFFF)
         : value.CaptionBackground == "light" ? 0x162030u : japanese ? value.CaptionPalette == "white-yellow" ? 0xFFE794u : 0xFFFFFFu : value.CaptionPalette == "cyan-white" ? 0x7DE3FFu : 0xFFFFFFu;
@@ -224,7 +298,7 @@ public sealed class CaptionWindow : Window
     internal static SolidColorBrush SurfaceBrush(Settings value) => Brush(value.CaptionBackground switch { "light" => 0xF5F7FAu, "black" => 0u, "dark" => 0x141A24u, _ => ParseColor(value.CaptionSurfaceColor, 0x363636) });
     internal static SolidColorBrush BackgroundBrush(Settings settings, double opacity) => new(SurfaceBrush(settings).Color) { Opacity = Math.Clamp(opacity, 0, 1) };
     internal bool HasIndependentOpacity() => bubbles.All(b => Math.Abs(b.Background.Opacity - settings.CaptionOpacity) < .001 && Math.Abs(((TextBlock)b.Child).Opacity - settings.CaptionTextOpacity) < .001);
-    internal bool UsesOrdinaryColors() => bubbles.All(b => { var text = (TextBlock)b.Child; bool japanese = settings.CaptionMode == "japanese" || captions.Any(c => c.Japanese == text.Text); return ((SolidColorBrush)text.Foreground).Color == OrdinaryBrush(settings, japanese).Color; });
+    internal bool UsesOrdinaryColors() => bubbles.All(b => { var text = (TextBlock)b.Child; bool japanese = text.Tag is true; return ((SolidColorBrush)text.Foreground).Color == OrdinaryBrush(settings, japanese).Color; });
     internal bool UsesCorrectionColor() => bubbles.Select(b => (TextBlock)b.Child).Any(t => ((SolidColorBrush)t.Foreground).Color == CorrectedBrush(settings).Color && !t.Text.Contains("AI補正"));
     internal bool HasNoNativeFrame()
     {

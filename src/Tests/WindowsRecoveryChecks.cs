@@ -19,18 +19,26 @@ internal static class WindowsRecoveryChecks
         var stalled = new WindowsCaptionWatchdog(0); var attempts = new List<int>(); int limits = 0;
         for (int t = 1000; t <= 200_000; t += 1000)
         {
-            var result = stalled.Observe(t, true, false);
+            var result = stalled.Observe(t, true, false, 20);
             if (result == CaptionRecoveryDecision.Restart) attempts.Add(t);
             if (result == CaptionRecoveryDecision.LimitReached) limits++;
         }
         Assert(attempts.SequenceEqual(new[] { 20_000, 80_000, 140_000 }) && limits == 1, "Recovery threshold/cooldown/budget failed");
         CaptionRecoveryDecision afterWindow = CaptionRecoveryDecision.None;
-        for (int t = 201_000; t <= 620_000; t += 1000) afterWindow = stalled.Observe(t, true, false);
+        for (int t = 201_000; t <= 620_000; t += 1000) afterWindow = stalled.Observe(t, true, false, 20);
         Assert(afterWindow == CaptionRecoveryDecision.Restart, "Budget did not expire after ten minutes");
 
+        var defaultWait = new WindowsCaptionWatchdog(0);
+        for (int t = 1000; t < 180_000; t += 1000)
+            Assert(defaultWait.Observe(t, true, false) == CaptionRecoveryDecision.None, "Default restarted before three minutes");
+        Assert(defaultWait.Observe(180_000, true, false) == CaptionRecoveryDecision.Restart, "Default did not restart at three minutes");
+        var customized = new WindowsCaptionWatchdog(0);
+        for (int t = 1000; t < 45_000; t += 1000)
+            Assert(customized.Observe(t, true, false, 45) == CaptionRecoveryDecision.None, "Custom threshold restarted early");
+        Assert(customized.Observe(45_000, true, false, 45) == CaptionRecoveryDecision.Restart, "Custom threshold ignored");
         bool enabled = false, audible = true;
         var window = new FakeWindow(); var warnings = new List<string>(); var statuses = new List<string>();
-        var recovery = new WindowsCaptionRecovery(() => enabled, statuses.Add, warnings.Add, () => audible, window, 0);
+        var recovery = new WindowsCaptionRecovery(() => enabled, statuses.Add, warnings.Add, () => audible, window, 0, () => 20);
         await recovery.EnsureStartedAsync(CancellationToken.None);
         for (int t = 1000; t <= 50_000; t += 1000) Assert(!await recovery.TickAsync(t, false, CancellationToken.None), "Disabled recovery restarted Windows");
         enabled = true;
@@ -40,19 +48,19 @@ internal static class WindowsRecoveryChecks
         for (int t = 71_000; t <= 150_000; t += 1000) Assert(!await recovery.TickAsync(t, true, CancellationToken.None), "Recovered captions restarted again");
 
         var failedWindow = new FakeWindow { Restart = _ => throw new TimeoutException("fixture") };
-        var failed = new WindowsCaptionRecovery(() => true, statuses.Add, warnings.Add, () => true, failedWindow, 0);
+        var failed = new WindowsCaptionRecovery(() => true, statuses.Add, warnings.Add, () => true, failedWindow, 0, () => 20);
         for (int t = 1000; t <= 20_000; t += 1000) await failed.TickAsync(t, false, CancellationToken.None);
         Assert(warnings.Last().Contains("再表示できませんでした"), "Failed launch was reported as recovered");
 
         using var stop = new CancellationTokenSource();
         var blockingWindow = new FakeWindow { Restart = token => Task.Delay(Timeout.Infinite, token) };
-        var cancelable = new WindowsCaptionRecovery(() => true, statuses.Add, warnings.Add, () => true, blockingWindow, 0);
+        var cancelable = new WindowsCaptionRecovery(() => true, statuses.Add, warnings.Add, () => true, blockingWindow, 0, () => 20);
         for (int t = 1000; t < 20_000; t += 1000) await cancelable.TickAsync(t, false, stop.Token);
         var pending = cancelable.TickAsync(20_000, false, stop.Token); stop.Cancel();
         try { await pending; throw new Exception("Stop did not cancel recovery"); } catch (OperationCanceledException) { }
         Assert(blockingWindow.Restarts == 1, "Canceled recovery retried");
 
-        var meterError = new WindowsCaptionRecovery(() => true, statuses.Add, warnings.Add, () => throw new InvalidOperationException("meter fixture"), window, 0);
+        var meterError = new WindowsCaptionRecovery(() => true, statuses.Add, warnings.Add, () => throw new InvalidOperationException("meter fixture"), window, 0, () => 20);
         for (int t = 1000; t <= 50_000; t += 1000) Assert(!await meterError.TickAsync(t, false, CancellationToken.None), "Meter error restarted Windows");
         Assert(window.Restarts == 1, "Meter failure was not safe");
         Console.WriteLine("PASS: audible stall, silence, active captions, short bursts, resume, cooldown, retry limit/expiry, ON/OFF, bridge replacement, launch failure, cancellation and audio-meter failure");

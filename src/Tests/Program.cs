@@ -5,6 +5,15 @@ using Locaptio.Core;
 using Locaptio.Core.Audio;
 using NAudio.Wave;
 
+if (args.Contains("--update-live"))
+{
+    using var http = new System.Net.Http.HttpClient();
+    using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    var release = await new AppUpdates(http).CheckAsync(new Version(0, 0, 0), stop.Token);
+    if (release is null) throw new Exception("Published app release not found");
+    Console.WriteLine($"PASS: official release metadata: {release.Version}, bytes={release.Size}, SHA256={release.Sha256}; no download performed"); return;
+}
+if (args.Contains("--app-options")) { await AppOptionsChecks.RunAsync(); return; }
 if (args.Contains("--mixed-input")) { await MixedInputChecks.RunAsync(); return; }
 if (args.Contains("--streaming-translation")) { await StreamingTranslationChecks.RunAsync(); return; }
 if (args.Contains("--translation-quality")) { await TranslationQualityChecks.RunAsync(); return; }

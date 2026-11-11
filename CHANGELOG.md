@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.38 — Reliable Ctrl+C / 選択範囲のコピーを修正
+
+- 選択開始時に表示中の行へキーボードフォーカスを設定し、本体全体のCtrl+Cショートカットで選択範囲をコピーします。入力欄のコピーは優先して保持します。
+- クリップボードが一時的に使用中の場合は短時間再試行します。選択範囲の保持と複数行コピーは継続します。
+- Keyboard focus now enters the selected row and a window-level Ctrl+C accelerator copies the retained range, while editable controls keep their own copy behavior. Transient clipboard contention is retried.
+
+## 1.0.37 — Update status in settings / 設定内の更新表示
+
+- 設定の「アプリの更新」に現在のバージョンを表示します。この画面からの確認結果・ダウンロード進捗と操作は同じ画面内に表示し、本体の通知へ転送しません。
+- Settings now show the current app version and keep update-check results and download actions in the same settings page.
+
+## 1.0.36 — Persistent selection, sidebar settings and current captions / 選択保持・設定ナビ・字幕の最新部分
+
+- 左ドラッグで選択範囲を変更し、離した後も範囲と青色を保持します。押していない状態のマウス移動では範囲を変更しません。
+- 設定は9カテゴリのSVGアイコン付き左ナビゲーションと右側の設定ページに変更。キーボード操作と選択中の項目表示にも対応します。
+- 字幕の「…」による省略を廃止し、指定行数に収まる末尾の最新部分を表示します。Unicode文字の途中で分割せず、上端の部分行も表示しません。全文は本体・保存に残します。
+- 本体の×による終了でも、認識・録音停止後にWindowsライブキャプションを閉じます。
+- Selection stays highlighted after release; only a held left drag extends it. Settings now use nine SVG-icon navigation categories. Subtitles show their latest fitting text instead of an ellipsis. Main-window exit also closes Windows captions after cancellation.
+
+## 1.0.35 — Stop windows, export details and updates / 停止・保存情報・更新確認
+
+- Stopは録音・認識を止めてからWindowsライブキャプションと独立字幕を閉じます。本体の文章は保持します。
+- 保存日時・セッション時間（準備や無音含む）・本文行数／発話数をそれぞれ設定でON/OFFできます。既定はON。
+- テキスト保存時の初期名は年月日＋アンダースコア（例20261111_）。設定のテンプレートで日時や任意の文字へ変更可能。
+- 起動時に公式GitHubの公開版を確認し、新版のZIPをアプリデータ内へダウンロード。確認と自動ダウンロードはそれぞれON/OFF可能（既定ON）。SHA-256照合後に完了扱いとし、実行中のアプリは置き換えません。
+- Stop now cancels recognition/recording before closing Windows and popout captions, retaining the transcript. Optional export headers include save time, session duration and content-line/utterance counts. Filename templates default to a date prefix.
+- Optional startup release checks and ZIP downloads use official GitHub Releases. Downloads are streamed, hash-verified and saved separately; they are never installed or executed automatically.
+
+## 1.0.34 — Whole captions and natural scrolling / 字幕の見切れ・スクロール操作を改善
+
+- 字幕の最大表示行数（既定4行）と、最新の発話を文章の塊で表示するモードを追加。字幕枠を内容の高さに合わせ、先頭行の途中を切らずに表示します。長い発話は行末を省略し、本体の全文は保持します。
+- 最新の発話が画面内にある間は自動スクロールし、「最新へ」を非表示にします。過去の文章へ移動した場合は位置を保持します。
+- 左ドラッグ中だけ選択色を表示。ボタンを離すと色は消え、直前の範囲をCtrl+C／右クリックでコピーできます。
+- Windows字幕の自動復旧はON/OFFと待ち時間を設定可能。既定を180秒に変更。無音では再起動しません。字幕通知が続いている場合も復旧タイマーを評価します。
+- Added a total subtitle line limit (default 4) and optional latest-utterance blocks. Captions resize to whole blocks; long utterances use an ellipsis while the main transcript retains full text.
+- Follow the latest utterance while it is visible, preserve historical scroll positions, and hide selection highlighting on mouse release while retaining the selected text for copying.
+- Windows caption recovery has a configurable timeout (default 180 seconds) and ON/OFF control. Silence alone never triggers recovery.
+
 ## 1.0.33 — Continue after Japanese caption notice / 日本語切替時の続行待ちを修正
 
 - 「キャプションのみ」の案内が遅れて出る・再表示される場合も、案内内の閉じるボタンだけを操作し、消えたことを待って続行を再試行します。非表示の操作項目を避け、字幕画面に戻ったことを確認します。

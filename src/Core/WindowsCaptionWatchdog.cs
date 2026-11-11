@@ -15,14 +15,15 @@ public sealed class WindowsCaptionWatchdog(long startedAt)
         previous = lastText = lastAudio = now; audibleMilliseconds = 0;
     }
 
-    public CaptionRecoveryDecision Observe(long now, bool audible, bool textChanged)
+    public CaptionRecoveryDecision Observe(long now, bool audible, bool textChanged, int stallSeconds = 180)
     {
+        long threshold = Math.Clamp(stallSeconds, 10, 1800) * 1000L;
         long elapsed = Math.Clamp(now - previous, 0, 1500); previous = now;
         if (textChanged) { lastText = now; audibleMilliseconds = 0; limitReported = false; }
         if (audible) { lastAudio = now; audibleMilliseconds += elapsed; }
         else if (now - lastAudio >= 3000) audibleMilliseconds = 0;
         while (attempts.TryPeek(out long oldest) && now - oldest >= 600_000) { attempts.Dequeue(); limitReported = false; }
-        if (!audible || now - lastText < 20_000 || audibleMilliseconds < 20_000) return CaptionRecoveryDecision.None;
+        if (!audible || now - lastText < threshold || audibleMilliseconds < threshold) return CaptionRecoveryDecision.None;
         if (attempts.Count > 0 && now - attempts.Last() < 60_000) return CaptionRecoveryDecision.None;
         if (attempts.Count >= 3)
         {

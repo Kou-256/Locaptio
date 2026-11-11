@@ -12,29 +12,39 @@ public sealed partial class MainWindow
 {
     private TranscriptSelection? textSelection;
     private bool draggingText;
+    private string releasedSelectionText = "";
     private Point selectionPointer;
     private readonly DispatcherTimer selectionScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
     private readonly MenuFlyout transcriptSelectionMenu = new();
 
     private void InitializeTranscriptSelection()
     {
+        CaptionList.IsTabStop = true;
         CaptionList.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(BeginTextSelection), true);
         CaptionList.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(MoveTextSelection), true);
         CaptionList.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(EndTextSelection), true);
         CaptionList.PointerCaptureLost += (_, e) =>
         {
-            if (ReferenceEquals(e.OriginalSource, CaptionList)) { draggingText = false; selectionScrollTimer.Stop(); }
+            if (ReferenceEquals(e.OriginalSource, CaptionList)) { FinishTextSelection(); }
         };
-        CaptionList.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, e) =>
+        // ListView with SelectionMode=None may leave keyboard focus on the
+        // window itself after a drag. A window-level accelerator still receives
+        // Ctrl+C there, unlike a KeyDown handler attached only to the list.
+        var copyShortcut = new KeyboardAccelerator { Key = Windows.System.VirtualKey.C, Modifiers = Windows.System.VirtualKeyModifiers.Control };
+        copyShortcut.Invoked += async (_, e) =>
         {
-            if (e.Key == Windows.System.VirtualKey.Escape) { ClearTextSelection(); e.Handled = true; }
-            else if (e.Key == Windows.System.VirtualKey.C && textSelection is { IsEmpty: false }
-                && Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down))
-            { CopyTextSelection(); e.Handled = true; }
+            if (!HasTranscriptSelection || IsEditingText()) return;
+            e.Handled = true; await CopyTextSelectionAsync();
+        };
+        Root.KeyboardAccelerators.Add(copyShortcut);
+        Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, e) =>
+        {
+            if (e.Key == Windows.System.VirtualKey.Escape && HasTranscriptSelection && !IsEditingText())
+            { ClearTextSelection(); e.Handled = true; }
         }), true);
         var menu = transcriptSelectionMenu; var copy = new MenuFlyoutItem { Text = "選択範囲をコピー" };
-        copy.Click += (_, _) => CopyTextSelection(); menu.Items.Add(copy); CaptionList.ContextFlyout = menu;
-        menu.Opening += (_, _) => copy.IsEnabled = textSelection is { IsEmpty: false };
+        copy.Click += async (_, _) => await CopyTextSelectionAsync(); menu.Items.Add(copy); CaptionList.ContextFlyout = menu;
+        menu.Opening += (_, _) => copy.IsEnabled = textSelection is { IsEmpty: false } || releasedSelectionText.Length > 0;
         selectionScrollTimer.Tick += (_, _) =>
         {
             if (!draggingText || historyScroll is null) { selectionScrollTimer.Stop(); return; }
@@ -60,25 +70,46 @@ public sealed partial class MainWindow
         textSelection = new(new(entry.Id, offset), new(entry.Id, offset), column);
         selectionPointer = point.Position;
         hit.ReleasePointerCapture(e.Pointer);
-        PauseHistoryFollowing(); CaptionList.Focus(FocusState.Pointer);
+        PauseHistoryFollowing();
+        // Focus the realized row: ListView.Focus can fail when every item has
+        // IsTabStop=False, leaving keys outside the XAML keyboard route.
+        bool focused = false;
+        if (CaptionList.ContainerFromItem(entry) is ListViewItem item)
+        {
+            item.IsTabStop = true;
+            focused = item.Focus(FocusState.Pointer);
+        }
+        if (!focused) focused = CaptionList.Focus(FocusState.Pointer);
         draggingText = CaptionList.CapturePointer(e.Pointer);
         if (Environment.GetCommandLineArgs().Contains("--verify-selection-ui"))
-            File.WriteAllText(Path.Combine(root, "artifacts", "selection-pointer-start.txt"), $"capture={draggingText}; anchor={textSelection.Anchor}");
+            File.WriteAllText(Path.Combine(root, "artifacts", "selection-pointer-start.txt"), $"capture={draggingText}; focus={focused}; focusedType={FocusManager.GetFocusedElement(Root.XamlRoot)?.GetType().Name}; anchor={textSelection.Anchor}");
         selectionScrollTimer.Start(); e.Handled = true;
     }
     private void MoveTextSelection(object sender, PointerRoutedEventArgs e)
     {
         if (!draggingText) return;
-        selectionPointer = e.GetCurrentPoint(CaptionList).Position;
+        var point = e.GetCurrentPoint(CaptionList);
+        if (!point.Properties.IsLeftButtonPressed) { FinishTextSelection(); CaptionList.ReleasePointerCapture(e.Pointer); return; }
+        selectionPointer = point.Position;
         ExtendTextSelection(selectionPointer); e.Handled = true;
     }
     private void EndTextSelection(object sender, PointerRoutedEventArgs e)
     {
         if (!draggingText) return;
         ExtendTextSelection(e.GetCurrentPoint(CaptionList).Position);
-        draggingText = false; selectionScrollTimer.Stop(); CaptionList.ReleasePointerCapture(e.Pointer); e.Handled = true;
+        FinishTextSelection(); CaptionList.ReleasePointerCapture(e.Pointer); e.Handled = true;
         if (Environment.GetCommandLineArgs().Contains("--verify-selection-ui"))
             File.WriteAllText(Path.Combine(root, "artifacts", "selection-pointer-verification.txt"), $"anchor={textSelection?.Anchor}; focus={textSelection?.Focus}; column={textSelection?.Column}; text={textSelection?.Text(history)}");
+    }
+    private void FinishTextSelection()
+    {
+        if (!draggingText) return;
+        string copied = textSelection?.Text(history) ?? "";
+        draggingText = false; selectionScrollTimer.Stop();
+        releasedSelectionText = copied;
+        // Mouse release finishes the gesture, not the selection. Keep both the
+        // range and its highlights until another click or Escape clears it.
+        UpdateHistoryFollowingFromViewport();
     }
     private void ExtendTextSelection(Point point)
     {
@@ -126,6 +157,7 @@ public sealed partial class MainWindow
         textSelection = selection; PauseHistoryFollowing();
         foreach (var row in RealizedCaptionRows) ApplyTextSelection(row);
         FlushSelectedRowUpdates();
+        if (!draggingText) UpdateHistoryFollowingFromViewport();
     }
     private void ApplyTextSelection(Grid row)
     {
@@ -142,22 +174,50 @@ public sealed partial class MainWindow
     }
     private void ClearTextSelection()
     {
-        textSelection = null;
+        textSelection = null; releasedSelectionText = "";
         foreach (var row in RealizedCaptionRows)
             foreach (var text in row.Children.OfType<TextBlock>()) { text.TextHighlighters.Clear(); text.Select(text.ContentStart, text.ContentStart); }
         FlushSelectedRowUpdates();
+        if (!draggingText) UpdateHistoryFollowingFromViewport();
     }
-    private void CopyTextSelection()
+    private bool HasTranscriptSelection => textSelection is { IsEmpty: false } || releasedSelectionText.Length > 0;
+    private bool IsEditingText()
     {
-        if (textSelection is null || textSelection.IsEmpty) return;
+        var focused = Root.XamlRoot is null ? null : FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+        while (focused is not null)
+        {
+            if (focused is TextBox or PasswordBox or RichEditBox) return true;
+            focused = VisualTreeHelper.GetParent(focused);
+        }
+        return false;
+    }
+    private bool copyingSelection;
+    private async Task CopyTextSelectionAsync()
+    {
+        if (!HasTranscriptSelection || copyingSelection) return;
+        string copied = textSelection is { IsEmpty: false } ? textSelection.Text(history) : releasedSelectionText;
+        if (copied.Length == 0) return;
+        copyingSelection = true;
         try
         {
-            string copied = textSelection.Text(history);
             var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText(copied);
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+            for (int attempt = 0; ; attempt++)
+            {
+                try { Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data); break; }
+                catch (System.Runtime.InteropServices.COMException ex) when (attempt < 3 && (ex.HResult == unchecked((int)0x800401D0) || ex.HResult == unchecked((int)0x80070005)))
+                { await Task.Delay(50 * (attempt + 1)); }
+            }
+            try { Windows.ApplicationModel.DataTransfer.Clipboard.Flush(); }
+            catch (System.Runtime.InteropServices.COMException) { /* SetContent succeeded; the running app can still supply the data. */ }
             StatusText.Text = "選択範囲をコピーしました。";
-            if (Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) File.WriteAllText(Path.Combine(root, "artifacts", "selection-copied-verification.txt"), copied);
+            if (Environment.GetCommandLineArgs().Contains("--verify-selection-ui"))
+            {
+                File.WriteAllText(Path.Combine(root, "artifacts", "selection-copied-verification.txt"), copied);
+                string actual = await Windows.ApplicationModel.DataTransfer.Clipboard.GetContent().GetTextAsync();
+                File.WriteAllText(Path.Combine(root, "artifacts", "selection-clipboard-verification.txt"), actual);
+            }
         }
         catch (Exception ex) { StatusText.Text = "コピーできません: " + ex.Message; ShowStatusDetails(pin: true); }
+        finally { copyingSelection = false; }
     }
 }

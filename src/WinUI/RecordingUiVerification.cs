@@ -79,15 +79,18 @@ public sealed partial class MainWindow
             bool retainedSurface = backdrop.EraseRequestCount > eraseRequests && backdrop.SurfaceClearCount == clears;
             bool recordingActive = recordingStop is { IsCancellationRequested:false } && RecordingIndicator.Visibility == Visibility.Visible;
             string selected = text.Text;
-            text.Select(text.ContentStart, text.ContentEnd);
+            draggingText = true;
+            SetTextSelection(new(new(row.Id, 0), new(row.Id, selected.Length), 0));
             await Task.Delay(50);
-            bool selectionEnabled = text.IsTextSelectionEnabled && text.SelectedText == selected && !followLatest;
+            bool selectionEnabled = !text.IsTextSelectionEnabled && textSelection?.Text(history) == selected && !followLatest;
             var correction = row.Caption with { Revision = repetitions + 10, English = "選択中も認識は継続し、選択解除後に補正を反映します。" };
             UpdateCaption(correction); await Task.Delay(50);
-            bool selectionRetained = text.SelectedText == selected && text.Text == selected
+            bool selectionRetained = textSelection?.Text(history) == selected && text.Text == selected
                 && captions[row.Id].English == correction.English;
-            text.Select(text.ContentStart, text.ContentStart); await Task.Delay(100);
-            bool correctionResumed = text.Text == correction.English && selectedRowUpdates.Count == 0;
+            FinishTextSelection(); await Task.Delay(50);
+            bool releaseRetained = textSelection?.Text(history) == selected && text.Text == selected && text.TextHighlighters.Count > 0;
+            ClearTextSelection(); await Task.Delay(100);
+            bool correctionResumed = releaseRetained && text.Text == correction.English && selectedRowUpdates.Count == 0;
             var first = history[^3]; var middle = history[^2]; var last = history[^1];
             var range = new TranscriptSelection(new(first.Id, 2), new(last.Id, 5), 0);
             SetTextSelection(range);

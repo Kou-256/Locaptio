@@ -40,14 +40,14 @@ public sealed partial class MainWindow
             CaptionList.ScrollIntoView(history[0], ScrollIntoViewAlignment.Leading); await Task.Delay(200);
             bool firstAccessible = CaptionList.ContainerFromIndex(0) is ListViewItem;
             CaptionList.ScrollIntoView(history[^1]); await Task.Delay(400);
-            bool stillPausedAtBottom = !followLatest;
+            bool stillPausedAtBottom = followLatest;
             ResumeHistoryClick(ResumeHistoryButton, new RoutedEventArgs());
             bool resumed = stillPausedAtBottom && followLatest;
             UpdateCaption(new(21001, 1, "Latest row", "最新の字幕", true, Stopwatch.GetTimestamp(), 0, 0));
             await Task.Delay(300);
             resumed &= historyScroll.ScrollableHeight - historyScroll.VerticalOffset < 5;
             // Pause while still at the bottom, before the wheel's first frame.
-            // Old ViewChanged callbacks must not immediately re-arm following.
+            // A small wheel movement keeps following while the latest row is visible.
             PauseHistoryFollowing(); await Task.Delay(100);
             bool stayedPaused = !followLatest;
             historyScroll.ChangeView(null, Math.Max(0, historyScroll.ScrollableHeight - 16), null, true);
@@ -66,7 +66,7 @@ public sealed partial class MainWindow
             }
             await Task.Delay(400); history.CollectionChanged -= changes;
             double smallScrollDrift = Math.Abs(historyScroll.VerticalOffset - nearBottomOffset);
-            bool nearBottomRetained = stayedPaused && !followLatest && smallScrollDrift < 5 && ResumeHistoryButton.Visibility == Visibility.Visible;
+            bool nearBottomRetained = followLatest && historyScroll.ScrollableHeight - historyScroll.VerticalOffset < 5 && ResumeHistoryButton.Visibility == Visibility.Collapsed;
             bool stableRows = ReferenceEquals(entry, history[21000]) && ReferenceEquals(container?.ContentTemplateRoot, content) && replaced == 0;
             ResumeHistoryClick(ResumeHistoryButton, new RoutedEventArgs()); await Task.Delay(400);
             resumed &= followLatest && historyScroll.ScrollableHeight - historyScroll.VerticalOffset < 5;

@@ -191,3 +191,20 @@ Locaptio's source is under the [MIT License](LICENSE). Models/dependencies retai
 Checking Record opens a Save dialog. Confirm the filename to start recording and transcription; cancel leaves recording stopped. The initial folder is the configured recording folder, or Music/Locaptio if unset. Click the small 状態 link in the bottom-right corner to toggle compact diagnostics without moving transcript content. Hover does not open it; Escape also closes it. Select transcript text while recording and use Ctrl+C or the native Copy context menu. Updates to the selected row wait until selection is cleared; recognition and recording continue. Use 最新へ to resume following new captions.
 
 Drag from the middle of one transcript row to another row to select a continuous range. Ctrl+C and the Copy selected range context menu include every intervening row, preserving the language column where the drag began. Drag near the viewport edges to scroll. Escape or clicking elsewhere in the transcript clears the selection.
+
+
+## Caption display and scrolling
+
+Under caption appearance, choose a total line limit (default 4) and optional latest-utterance blocks. Long subtitles display their latest fitting portion; the main transcript and exported text retain full content. Auto-follow stays active while the latest utterance is visible. Scroll into older history to pause it and show the return-to-latest button. The selection changes only during a left-button drag and remains highlighted after release. Ctrl+C or the context menu copies it; another click or Escape clears it.
+
+Windows caption recovery can be disabled or given a custom timeout (default 180 seconds). It detects PC audio without caption updates; silence alone never causes a restart. If Live Captions itself causes slowdowns, save and stop the session, close Windows captions, then select Whisper to recognize independently.
+
+
+## Export details and app updates
+
+Stop cancels recognition and recording, then closes Windows Live Captions and the popout while preserving the main transcript. Save settings independently toggle save time, session duration (including preparation/silence, frozen after Stop) and nonblank content-line/utterance counts. Filename templates default to `{yyyy}{MM}{dd}_`, for example `20261111_.txt`; literal text and `{HH}{mm}{ss}` are supported.
+
+Startup checks and automatic ZIP downloads are independently configurable (both enabled by default). Help also offers a manual check. Only official public GitHub release metadata and assets are requested; audio and transcripts are never sent. Verified ZIPs are saved in `%LOCALAPPDATA%/Locaptio/updates/<version>/`. Open that folder and extract into a separate directory to run the new version. The running app is never replaced or executed automatically.
+
+
+Settings use an SVG-icon sidebar; selecting a category displays its controls on the right. Closing the main window with × also closes Windows Live Captions after recognition is canceled.

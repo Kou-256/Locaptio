@@ -19,6 +19,7 @@
    </MenuBarItem>
    <MenuBarItem Title="ヘルプ(H)">
     <MenuFlyoutItem Text="モデルの説明" Click="ModelHelpClick"/>
+    <MenuFlyoutItem Text="更新を確認" Click="CheckUpdatesClick"/>
     <MenuFlyoutItem Text="このアプリについて" Click="AboutClick"/>
    </MenuBarItem>
   </MenuBar>
@@ -44,10 +45,11 @@
   <ListView x:Name="CaptionList" Grid.Row="4" SelectionMode="None" IsItemClickEnabled="False" Padding="0" ContainerContentChanging="CaptionContainerChanging" Loaded="CaptionListLoaded" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
    <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel ItemsUpdatingScrollMode="KeepItemsInView"/></ItemsPanelTemplate></ListView.ItemsPanel>
    <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="IsTabStop" Value="False"/></Style></ListView.ItemContainerStyle>
-   <ListView.ItemTemplate><DataTemplate><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding English}" TextWrapping="Wrap" IsTextSelectionEnabled="True" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/><TextBlock Grid.Column="1" Text="{Binding Japanese}" TextWrapping="Wrap" IsTextSelectionEnabled="True" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/></Grid></DataTemplate></ListView.ItemTemplate>
+   <ListView.ItemTemplate><DataTemplate><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding English}" TextWrapping="Wrap" IsTextSelectionEnabled="False" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/><TextBlock Grid.Column="1" Text="{Binding Japanese}" TextWrapping="Wrap" IsTextSelectionEnabled="False" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/></Grid></DataTemplate></ListView.ItemTemplate>
   </ListView>
   <Button x:Name="ResumeHistoryButton" Grid.Row="4" Content="最新へ" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,12" Click="ResumeHistoryClick" ToolTipService.ToolTip="最新の字幕へ移動し、自動スクロールを再開します。"/>
   <StackPanel Grid.Row="5" Spacing="3">
+   <InfoBar x:Name="UpdateNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="アプリの更新"/>
    <InfoBar x:Name="WindowsCaptionWarning" Severity="Warning" IsOpen="False" IsClosable="False" Title="Windowsライブキャプションとの接続が切れました"/>
    <InfoBar x:Name="WindowsLanguageWarning" Severity="Warning" IsOpen="False" IsClosable="True" Title="Windows字幕の言語を確認してください"/>
    <StackPanel x:Name="PreparationPanel" Spacing="3" Visibility="Collapsed" ToolTipService.ToolTip="割合は完了した準備工程の割合です。残り時間やNPUコンパイル内部の進捗を推測した値ではありません。">

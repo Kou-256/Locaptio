@@ -17,7 +17,11 @@ namespace Locaptio.WinUI;
 public sealed partial class MainWindow : Window
 {
     private readonly Settings settings = Settings.Load();
+    private SettingsNavigation? settingsNavigation;
     private readonly TranscriptBuffer transcript = new();
+    private readonly TranscriptSessionClock transcriptClock = new();
+    private bool stoppingAll;
+    private Func<Task>? stopWindowsCaptionsForVerification;
     private readonly SortedDictionary<long, CaptionUpdate> captions = new();
     // History contains data only; ListView realizes just the viewport's rows.
     private readonly ObservableCollection<CaptionHistoryEntry> history = new();
@@ -102,11 +106,14 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) =>
         {
             ApplyMainTextOpacity(Root);
+            if (!Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify")) && settings.CheckUpdatesOnStartup) _ = CheckForUpdatesAsync(false);
             if (Environment.GetCommandLineArgs().Contains("--verify-winui")) await VerifyAsync();
             else if (!Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify")) && settings.PreloadCudaModels && settings.InferenceDevice == "cuda") await PreloadAsync();
         };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-lifecycle")) await VerifyLifecycleAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-stop-options")) await VerifyStopOptionsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-caption-idle")) await VerifyCaptionIdleAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-caption-behavior")) await VerifyCaptionBehaviorAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-translation")) await VerifyWindowsTranslationAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-live")) await VerifyWindowsLiveAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-caption-style")) await VerifyCaptionStyleAsync(); };
@@ -132,7 +139,7 @@ public sealed partial class MainWindow : Window
     private async Task ShutdownAsync()
     {
         if (closing) return;
-        closing = true; timer.Stop(); followTimer.Stop(); captionWindow?.Close(); modelHelpWindow?.Close(); settingsWindow?.Close();
+        closing = true; updateStop.Cancel(); timer.Stop(); followTimer.Stop(); captionWindow?.Close(); modelHelpWindow?.Close(); settingsWindow?.Close();
         AppWindow.Hide();
         await Task.Yield(); // Complete the native Closing callback before destroying the window.
         try
@@ -140,7 +147,8 @@ public sealed partial class MainWindow : Window
             // Signal both operations immediately; inference cleanup must not delay WAV finalization.
             var shutdown = Stopwatch.StartNew();
             prepared?.Dispose(); prepared = null;
-            await Task.WhenAll(StopAsync(), StopRecordingAsync());
+            await Task.WhenAll(StopAsync(), StopRecordingAsync(), FinishUpdateAsync());
+            await CloseWindowsCaptionsAsync();
             if (saveTask is not null) { try { await saveTask; } catch { } }
             if (((OverlappedPresenter)AppWindow.Presenter).State == OverlappedPresenterState.Restored) RememberBounds();
             if (Environment.GetCommandLineArgs().Contains("--verify-lifecycle")) { settings.CaptionMode = originalMode; settings.UseLocalLlm = originalLlm; }
@@ -198,9 +206,9 @@ public sealed partial class MainWindow : Window
     }
     private async Task StartAsync()
     {
-        if (captionStop is not null || closing) return; root = FindRoot();
+        if (captionStop is not null || closing || stoppingAll) return; root = FindRoot();
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
-        ClearCaptions(); WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
+        ClearCaptions(); WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
         StatusText.Text = "ローカルモデルを読み込み中…"; captionTask = RunCaptionsAsync(captionStop.Token); await Task.Yield();
     }
     private async Task RunCaptionsAsync(CancellationToken token)
@@ -232,7 +240,7 @@ public sealed partial class MainWindow : Window
                 if (settings.AudioInputKind != "system") throw new InvalidOperationException("Windows連携はWindows側が選んだ音声を使います。音声入力を「PC全体の音声」にしてください。マイクや個別アプリを指定する場合はWhisperに切り替えてください。");
                 prepared?.Dispose(); prepared = null; preparedKey = ""; speech = translation = accurateSpeech = null; llm = null;
                 windowsBridgeConnected = false;
-                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage);
+                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds);
                 windowsSession = live;
                 var windowsProgress = BeginPreparation(); live.PreparationChanged += windowsProgress;
                 live.Caption += update => DispatcherQueue.TryEnqueue(() => UpdateCaption(update)); live.Status += Status;
@@ -286,6 +294,7 @@ public sealed partial class MainWindow : Window
             await Task.WhenAll(speakers, speakerMonitor);
             speakerSession?.Dispose(); speakerSession = null;
             if (SpeakerStatusText.Visibility == Visibility.Visible) SpeakerStatusText.Text = "話者識別: 停止";
+            transcriptClock.Stop();
             windowsSession = null;
             WindowsLanguageWarning.IsOpen = false;
             WindowsCaptionWarning.IsOpen = false; windowsBridgeConnected = false;
@@ -346,22 +355,42 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) { if (!closing) Status("モデル準備失敗: " + ex.Message); }
     }
-    private async void StopClick(object sender, RoutedEventArgs e) => await StopAllAsync();
+    private async void StopClick(object sender, RoutedEventArgs e)
+    {
+        try { await StopAllAsync(); }
+        catch (Exception ex) { Status("停止処理の確認が必要です: " + ex.Message); ShowStatusDetails(pin: true); }
+    }
     private async Task StopAllAsync()
     {
-        StopButton.IsEnabled = false;
-        await Task.WhenAll(StopAsync(), StopRecordingAsync());
-        StopButton.IsEnabled = false;
+        if (stoppingAll) return;
+        stoppingAll = true; StopButton.IsEnabled = StartButton.IsEnabled = false;
+        try
+        {
+            // Finish cancellation before closing Windows, so recovery cannot reopen it.
+            try { await Task.WhenAll(StopAsync(), StopRecordingAsync()); }
+            finally
+            {
+                captionWindow?.Close();
+                await CloseWindowsCaptionsAsync();
+            }
+            StatusText.Text = "停止しました。録音・Windowsライブキャプション・字幕を閉じました。";
+        }
+        finally { stoppingAll = false; StopButton.IsEnabled = false; StartButton.IsEnabled = !closing; }
     }
     private async Task StopAsync()
     {
         StopButton.IsEnabled = false;
+        transcriptClock.Stop();
         var stop = captionStop; var task = captionTask;
         if (stop is not null) await stop.CancelAsync();
         if (task is not null) await task;
         captionWindow?.Update([]);
         StopButton.IsEnabled = recordingStop is not null;
     }
+    private Task CloseWindowsCaptionsAsync() => stopWindowsCaptionsForVerification is not null
+        ? stopWindowsCaptionsForVerification()
+        : Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify")) ? Task.CompletedTask
+        : WindowsCaptionWindow.CloseCurrentAsync(CancellationToken.None);
     private void UpdateCaption(CaptionUpdate update)
     {
         if (update.Started < clearedAt || captionStop?.IsCancellationRequested != false || closing) return;
@@ -426,7 +455,7 @@ public sealed partial class MainWindow : Window
     private void PauseHistoryFollowing()
     {
         followLatest = false; followPasses = 0; followTimer.Stop();
-        ResumeHistoryButton.Visibility = history.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ResumeHistoryButton.Visibility = history.Count > 0 && !LatestHistoryIsVisible() ? Visibility.Visible : Visibility.Collapsed;
     }
     private void ResumeHistoryClick(object sender, RoutedEventArgs e)
     {
@@ -438,30 +467,52 @@ public sealed partial class MainWindow : Window
         if (historyScroll is not null) return;
         historyScroll = Descendant<ScrollViewer>(CaptionList);
         if (historyScroll is null) return;
-        // Only explicit user intent controls following. A ViewChanged callback
-        // at the old bottom can run before the wheel's first movement completes.
-        CaptionList.AddHandler(UIElement.PointerWheelChangedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, args) =>
+        // Stop pending follow passes during input; decide from the settled viewport.
+        void BeginScroll()
         {
-            if (args.GetCurrentPoint(CaptionList).Properties.MouseWheelDelta != 0) PauseHistoryFollowing();
-        }), true);
+            followLatest = false; followPasses = 0; followTimer.Stop();
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, UpdateHistoryFollowingFromViewport);
+        }
+        CaptionList.AddHandler(UIElement.PointerWheelChangedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => BeginScroll()), true);
         CaptionList.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, args) =>
         {
             if (args.Key == Windows.System.VirtualKey.End) { ResumeHistoryClick(this, new RoutedEventArgs()); args.Handled = true; }
-            else if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.Space) PauseHistoryFollowing();
+            else if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.Space) BeginScroll();
         }), true);
-        CaptionList.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => PauseHistoryFollowing()), true);
-        historyScroll.DirectManipulationStarted += (_, _) => PauseHistoryFollowing();
+        historyScroll.DirectManipulationStarted += (_, _) => BeginScroll();
+        historyScroll.ViewChanged += (_, args) =>
+        {
+            if (!args.IsIntermediate && !draggingText && followPasses == 0) UpdateHistoryFollowingFromViewport();
+        };
         void ConnectScrollBars(DependencyObject parent)
         {
             for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
             {
                 var child = VisualTreeHelper.GetChild(parent, i);
                 if (child is Microsoft.UI.Xaml.Controls.Primitives.ScrollBar bar && bar.Orientation == Orientation.Vertical)
-                    bar.Scroll += (_, _) => PauseHistoryFollowing();
+                    bar.Scroll += (_, _) => BeginScroll();
                 ConnectScrollBars(child);
             }
         }
         ConnectScrollBars(historyScroll);
+    }
+    private void UpdateHistoryFollowingFromViewport()
+    {
+        if (historyScroll is null || draggingText) return;
+        bool latestVisible = LatestHistoryIsVisible();
+        followLatest = latestVisible && textSelection is not { IsEmpty: false };
+        ResumeHistoryButton.Visibility = latestVisible || history.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+    private bool LatestHistoryIsVisible()
+    {
+        if (historyScroll is null) return true;
+        bool latestVisible = history.Count == 0;
+        if (history.Count > 0 && CaptionList.ContainerFromIndex(history.Count - 1) is ListViewItem item)
+        {
+            var top = item.TransformToVisual(historyScroll).TransformPoint(new Windows.Foundation.Point());
+            latestVisible = top.Y < historyScroll.ViewportHeight && top.Y + item.ActualHeight > 0;
+        }
+        return latestVisible;
     }
     private void FollowHistory(object? sender, object e)
     {
@@ -558,7 +609,8 @@ public sealed partial class MainWindow : Window
     }
     private void ClearCaptions()
     {
-        textSelection = null; draggingText = false; selectionScrollTimer.Stop();
+        transcriptClock.Reset(captionStop is { IsCancellationRequested: false });
+        textSelection = null; releasedSelectionText = ""; draggingText = false; selectionScrollTimer.Stop();
         clearedAt = Stopwatch.GetTimestamp(); captions.Clear(); transcript.Clear(); selectedRowUpdates.Clear();
         followTimer.Stop(); followPasses = 0; history.Clear(); historyIds.Clear(); followLatest = true; ResumeHistoryButton.Visibility = Visibility.Collapsed;
         RenderCaptions(); SaveButton.IsEnabled = false;
@@ -587,15 +639,18 @@ public sealed partial class MainWindow : Window
                 result = await choice.ShowAsync(); if (result == ContentDialogResult.None) return;
             }
             var file = await MakeSavePicker("文字起こしを保存", ".txt", settings.TextSaveDirectory).PickSaveFileAsync(); if (file is null || closing) return;
-            string text = transcript.Export(result == ContentDialogResult.Primary); saving = true; SaveButton.IsEnabled = false;
+            string text = ExportTranscriptForSave(result == ContentDialogResult.Primary); saving = true; SaveButton.IsEnabled = false;
             saveTask = File.WriteAllTextAsync(file.Path, text, new UTF8Encoding(true)); await saveTask; StatusText.Text = "テキストを保存しました: " + file.Path;
         }
         catch (Exception ex) { StatusText.Text = "保存に失敗しました: " + ex.Message; }
         finally { saving = false; dialogOpen = false; SaveButton.IsEnabled = transcript.Count > 0; }
     }
+    private string ExportTranscriptForSave(bool includeJapanese) => TranscriptExport.Format(
+        transcript.Export(includeJapanese), transcript.Count, DateTimeOffset.Now, transcriptClock.Elapsed,
+        settings.ExportSavedAt, settings.ExportDuration, settings.ExportLineCount);
     private FileSavePicker MakeSavePicker(string title, string extension, string directory)
     {
-        var picker = new FileSavePicker(AppWindow.Id) { Title = title, SuggestedFileName = $"Locaptio-{DateTime.Now:yyyyMMdd-HHmmss}{extension}" };
+        var picker = new FileSavePicker(AppWindow.Id) { Title = title, SuggestedFileName = extension == ".txt" ? TranscriptExport.FileName(settings.TextFileNamePattern, DateTimeOffset.Now) : $"Locaptio-{DateTime.Now:yyyyMMdd-HHmmss}{extension}" };
         picker.FileTypeChoices.Add(extension == ".txt" ? "テキスト" : extension.TrimStart('.').ToUpperInvariant() + "音声", new List<string> { extension });
         if (Directory.Exists(directory)) picker.SuggestedFolder = directory; return picker;
     }
@@ -741,7 +796,7 @@ public sealed partial class MainWindow : Window
         if (settings.CaptionBackground is not ("dark" or "black" or "light" or "live")) settings.CaptionBackground = "live";
         if (settings.CaptionAlignment is not ("left" or "center" or "right")) settings.CaptionAlignment = "center";
         settings.CaptionEnglishSize = Math.Clamp(settings.CaptionEnglishSize, 14, 64); settings.CaptionJapaneseSize = Math.Clamp(settings.CaptionJapaneseSize, 14, 64);
-        settings.CaptionHideSeconds = Math.Clamp(settings.CaptionHideSeconds, 1, 20); settings.CaptionOpacity = Math.Clamp(settings.CaptionOpacity, 0, 1); settings.CaptionTextOpacity = Math.Clamp(settings.CaptionTextOpacity, 0, 1); settings.CaptionRows = Math.Clamp(settings.CaptionRows, 1, 10);
+        settings.CaptionHideSeconds = Math.Clamp(settings.CaptionHideSeconds, 1, 20); settings.CaptionOpacity = Math.Clamp(settings.CaptionOpacity, 0, 1); settings.CaptionTextOpacity = Math.Clamp(settings.CaptionTextOpacity, 0, 1); settings.CaptionRows = Math.Clamp(settings.CaptionRows, 1, 10); settings.CaptionMaxLines = Math.Clamp(settings.CaptionMaxLines, 1, 20); settings.WindowsCaptionRestartSeconds = Math.Clamp(settings.WindowsCaptionRestartSeconds, 10, 1800);
         if (settings.RecordingFormat is not ("wav" or "mp3" or "m4a")) settings.RecordingFormat = "wav";
         if (settings.MenuBarTheme is not ("white" or "matching")) settings.MenuBarTheme = "white";
         Root.Background = CaptionWindow.BackgroundBrush(settings, settings.BackgroundOpacity);
@@ -773,7 +828,7 @@ public sealed partial class MainWindow : Window
         {
             var window = new Window { Title = "Locaptio — 設定" };
             settingsWindow = window;
-            window.Closed += (_, _) => { settingsWindow = null; settingsCorrectionToggle = null; };
+            window.Closed += (_, _) => { settingsWindow = null; settingsNavigation = null; settingsCorrectionToggle = null; };
             // WinUI overlays its vertical scrollbar on the viewport; reserve a gutter inside the content.
             var sections = new StackPanel { Spacing = 10, Padding = new Thickness(0, 0, 32, 0) };
             StackPanel content = null!;
@@ -781,7 +836,9 @@ public sealed partial class MainWindow : Window
             {
                 content = new StackPanel { Spacing = 12, Padding = new Thickness(4, 8, 4, 12) };
                 content.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, FontSize = 12 });
-                var group = new Expander { Header = title, Content = content, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                var group = new StackPanel { Tag = title, Spacing = 16, Visibility = Visibility.Collapsed };
+                group.Children.Add(new TextBlock { Text = title, FontSize = 24, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                group.Children.Add(content);
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(group, title);
                 sections.Children.Add(group);
             }
@@ -826,7 +883,16 @@ public sealed partial class MainWindow : Window
             {
                 var input = new TextBox { Header = label + "（#RRGGBB）", Text = value };
                 var picker = new ColorPicker { Color = Windows.UI.Color.FromArgb(255, (byte)(CaptionWindow.ParseColor(value, 0xFFFFFF) >> 16), (byte)(CaptionWindow.ParseColor(value, 0xFFFFFF) >> 8), (byte)CaptionWindow.ParseColor(value, 0xFFFFFF)), IsAlphaEnabled = false, IsMoreButtonVisible = false };
-                picker.ColorChanged += (_, args) => { input.Text = $"#{args.NewColor.R:X2}{args.NewColor.G:X2}{args.NewColor.B:X2}"; };
+                // ColorPicker can publish its initial value after the expander's
+                // TextBoxes have already changed. Ignore that delayed initialization.
+                bool pickerReady = false;
+                picker.Loaded += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    uint rgb = CaptionWindow.ParseColor(input.Text, 0xFFFFFF);
+                    picker.Color = Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+                    pickerReady = true;
+                });
+                picker.ColorChanged += (_, args) => { if (pickerReady) input.Text = $"#{args.NewColor.R:X2}{args.NewColor.G:X2}{args.NewColor.B:X2}"; };
                 input.TextChanged += (_, _) => { string hex = input.Text.Trim().TrimStart('#'); if (hex.Length == 6 && uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out uint rgb)) { set("#" + hex.ToUpperInvariant()); picker.Color = Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb); ApplySettings(); } };
                 content.Children.Add(input); content.Children.Add(new Expander { Header = label + "を選択", Content = picker, HorizontalAlignment = HorizontalAlignment.Stretch });
             }
@@ -847,6 +913,9 @@ public sealed partial class MainWindow : Window
             content.Children.Add(correctedColor); content.Children.Add(new Expander { Header = "色を選択", Content = colorPicker, HorizontalAlignment = HorizontalAlignment.Stretch });
             Slider("字幕：背景の透過率 (%)", 0, 100, (1 - settings.CaptionOpacity) * 100, v => settings.CaptionOpacity = 1 - v / 100);
             Slider("字幕：文字の不透明度 (%)", 0, 100, settings.CaptionTextOpacity * 100, v => settings.CaptionTextOpacity = v / 100);
+            Slider("字幕の最大表示行数", 1, 20, settings.CaptionMaxLines, v => settings.CaptionMaxLines = (int)v);
+            Toggle("文章の塊で字幕を表示（最新の発話だけを表示）", settings.CaptionSentenceMode, v => settings.CaptionSentenceMode = v);
+            content.Children.Add(new TextBlock { Text = "行数を超える古い発話は非表示にします。1つの発話が長い場合は最新の部分を表示し、本体には全文を残します。", TextWrapping = TextWrapping.Wrap });
             Slider("字幕に表示する発話数", 1, 10, settings.CaptionRows, v => settings.CaptionRows = (int)v);
             Slider("字幕を消すまでの秒数（認識更新が止まった後）", 1, 20, settings.CaptionHideSeconds, v => settings.CaptionHideSeconds = v);
             textPaletteSelector = Choice("字幕の文字色", ["英語: 白／日本語: 黄色", "両方とも白（既定）", "英語: 水色／日本語: 白", "指定した文字色"], settings.CaptionPalette == "custom" ? 3 : settings.CaptionPalette == "white" ? 1 : settings.CaptionPalette == "cyan-white" ? 2 : 0, i => settings.CaptionPalette = i == 3 ? "custom" : i == 1 ? "white" : i == 2 ? "cyan-white" : "white-yellow");
@@ -859,10 +928,11 @@ public sealed partial class MainWindow : Window
             content.Children.Add(en); content.Children.Add(ja);
             Section("音声認識・Windows連携", "認識エンジン、GPU/NPU、モデルと高速認識を設定します。準備状況は本体の進捗バーで確認できます。");
             Choice("音声認識エンジン（次回Startから）", ["Whisper（アプリ単独で認識）", "Windowsライブキャプション連携（Windowsも起動）"], settings.SpeechEngine == "windows-live" ? 1 : 0, i => settings.SpeechEngine = i == 1 ? "windows-live" : "whisper");
-            Toggle("PC音声があるのにWindows字幕が20秒以上止まったら自動復旧", settings.AutoRestartWindowsCaptions, v => settings.AutoRestartWindowsCaptions = v);
+            Toggle("PC音声があるのにWindows字幕の更新が止まったら自動復旧", settings.AutoRestartWindowsCaptions, v => settings.AutoRestartWindowsCaptions = v);
+            Slider("Windows字幕の自動復旧までの秒数（既定180秒＝3分）", 10, 1800, settings.WindowsCaptionRestartSeconds, v => settings.WindowsCaptionRestartSeconds = (int)v);
             Toggle("本体のモードにWindows字幕の言語を自動で合わせる（次回Startから）", settings.AutoSwitchWindowsCaptionLanguage, v => settings.AutoSwitchWindowsCaptionLanguage = v);
             content.Children.Add(new TextBlock { Text = "英日翻訳では英語（米国）、日本語文字起こしでは日本語（日本）へWindows側の言語を切り替えます。初期値はON。Windowsの画面操作を自動化するため、言語選択画面が一時的に表示されます。言語ファイルの初回準備はWindows側で完了してください。Windows更新などで切り替えに失敗した場合は警告を表示します。画面を開かずに認識する場合はWhisper＋GPU/AMD NPUを選びます。", TextWrapping = TextWrapping.Wrap });
-            content.Children.Add(new TextBlock { Text = "自動復旧は既定でON。Windows字幕と連携用プロセスを再起動し、ウィンドウを再表示します。再試行は60秒以上空け、10分で3回まで。PCの音量で判定するため、音楽などでも作動する場合はOFFにしてください。録音と保存済みの文章は保持します。", TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(new TextBlock { Text = "自動復旧は既定でON、待ち時間は3分です。無音だけでは再起動しません。Windows字幕と連携用プロセスを再起動し、ウィンドウを再表示します。再試行は60秒以上空け、10分で3回まで。PCの音量で判定するため、音楽などでも作動する場合はOFFにしてください。録音と保存済みの文章は保持します。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "Windows連携はWindowsの字幕を読み取り、本体・独立字幕・保存に反映します。Windows側の認識言語を合わせてください。入力・マイク・認識デバイスはWindows側に従います。「PC内音声＋マイク」の同時入力を選ぶと、混合音声を認識するため自動的にWhisperを使います。連携前の履歴は取り込みません。文字起こしのAI補正は下の設定でON/OFFできます。英日翻訳はAI翻訳モデルで速報を出し、ローカルLLMがONなら文脈を使って後から訳を改善します。Windows更新で連携できなくなる場合があります。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "音声認識に使うデバイス（Whisper／次回Startから）" });
             var device = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "GPU自動（使えない場合はCPU）", "NVIDIA GPU（CUDA）", "AMD XDNA 2 NPU", "CPU" }, SelectedIndex = settings.CpuOnly || settings.InferenceDevice == "cpu" ? 3 : settings.InferenceDevice == "npu" ? 2 : settings.InferenceDevice == "cuda" ? 1 : 0 };
@@ -939,19 +1009,38 @@ public sealed partial class MainWindow : Window
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(format, "録音ファイル形式");
             format.SelectionChanged += (_, _) => { settings.RecordingFormat = format.SelectedIndex == 1 ? "mp3" : format.SelectedIndex == 2 ? "m4a" : "wav"; settings.Save(); }; content.Children.Add(format);
             Folder("テキストの保存先", settings.TextSaveDirectory, v => settings.TextSaveDirectory = v); Folder("録音の保存先", settings.RecordingSaveDirectory, v => settings.RecordingSaveDirectory = v); Folder("モデル・推論環境", settings.RuntimeDirectory, v => settings.RuntimeDirectory = v, true);
+            Toggle("テキストに保存日時を記載", settings.ExportSavedAt, v => settings.ExportSavedAt = v);
+            Toggle("テキストにセッション時間を記載（準備・無音含む）", settings.ExportDuration, v => settings.ExportDuration = v);
+            Toggle("テキストに本文行数・発話数を記載", settings.ExportLineCount, v => settings.ExportLineCount = v);
+            var filePattern = new TextBox { Header = "テキスト保存時の初期ファイル名", Text = settings.TextFileNamePattern };
+            var filePreview = new TextBlock { Text = "例: " + TranscriptExport.FileName(settings.TextFileNamePattern, DateTimeOffset.Now) };
+            filePattern.TextChanged += (_, _) => { settings.TextFileNamePattern = filePattern.Text; filePreview.Text = "例: " + TranscriptExport.FileName(filePattern.Text, DateTimeOffset.Now); settings.Save(); };
+            content.Children.Add(filePattern); content.Children.Add(filePreview);
+            content.Children.Add(new TextBlock { Text = "既定: {yyyy}{MM}{dd}_ → 年月日_。{HH}時・{mm}分・{ss}秒や任意の文字も使えます。保存画面でも変更できます。本文行数は画面上の折り返し・空行を数えません。", TextWrapping = TextWrapping.Wrap });
+            Section("アプリの更新", "公式GitHubの公開版を確認します。音声や文字起こしは送信しません。");
+            content.Children.Add(new TextBlock { Text = "現在のバージョン: " + CurrentAppVersion, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            Toggle("起動時にアップデートを確認（次回起動から）", settings.CheckUpdatesOnStartup, v => settings.CheckUpdatesOnStartup = v);
+            Toggle("新しいバージョンのZIPを自動ダウンロード", settings.AutoDownloadUpdates, v => settings.AutoDownloadUpdates = v);
+            content.Children.Add(new TextBlock { Text = "新版はアプリデータ内のLocaptio/updatesに保存し、SHA-256を確認します。ダウンロード後に保存先を開き、ZIPを別フォルダーに展開して起動してください。録音中のアプリは置き換えません。", TextWrapping = TextWrapping.Wrap });
+            var checkUpdates = new Button { Content = "アプリの更新を確認" };
+            var settingsUpdateNotice = new InfoBar { IsOpen = false, IsClosable = true, Severity = InfoBarSeverity.Informational };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(settingsUpdateNotice, "設定内の更新確認結果");
+            checkUpdates.Click += async (_, _) =>
+            {
+                checkUpdates.IsEnabled = false;
+                try { await CheckForUpdatesAsync(true, settingsUpdateNotice); }
+                finally { checkUpdates.IsEnabled = true; }
+            };
+            content.Children.Add(checkUpdates); content.Children.Add(settingsUpdateNotice);
             Section("診断", "問題が起きたときの処理時間や実行デバイスを表示します。");
             Toggle("診断情報を表示", settings.Diagnostics, v => settings.Diagnostics = v);
             content.Children.Add(new TextBlock { Text = "設定は自動で記憶します。保存・録音は操作したときだけ行います。", TextWrapping = TextWrapping.Wrap });
-            var panel = new Grid { RequestedTheme = Root.RequestedTheme, Background = CaptionWindow.SurfaceBrush(settings), Padding = new Thickness(28), RowSpacing = 16 };
-            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            panel.RowDefinitions.Add(new RowDefinition());
-            panel.Children.Add(new TextBlock { Text = "設定", FontSize = 28, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            var scroll = new ScrollViewer { Content = sections, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            Grid.SetRow(scroll, 1); panel.Children.Add(scroll); window.Content = panel;
+            settingsNavigation = new SettingsNavigation(sections, Root.RequestedTheme, CaptionWindow.SurfaceBrush(settings));
+            window.Content = settingsNavigation.Root;
             window.AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
             var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
             var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(window)) / 96.0;
-            int width = Math.Min((int)(820 * scale), area.Width - 32), height = Math.Min((int)(900 * scale), area.Height - 32);
+            int width = Math.Min((int)(1040 * scale), area.Width - 32), height = Math.Min((int)(900 * scale), area.Height - 32);
             window.AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height));
             ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = true;
             window.Activate();
@@ -1078,14 +1167,15 @@ public sealed partial class MainWindow : Window
         try
         {
             settings.CaptionMode = "translate"; settings.CaptionLayout = "english-top"; settings.English = settings.Japanese = true;
-            settings.CaptionLineGap = 2;
+            settings.CaptionLineGap = 2; settings.CaptionPalette = "white"; ApplySettings();
             CaptionClick(CaptionButton, new RoutedEventArgs());
             var sample = new CaptionUpdate(1, 1, "Captions appear around the text.", null, false, Stopwatch.GetTimestamp(), 0, 0);
             captionWindow!.Update([sample]);
             captionWindow.Update([sample with { Japanese = "字幕は文字の周囲だけを囲みます。" }]);
-            await Task.Delay(150);
+            await Task.Delay(500);
             var compact = captionWindow.RenderedPositions(); double compactGap = compact[1].Y - compact[0].Y;
             bool clipped = captionWindow.HasTextOnlyShape();
+            string shapeDebug = captionWindow.ShapeDiagnostic();
             settings.CaptionLineGap = 20; captionWindow.ApplyAppearance(); await Task.Delay(100);
             var expanded = captionWindow.RenderedPositions(); bool spacing = expanded[1].Y - expanded[0].Y > compactGap + 15;
             settings.CaptionLineGap = 2; settings.CaptionCorrectedColor = "#C990FF"; settings.CaptionCorrectedSameColor = false;
@@ -1102,21 +1192,22 @@ public sealed partial class MainWindow : Window
                 && mainTexts.All(t => ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color == CaptionWindow.OrdinaryBrush(settings, false).Color);
             bool liveDefaults = CaptionWindow.SurfaceBrush(new Settings()).Color == Windows.UI.Color.FromArgb(255, 54, 54, 54) && CaptionWindow.OrdinaryBrush(new Settings(), true).Color == Windows.UI.Color.FromArgb(255, 255, 255, 255);
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(200);
-            var settingsPanel = (Grid)settingsWindow!.Content;
-            var settingSections = (StackPanel)settingsPanel.Children.OfType<ScrollViewer>().Single().Content;
-            var subtitleSection = settingSections.Children.OfType<Expander>().Single(e => (string)e.Header == "字幕の見た目"); subtitleSection.IsExpanded = true; await Task.Delay(150);
-            var settingItems = settingSections.Children.OfType<Expander>().SelectMany(e => ((StackPanel)e.Content).Children).ToArray();
+            var navigation = settingsNavigation!;
+            navigation.Select("字幕の見た目"); await Task.Delay(300);
+            var settingItems = navigation.Categories.SelectMany(title => navigation.Page(title).Children).ToArray();
             var normalInput = settingItems.OfType<TextBox>().Single(t => (string)t.Header == "通常の文字色（#RRGGBB）");
             var surfaceInput = settingItems.OfType<TextBox>().Single(t => (string)t.Header == "アプリと字幕の背景色（#RRGGBB）");
-            normalInput.ApplyTemplate(); surfaceInput.ApplyTemplate();
-            normalInput.Text = "#AADDEE"; surfaceInput.Text = "#444444"; await Task.Delay(150);
+            normalInput.StartBringIntoView(); await Task.Delay(150); normalInput.ApplyTemplate(); surfaceInput.ApplyTemplate();
+            normalInput.Text = "#AADDEE"; await Task.Delay(100);
+            surfaceInput.StartBringIntoView(); await Task.Delay(200); surfaceInput.ApplyTemplate();
+            surfaceInput.Text = "#444444"; await Task.Delay(150);
             string colorDebug = $"palette={settings.CaptionPalette}, text={settings.CaptionTextColor}, surface={settings.CaptionSurfaceColor}, bg={((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color}, ordinary={captionWindow.UsesOrdinaryColors()}";
             bool customColors = settings.CaptionPalette == "custom" && settings.CaptionTextColor == "#AADDEE" && settings.CaptionSurfaceColor == "#444444" && captionWindow.UsesOrdinaryColors()
                 && ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color == Windows.UI.Color.FromArgb(255, 68, 68, 68);
             var paletteSelector = settingItems.OfType<DownwardSelector>().Single(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(c) == "字幕の文字色");
             colorDebug += $"; selector={paletteSelector.SelectedIndex}"; customColors &= paletteSelector.SelectedIndex == 3;
             paletteSelector.SelectedIndex = 1; await Task.Delay(100); customColors &= settings.CaptionPalette == "white" && captionWindow.UsesOrdinaryColors(); colorDebug += $"; preset={settings.CaptionPalette}, ordinary={captionWindow.UsesOrdinaryColors()}";
-            settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; ApplySettings(); settingsWindow.Close();
+            settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; ApplySettings(); settingsWindow?.Close();
             bool noMarker = captionWindow.RenderedPositions().All(t => !t.Text.Contains("AI補正"));
             await captionWindow.CaptureAsync(Path.Combine(root, "artifacts", "caption-text-bubbles.png"));
             bool noNativeFrame = captionWindow.HasNoNativeFrame();
@@ -1130,7 +1221,7 @@ public sealed partial class MainWindow : Window
             bool shownWithoutFrame = captionWindow.AppWindow.IsVisible && captionWindow.HasNoNativeFrame() && captionWindow.HasTextOnlyShape();
             captionWindow.AppWindow.Resize(captionSize);
             passed = clipped && spacing && colored && ordinary && defaultSame && mirrored && liveDefaults && customColors && noMarker && noNativeFrame && wrappedClipped && shownWithoutFrame;
-            File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), $"PASS={passed}; textOnlyRegion={clipped}; adjustableGap={spacing}; customCorrectionColor={colored}; sameColor={ordinary}; defaultSame={defaultSame}; mainAndPopout={mirrored}; liveDefaults={liveDefaults}; colorSettings={customColors} ({colorDebug}); noAIMarker={noMarker}; noNativeFrame={noNativeFrame}; opaqueComposition={WindowAppearance.IsOpaque(hwnd)}; neutralBorder={settings.CaptionBorderColor}; longTextClipped={wrappedClipped}; redisplayWithoutFrame={shownWithoutFrame}");
+            File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), $"PASS={passed}; textOnlyRegion={clipped} ({shapeDebug}); adjustableGap={spacing}; customCorrectionColor={colored}; sameColor={ordinary}; defaultSame={defaultSame}; mainAndPopout={mirrored}; liveDefaults={liveDefaults}; colorSettings={customColors} ({colorDebug}); noAIMarker={noMarker}; noNativeFrame={noNativeFrame}; opaqueComposition={WindowAppearance.IsOpaque(hwnd)}; neutralBorder={settings.CaptionBorderColor}; longTextClipped={wrappedClipped}; redisplayWithoutFrame={shownWithoutFrame}");
             if (Environment.GetCommandLineArgs().Contains("--preview-caption-frame"))
             {
                 for (int i = 0; i < 45; i++)
@@ -1157,7 +1248,7 @@ public sealed partial class MainWindow : Window
             string before = transcript.Export(true);
             var messages = new List<string>();
             var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var live = new WindowsCaptionSession(AppContext.BaseDirectory, true, root, "cpu", true, false, autoRecovery: () => true, readSystemAudio: () => true, verifyBlockedBridge: true);
+            using var live = new WindowsCaptionSession(AppContext.BaseDirectory, true, root, "cpu", true, false, autoRecovery: () => true, readSystemAudio: () => true, verifyBlockedBridge: true, restartSeconds: () => 20);
             live.ConnectionChanged += (ready, text) => { WindowsConnectionChanged(ready, text); if (ready) connected.TrySetResult(); };
             live.Status += messages.Add;
             var elapsed = Stopwatch.StartNew();

@@ -18,6 +18,8 @@ public sealed class Settings
     public string CaptionAlignment { get; set; } = "center";
     public bool CaptionBold { get; set; } = true;
     public int CaptionRows { get; set; } = 2;
+    public int CaptionMaxLines { get; set; } = 4;
+    public bool CaptionSentenceMode { get; set; }
     public double CaptionLineGap { get; set; } = 2;
     public double CaptionLineHeight { get; set; } = 1.15;
     public int AppearanceVersion { get; set; }
@@ -27,6 +29,7 @@ public sealed class Settings
     public string CaptionBorderColor { get; set; } = "#858585";
     public string SpeechEngine { get; set; } = "whisper";
     public bool AutoRestartWindowsCaptions { get; set; } = true;
+    public int WindowsCaptionRestartSeconds { get; set; } = 180;
     public bool AutoSwitchWindowsCaptionLanguage { get; set; } = true;
     public string RealtimePreviewModel { get; set; } = "base";
     public string CaptionCorrectedColor { get; set; } = "#70E1C4";
@@ -42,6 +45,12 @@ public sealed class Settings
     public bool CpuOnly { get; set; }
     public bool Diagnostics { get; set; }
     public string TextSaveDirectory { get; set; } = "";
+    public bool ExportSavedAt { get; set; } = true;
+    public bool ExportDuration { get; set; } = true;
+    public bool ExportLineCount { get; set; } = true;
+    public string TextFileNamePattern { get; set; } = "{yyyy}{MM}{dd}_";
+    public bool CheckUpdatesOnStartup { get; set; } = true;
+    public bool AutoDownloadUpdates { get; set; } = true;
     public string RecordingSaveDirectory { get; set; } = "";
     public string RuntimeDirectory { get; set; } = "";
     public bool PreferNpu { get; set; } = true;

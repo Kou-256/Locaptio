@@ -6,7 +6,7 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false) : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null) : IDisposable
 {
     private Process? worker;
     private readonly LocalBackend translation = new();
@@ -57,7 +57,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         try
         {
             bool connectionWarning = false;
-            var recovery = new WindowsCaptionRecovery(autoRecovery ?? (() => true), s => Status?.Invoke(s), s => { connectionWarning = true; ConnectionChanged?.Invoke(false, s); }, readSystemAudio);
+            var recovery = new WindowsCaptionRecovery(autoRecovery ?? (() => true), s => Status?.Invoke(s), s => { connectionWarning = true; ConnectionChanged?.Invoke(false, s); }, readSystemAudio, restartSeconds: restartSeconds);
             await recovery.EnsureStartedAsync(linked.Token);
             var tracker = new WindowsCaptionTracker(japanese); string snapshot = "";
             bool textChanged = false;
@@ -85,7 +85,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                         linked.Token.ThrowIfCancellationRequested();
                         // An unresponsive UI Automation provider can block the pipe
                         // indefinitely. The watchdog must not depend on receiving ticks.
-                        if (heartbeat.IsCompleted && !pending.IsCompleted)
+                        if (heartbeat.IsCompleted)
                         {
                             bool changed = textChanged; textChanged = false;
                             if (await recovery.TickAsync(Environment.TickCount64, changed, linked.Token)) { snapshot = ""; break; }
