@@ -20,6 +20,12 @@ public sealed partial class MainWindow
         updatePromptOpen = true;
         try
         {
+            if (notice.XamlRoot is null || notice.XamlRoot == Root.XamlRoot)
+            {
+                if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter && presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized) presenter.Restore();
+                Activate();
+            }
+            else settingsWindow?.Activate();
             var prompt = new ContentDialog { XamlRoot = notice.XamlRoot ?? Root.XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "後で", DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark };
             return await prompt.ShowAsync() == ContentDialogResult.Primary;
         }
