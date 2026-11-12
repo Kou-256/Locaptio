@@ -56,7 +56,7 @@ public sealed partial class MainWindow
             }
             notice.IsOpen = true; notice.Severity = InfoBarSeverity.Informational;
             notice.Title = $"Locaptio {release.Version} が利用できます";
-            notice.Message = $"更新ZIP（約{release.Size / 1048576d:F0}MB）をダウンロードできます。";
+            notice.Message = $"更新ファイル（約{release.Size / 1048576d:F0}MB）をダウンロードできます。";
             if (settings.AutoDownloadUpdates) await DownloadUpdateAsync(service, release, notice);
             else UpdateAction(notice, "ダウンロード", async () =>
             {
@@ -86,17 +86,27 @@ public sealed partial class MainWindow
         timeout.CancelAfter(TimeSpan.FromMinutes(15));
         notice.ActionButton = null;
         string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Locaptio", "updates", release.Version.ToString());
-        notice.Message = "更新ZIPをダウンロード中: 0%";
+        notice.Message = "更新ファイルをダウンロード中: 0%";
         bool finished = false;
         string path = await service.DownloadAsync(release, directory, p => DispatcherQueue.TryEnqueue(() =>
         {
-            if (!closing && !finished) notice.Message = p < 100 ? $"更新ZIPをダウンロード中: {p}%" : "ダウンロード完了・SHA-256確認済み";
+            if (!closing && !finished) notice.Message = p < 100 ? $"更新ファイルをダウンロード中: {p}%" : "ダウンロード完了・SHA-256確認済み";
         }), timeout.Token);
         finished = true;
         if (closing) return;
         notice.IsOpen = true; notice.Severity = InfoBarSeverity.Success;
         notice.Title = $"Locaptio {release.Version} のダウンロード完了";
-        notice.Message = $"SHA-256確認済み。ZIPを別フォルダーに展開して起動してください。保存先: {path}";
-        UpdateAction(notice, "保存先を開く", async () => { await Windows.System.Launcher.LaunchFolderPathAsync(directory); });
+        bool setup = Path.GetExtension(path).Equals(".exe", StringComparison.OrdinalIgnoreCase);
+        notice.Message = setup ? $"SHA-256確認済み。セットアップを実行して更新できます。保存先: {path}" : $"SHA-256確認済み。ZIPを別フォルダーに展開して起動してください。保存先: {path}";
+        UpdateAction(notice, setup ? "セットアップを実行" : "保存先を開く", async () =>
+        {
+            if (setup)
+            {
+                await StopAllAsync();
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                await ShutdownAsync();
+            }
+            else await Windows.System.Launcher.LaunchFolderPathAsync(directory);
+        });
     }
 }

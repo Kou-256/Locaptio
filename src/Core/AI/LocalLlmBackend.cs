@@ -34,8 +34,8 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
         PreparationChanged?.Invoke(new("llm", 0, 2, "LLM環境を確認中"));
         Kill(); process?.Dispose(); process = null;
         var python = Path.Combine(root, ".venv-llm", "Scripts", "python.exe");
-        if (!File.Exists(python)) throw new InvalidOperationException("LLM環境がありません。scripts/setup-llm.ps1を実行してください。");
         if (string.IsNullOrWhiteSpace(modelPath)) modelPath = Path.Combine(root, "models", "llm", "Qwen3-4B-Q4_K_M.gguf");
+        await LocalLlmPreparation.EnsureAsync(root, modelPath, cpu, p => PreparationChanged?.Invoke(p), token);
         var start = new ProcessStartInfo(python) { WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false), StandardInputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
         foreach (string arg in new[] { "-u", Path.Combine(root, "inference", "llm_worker.py"), "--model", modelPath }) start.ArgumentList.Add(arg);
         if (cpu) start.ArgumentList.Add("--cpu");

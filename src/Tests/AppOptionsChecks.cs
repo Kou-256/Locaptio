@@ -30,6 +30,8 @@ internal static class AppOptionsChecks
             assets = new[] { new { name = "Locaptio-win-x64.zip", browser_download_url = url ?? $"https://github.com/Kou-256/Locaptio/releases/download/{tag}/Locaptio-win-x64.zip", size = bytes.Length, digest = digest ?? "sha256:" + hash } }
         });
         var release = AppUpdates.Parse(Payload(), new Version(1, 1, 9))!;
+        var setupRelease = AppUpdates.Parse(Payload().Replace("Locaptio-win-x64.zip", "Locaptio-Setup-x64.exe"), new Version(1, 1, 9))!;
+        Assert(setupRelease.Download.AbsolutePath.EndsWith("Locaptio-Setup-x64.exe"), "Setup update not detected");
         Assert(release.Version == new Version(1, 2, 0), "New version not detected");
         Assert(AppUpdates.Parse(Payload(), new Version(1, 2, 0, 0)) is null && AppUpdates.Parse(Payload(), new Version(2, 0, 0)) is null, "Same version/downgrade offered");
         Assert(AppUpdates.Parse(Payload(prerelease: true), new Version(1, 0, 0)) is null, "Preview release offered");

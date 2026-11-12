@@ -18,10 +18,11 @@ public sealed class AppUpdates(HttpClient http)
         if (data.GetProperty("draft").GetBoolean() || data.GetProperty("prerelease").GetBoolean()) return null;
         string tag = data.GetProperty("tag_name").GetString() ?? "";
         if (!Version.TryParse(tag.TrimStart('v'), out var version) || Normalize(version) <= Normalize(current)) return null;
-        foreach (var asset in data.GetProperty("assets").EnumerateArray())
+        foreach (var asset in data.GetProperty("assets").EnumerateArray().OrderBy(a => a.GetProperty("name").GetString() == "Locaptio-Setup-x64.exe" ? 0 : 1))
         {
-            if (asset.GetProperty("name").GetString() != "Locaptio-win-x64.zip") continue;
-            string expected = $"https://github.com/Kou-256/Locaptio/releases/download/{tag}/Locaptio-win-x64.zip";
+            string name = asset.GetProperty("name").GetString() ?? "";
+            if (name is not ("Locaptio-win-x64.zip" or "Locaptio-Setup-x64.exe")) continue;
+            string expected = $"https://github.com/Kou-256/Locaptio/releases/download/{tag}/{name}";
             if (asset.GetProperty("browser_download_url").GetString() != expected) throw new InvalidDataException("更新ファイルの配布元が一致しません。");
             long size = asset.GetProperty("size").GetInt64();
             string hash = asset.TryGetProperty("digest", out var digest) ? digest.GetString() ?? "" : "";
@@ -46,7 +47,8 @@ public sealed class AppUpdates(HttpClient http)
     public async Task<string> DownloadAsync(AppRelease release, string directory, Action<int>? progress, CancellationToken token)
     {
         Directory.CreateDirectory(directory);
-        string target = Path.Combine(directory, "Locaptio-win-x64.zip");
+        string name = release.Download.AbsolutePath.EndsWith("/Locaptio-Setup-x64.exe", StringComparison.Ordinal) ? "Locaptio-Setup-x64.exe" : "Locaptio-win-x64.zip";
+        string target = Path.Combine(directory, name);
         if (File.Exists(target) && await MatchesAsync(target, release, token)) { progress?.Invoke(100); return target; }
         string temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".partial");
         try

@@ -82,7 +82,7 @@ public sealed partial class MainWindow : Window
         if (Environment.GetCommandLineArgs().Contains("--verify-correction")) settings.CorrectTranscriptWithAi = true;
         if (Environment.GetCommandLineArgs().Contains("--verify-npu")) { settings.InferenceDevice = "npu"; settings.CpuOnly = false; }
         if (Environment.GetCommandLineArgs().Contains("--verify-cuda")) { settings.InferenceDevice = "cuda"; settings.CpuOnly = false; settings.CaptionMode = "translate"; settings.UseLocalLlm = false; }
-        InitializeComponent(); CaptionList.ItemsSource = history; InitializeTranscriptSelection(); InitializeStatusDetails(); followTimer.Tick += FollowHistory; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        InitializeComponent(); CaptionList.ItemsSource = history; InitializeTranscriptSelection(); InitializeRecordingPlayback(); InitializeStatusDetails(); followTimer.Tick += FollowHistory; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
         ExtendsContentIntoTitleBar = false; SystemBackdrop = new TransparentWindowBackdrop(retainSurface: true);
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
@@ -123,6 +123,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-warning")) await VerifyWindowsWarningAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-recovery")) await VerifyWindowsRecoveryAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-recording-ui")) await VerifyRecordingUiAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-recording-playback")) await VerifyRecordingPlaybackAsync(); };
         Root.Loaded += async (_, _) =>
         {
             if (!Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) return;
@@ -139,7 +140,7 @@ public sealed partial class MainWindow : Window
     private async Task ShutdownAsync()
     {
         if (closing) return;
-        closing = true; updateStop.Cancel(); timer.Stop(); followTimer.Stop(); captionWindow?.Close(); modelHelpWindow?.Close(); settingsWindow?.Close();
+        closing = true; ClosePlayback(); updateStop.Cancel(); timer.Stop(); followTimer.Stop(); captionWindow?.Close(); modelHelpWindow?.Close(); settingsWindow?.Close();
         AppWindow.Hide();
         await Task.Yield(); // Complete the native Closing callback before destroying the window.
         try
@@ -207,6 +208,7 @@ public sealed partial class MainWindow : Window
     private async Task StartAsync()
     {
         if (captionStop is not null || closing || stoppingAll) return; root = FindRoot();
+        ClosePlayback();
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
         ClearCaptions(); WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
         StatusText.Text = "ローカルモデルを読み込み中…"; captionTask = RunCaptionsAsync(captionStop.Token); await Task.Yield();
@@ -402,6 +404,7 @@ public sealed partial class MainWindow : Window
                 update = update with { SpeakerId = history[index].Caption.SpeakerId, SpeakerConfidence = history[index].Caption.SpeakerConfidence };
         }
         if (Environment.GetCommandLineArgs().Contains("--verify-windows-translation")) translationVerificationUpdates.Add((update, Stopwatch.GetTimestamp()));
+        if (recordingStop is not null && recordingTranscript?.Observe(update) == true) indexDirty = true;
         transcript.Update(update); SaveButton.IsEnabled = transcript.Count > 0 && !saving;
         if (captions.TryGetValue(update.Id, out var old) && update.Revision < old.Revision) return;
         UpdateHistory(update);
@@ -577,7 +580,7 @@ public sealed partial class MainWindow : Window
     }
     private void StyleHistoryRow(Grid row, CaptionUpdate caption)
     {
-        bool japanese = settings.CaptionMode == "japanese";
+        bool japanese = playbackDocument is not null && captionStop is null ? caption.SourceLanguage == "ja" : settings.CaptionMode == "japanese";
         row.Margin = new Thickness(0, 0, 0, settings.CaptionLineGap);
         row.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0);
         row.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
@@ -742,6 +745,7 @@ public sealed partial class MainWindow : Window
     private void StartRecording(string path)
     {
         recordingStop = new(); recordingPath = path; recordingStarted = Stopwatch.GetTimestamp();
+        BeginRecordingIndex(path);
         SetRecordingChecked(true); StopButton.IsEnabled = true; RecordingText.Text = path; RecordingIndicator.Visibility = Visibility.Visible; UpdateDiagnostics(); recordingTask = RecordAsync(path, recordingStop.Token);
     }
     private async Task RecordAsync(string path, CancellationToken token)
@@ -749,7 +753,7 @@ public sealed partial class MainWindow : Window
         var recorder = new AudioRecording(SelectedAudio()); recorder.Status += Status;
         try { await Task.Run(() => recorder.RunAsync(path, token)); StatusText.Text = "録音を保存しました: " + path; }
         catch (Exception ex) { StatusText.Text = "録音に失敗しました: " + ex.Message; ShowStatusDetails(pin: true); }
-        finally { recordingStop?.Dispose(); recordingStop = null; SetRecordingChecked(false); RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; }
+        finally { recordingStop?.Dispose(); recordingStop = null; await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; }
     }
     private async Task StopRecordingAsync()
     {

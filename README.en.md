@@ -1,7 +1,7 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-win-x64.zip">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese translation, floating captions, and recording. Read audio from videos or meetings and save the text and audio you need.
 
@@ -21,7 +21,17 @@ Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese t
 
 ## Download and requirements
 
-Open the [**latest release**](https://github.com/Kou-256/Locaptio/releases/latest), download `Locaptio-<version>-win-x64.zip`, **extract the entire ZIP**, and run `Locaptio.exe`. Do not move the executable out of its folder.
+Download **Locaptio-Setup-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
+
+### Recording search and replay (v1.0.39)
+
+After stopping a recording, click transcript text to replay from just before that utterance. Drag to select and Ctrl+C still work; the selection context menu also offers replay. Use the magnifying-glass button to search source/translated text and play timestamped results. Playback includes pause and seeking.
+
+The app saves an adjacent `audio-filename.locaptio.json` containing transcript text and media offsets. Keep it with the audio when moving or sharing files. Use **File → Open recording and transcript** to reopen them. Timing is utterance-level; Windows caption timing is estimated from display updates, without exact word timestamps. Older audio without this sidecar plays as audio only. Replay is available after recording stops to avoid recording its own playback.
+
+### Automatic local LLM setup
+
+Enabling AI correction or context translation automatically prepares missing Python dependencies and the default Qwen3 model. No manual PowerShell command is needed. Initial preparation needs internet and several GB of storage; the app shows preparation stages and Stop/exit cancels it. Prepared models are reused and inference does not send audio or text to a cloud service. Missing custom models must be provided or reset to the default in Settings.
 
 | Item | Requirement |
 | --- | --- |
@@ -180,7 +190,7 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 ```
 
-Solution: `Locaptio.sln`. WinUI 3 is current; WPF in `src/App` is retained for compatibility/testing. `scripts/build-msix.ps1` generates MSIX, but installation needs suitable signing. Public releases primarily use ZIPs, which do not require adding a certificate.
+Solution: `Locaptio.sln`. WinUI 3 is current; WPF in `src/App` is retained for compatibility/testing. `scripts/build-msix.ps1` generates MSIX, but installation needs suitable signing. Public releases offer Setup as the primary download and retain a portable ZIP.
 
 [Architecture](docs/architecture.md) · [Models](docs/model-selection.md) · [Tests and validation scope](docs/testing.md) · [Changelog](CHANGELOG.md)
 
@@ -204,7 +214,7 @@ Windows caption recovery can be disabled or given a custom timeout (default 180 
 
 Stop cancels recognition and recording, then closes Windows Live Captions and the popout while preserving the main transcript. Save settings independently toggle save time, session duration (including preparation/silence, frozen after Stop) and nonblank content-line/utterance counts. Filename templates default to `{yyyy}{MM}{dd}_`, for example `20261111_.txt`; literal text and `{HH}{mm}{ss}` are supported.
 
-Startup checks and automatic ZIP downloads are independently configurable (both enabled by default). Help also offers a manual check. Only official public GitHub release metadata and assets are requested; audio and transcripts are never sent. Verified ZIPs are saved in `%LOCALAPPDATA%/Locaptio/updates/<version>/`. Open that folder and extract into a separate directory to run the new version. The running app is never replaced or executed automatically.
+Startup checks and automatic update downloads are independently configurable (both enabled by default). Help also offers a manual check. Only official public GitHub release metadata and assets are requested; audio and transcripts are never sent. Verified updates are saved in `%LOCALAPPDATA%/Locaptio/updates/<version>/`. The app offers an explicit action to run Setup. It does not run a downloaded installer automatically. Older ZIP-only releases can be extracted into a separate directory.
 
 
 Settings use an SVG-icon sidebar; selecting a category displays its controls on the right. Closing the main window with × also closes Windows Live Captions after recognition is canceled.

@@ -1,5 +1,8 @@
 # Third-party notices
 
+* Automatic environment bootstrap: [uv 0.13.7](https://github.com/astral-sh/uv/releases/tag/0.13.7), Astral, dual Apache-2.0 / MIT. Downloaded on demand from the official release with a pinned SHA-256; not embedded in Setup. [Licenses](https://github.com/astral-sh/uv/tree/0.13.7).
+* Setup executable: built with [Inno Setup](https://jrsoftware.org/isinfo.php), Jordan Russell and Martijn Laan. Inno Setup license: https://github.com/jrsoftware/issrc/blob/main/license.txt.
+
 Locaptio's own code is MIT-licensed. The model weights and optional Python/CUDA/NPU environments are not bundled in this repository or its portable ZIP. Explicit setup downloads them and records revisions/hashes in local manifests. Third-party licenses are separate from Locaptio's MIT license.
 
 モデルは明示的なセットアップで取得します。配布ZIPの `licenses` フォルダーには、ビルドで使用したNuGet依存物・.NET runtime packから取得したLICENSE/NOTICEも含めます。

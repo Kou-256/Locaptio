@@ -97,7 +97,9 @@ public sealed partial class MainWindow
     {
         if (!draggingText) return;
         ExtendTextSelection(e.GetCurrentPoint(CaptionList).Position);
+        long? playId = textSelection is { IsEmpty: true } selection ? selection.Anchor.Id : null;
         FinishTextSelection(); CaptionList.ReleasePointerCapture(e.Pointer); e.Handled = true;
+        if (playId is long id) PlayCaption(id);
         if (Environment.GetCommandLineArgs().Contains("--verify-selection-ui"))
             File.WriteAllText(Path.Combine(root, "artifacts", "selection-pointer-verification.txt"), $"anchor={textSelection?.Anchor}; focus={textSelection?.Focus}; column={textSelection?.Column}; text={textSelection?.Text(history)}");
     }

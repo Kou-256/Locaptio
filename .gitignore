@@ -32,3 +32,6 @@ docs/validation.md
 node_modules/
 website/dist/
 .vercel/
+
+*.locaptio.json
+tools/uv.exe

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.39 — Setup installer, automatic LLM preparation and recording replay
+
+- 管理者権限不要の `Locaptio-Setup-x64.exe` を追加。スタートメニュー・アンインストールに対応し、アプリの更新もSetupを優先します。ZIP版は継続します。
+- LLM環境・既定モデルがなければ、アプリが自動準備。uvの配布物は固定バージョンとSHA-256で検証します。工程表示、中断、準備済み環境の再利用に対応します。
+- 録音の文字起こしと発話時刻をJSONへ保存。文字クリック、選択範囲の右クリック、検索結果から聞き直せます。音声とJSONを再度開いて再生・検索できます。
+- Windows字幕の時刻は推定・発話単位です。音声の再取り込みを避けるため再生は録音停止後に使用します。
+- Added a per-user Setup installer, automatic local LLM preparation, persisted utterance offsets, bilingual transcript search, replay/pause/seek, and reopening recordings with their transcript sidecars.
+
 ## 1.0.38 — Reliable Ctrl+C / 選択範囲のコピーを修正
 
 - 選択開始時に表示中の行へキーボードフォーカスを設定し、本体全体のCtrl+Cショートカットで選択範囲をコピーします。入力欄のコピーは優先して保持します。

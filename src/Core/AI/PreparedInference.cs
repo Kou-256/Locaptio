@@ -17,7 +17,7 @@ public sealed class PreparedInference : IDisposable
         && (!Ready.IsCompleted || LiveSpeech.ProcessId is not null && (Translation is null || Translation.ProcessId is not null));
     public PreparedInference(string root, bool japanese, string model, string prompt, string device, bool cpu, bool fast, bool useLlm, string llmPath, Action<string> status, bool realtime = false, bool previewCpu = true, string previewModel = "base", Action<PreparationProgress>? progress = null)
     {
-        lifetime.CancelAfter(TimeSpan.FromMinutes(device == "npu" ? 30 : 3));
+        lifetime.CancelAfter(TimeSpan.FromMinutes(useLlm ? 60 : device == "npu" ? 30 : 3));
         previewModel = previewModel == "tiny" && File.Exists(Path.Combine(root, "models", "speech-tiny", "model.bin")) ? "tiny" : "base";
         Speech.Status += status;
         if (realtime && fast && !cpu && (device is "cuda" or "gpu") && model is not ("base" or "tiny") && File.Exists(Path.Combine(root, "models", "speech-" + previewModel, "model.bin")))

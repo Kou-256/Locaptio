@@ -1,7 +1,7 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-win-x64.zip">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバーレイ・録音アプリです。動画や会議の音声を読みながら、必要な文章と音声を保存できます。
 
@@ -21,9 +21,21 @@ Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバ�
 
 ## ダウンロード・必要環境
 
-[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版ZIPを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-win-x64.zip)
+[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe)
 
-[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から `Locaptio-<version>-win-x64.zip` をダウンロードし、**ZIP全体を展開**して `Locaptio.exe` を起動してください。exeだけを取り出すと動作しません。
+[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
+
+### 録音の検索・聞き直し（v1.0.39）
+
+- 録音を停止すると再生バーが表示されます。**文字をクリックすると、その発話の少し前から再生**します。ドラッグ選択・Ctrl+Cは従来どおり使えます。選択範囲を右クリックして「選択した発話から再生」も可能です。
+- 虫眼鏡ボタンで日本語・英語・翻訳文を検索し、**時刻付きの検索結果から再生**できます。再生・一時停止・位置スライダーに対応します。
+- 録音と同じ場所に `音声ファイル名.locaptio.json` を自動保存します。「ファイル → 録音と文字起こしを開く」で再開できます。移動・共有するときは音声とJSONを一緒に扱ってください。JSONには認識した文章が含まれます。
+- 発話単位の時刻です。Windows字幕の時刻は表示からの推定で、単語単位の正確な対応はありません。録音開始前の発話や過去の録音に文字・時刻を後付けする機能はありません。
+- 再生音の再録音を避けるため、**聞き直しは録音停止後**に使えます。
+
+### ローカルLLMの自動準備
+
+AI補正／文脈LLM翻訳を有効にすると、未準備のPython環境・依存物・既定のQwen3モデルを自動取得します。PowerShellの手動実行は不要です。初回のみネット接続と数GBの空き容量が必要です。進捗は準備工程で表示し、Stop・アプリ終了で中断できます。準備済みモデルは再利用し、推論時に音声・文章を外部送信しません。カスタムモデルのパスを指定した場合は、そのファイルを用意するか設定を既定に戻してください。
 
 | 項目 | 必要条件 |
 | --- | --- |
@@ -184,7 +196,7 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 ```
 
-ソリューションは `Locaptio.sln`。WinUI 3が現行UI、`src/App` のWPF版は互換・検証用です。`scripts/build-msix.ps1` でMSIXを生成できますが、インストールには適切な署名が別途必要です。公開Releaseは証明書の追加が不要なZIPを基本とします。
+ソリューションは `Locaptio.sln`。WinUI 3が現行UI、`src/App` のWPF版は互換・検証用です。`scripts/build-msix.ps1` でMSIXを生成できますが、インストールには適切な署名が別途必要です。公開ReleaseはSetup版を基本とし、ZIP版も提供します。
 
 [アーキテクチャ](docs/architecture.md) · [モデル](docs/model-selection.md) · [テストと検証範囲](docs/testing.md) · [変更履歴](CHANGELOG.md)
 
@@ -208,7 +220,7 @@ Locaptioのソースは [MIT License](LICENSE)。モデル・依存物は各ラ�
 
 Stopは録音・認識を停止し、Windowsライブキャプションと独立字幕も閉じます。本体を×で閉じた場合もWindows字幕を閉じます。本体の文章は保存・コピー用に残します。設定の「保存先・録音」で、保存日時・セッション時間（準備／無音を含み停止後は加算しない）・本文行数／発話数をそれぞれON/OFFできます。本文行数は折り返し・空行を数えません。初期ファイル名は`20261111_.txt`のような年月日です。テンプレートの`{yyyy}{MM}{dd}_`に任意の文字や`{HH}{mm}{ss}`を追加できます。保存画面でも編集可能です。
 
-「アプリの更新」で起動時の更新確認と自動ダウンロードを切り替えます（両方既定ON）。ヘルプから手動確認も可能です。公式GitHubへの通信は公開版の情報とZIP取得のみで、認識音声や文章は送信しません。ZIPは`%LOCALAPPDATA%/Locaptio/updates/<version>/`へ保存し、SHA-256照合後に保存先を開けます。ZIPを別フォルダーへ展開して新版を起動してください。実行中のファイルは自動置換しません。
+「アプリの更新」で起動時の更新確認と自動ダウンロードを切り替えます（両方既定ON）。ヘルプから手動確認も可能です。公式GitHubへの通信は公開版の情報と更新ファイル取得のみで、認識音声や文章は送信しません。更新は`%LOCALAPPDATA%/Locaptio/updates/<version>/`へ保存し、SHA-256照合後にSetupを実行できます。旧版ZIPのみのReleaseでは展開して起動してください。
 
 
 設定ウィンドウは左側のSVGアイコン付きカテゴリをクリックし、右側で設定します。カテゴリ切替で値は保持され、設定は自動保存されます。

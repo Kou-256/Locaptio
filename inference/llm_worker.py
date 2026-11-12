@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
     if not args.model.is_file():
-        emit({'type': 'error', 'message': 'ローカルGGUFモデルがありません。scripts/setup-llm.ps1を実行してください。'})
+        emit({'type': 'error', 'message': 'ローカルGGUFモデルがありません。Stop→Startで自動準備を再試行するか、設定でモデルの場所を確認してください。'})
         return 2
     from llama_cpp import Llama, llama_supports_gpu_offload
     gpu = not args.cpu and llama_supports_gpu_offload()

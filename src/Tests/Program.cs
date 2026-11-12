@@ -5,6 +5,8 @@ using Locaptio.Core;
 using Locaptio.Core.Audio;
 using NAudio.Wave;
 
+if (args.Contains("--recording-playback")) { await RecordingPlaybackChecks.RunAsync(); return; }
+
 if (args.Contains("--update-live"))
 {
     using var http = new System.Net.Http.HttpClient();

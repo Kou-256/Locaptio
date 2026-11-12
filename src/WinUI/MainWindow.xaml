@@ -6,6 +6,7 @@
    <MenuBarItem Title="ファイル(F)">
     <MenuFlyoutItem Text="テキストを保存…" Click="SaveClick"/>
     <MenuFlyoutItem Text="全文をコピー" Click="CopyTranscriptClick"/>
+    <MenuFlyoutItem Text="録音と文字起こしを開く…" Click="OpenRecordingClick"/>
     <MenuFlyoutSeparator/>
     <MenuFlyoutItem Text="終了" Click="CloseClick"/>
    </MenuBarItem>
@@ -33,14 +34,32 @@
    <Button x:Name="StartButton" Content="Start" Click="StartClick"/><Button x:Name="StopButton" Content="Stop" Click="StopClick" IsEnabled="False"/><Button Content="Clear" Click="ClearClick"/>
    <Button x:Name="CaptionButton" Content="字幕" Click="CaptionClick" ToolTipService.ToolTip="キャプションだけのウィンドウを開閉します。移動は字幕の背景をドラッグしてください。"/>
    <Button x:Name="SaveButton" Content="テキスト保存" Click="SaveClick" IsEnabled="False"/><CheckBox x:Name="RecordToggle" Content="録音" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="録音" ToolTipService.ToolTip="ファイル名と保存先を指定し、保存を確定すると録音と文字起こしを開始します。キャンセルでは開始しません。外すと録音だけ停止します。"/>
-   <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回Startから。LLM環境・モデルが必要です。"/>
+   <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回Startから。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
+   <Button Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;" FontSize="14"/></Button>
   </StackPanel></StackPanel>
-  <Grid x:Name="RecordingIndicator" Grid.Row="2" Visibility="Collapsed" ColumnSpacing="8">
+  <StackPanel Grid.Row="2" Spacing="4">
+  <Grid x:Name="RecordingIndicator" Visibility="Collapsed" ColumnSpacing="8">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
    <TextBlock Text="● 録音中" Foreground="#FF8F8F"/>
    <TextBlock x:Name="RecordingClock" Grid.Column="1" FontFamily="Consolas" Foreground="#FF8F8F"/>
    <TextBlock x:Name="RecordingText" Grid.Column="2" Foreground="#FF8F8F" TextTrimming="CharacterEllipsis"/>
   </Grid>
+  <StackPanel x:Name="PlaybackPanel" Visibility="Collapsed" Spacing="4">
+   <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <Button x:Name="PlaybackButton" Content="再生" Click="PlaybackClick" Padding="8,3" FontSize="12"/>
+    <Slider x:Name="PlaybackPosition" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="PlaybackSeekChanged" AutomationProperties.Name="録音の再生位置"/>
+    <TextBlock x:Name="PlaybackTime" Grid.Column="2" VerticalAlignment="Center" FontSize="12" FontFamily="Consolas"/>
+   </Grid>
+   <TextBlock x:Name="PlaybackHint" Text="文字をクリックすると、その発話の少し前から再生します。ドラッグで選択・コピーもできます。" FontSize="11" TextWrapping="Wrap"/>
+  </StackPanel>
+  <StackPanel x:Name="RecordingSearchPanel" Visibility="Collapsed" Spacing="4">
+   <TextBox x:Name="RecordingSearch" PlaceholderText="録音内の言葉を検索" TextChanged="RecordingSearchChanged" AutomationProperties.Name="録音内の検索語"/>
+   <TextBlock x:Name="RecordingSearchCount" FontSize="11"/>
+   <ListView x:Name="RecordingSearchResults" MaxHeight="96" IsItemClickEnabled="True" SelectionMode="None" ItemClick="RecordingSearchResultClick">
+    <ListView.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{Binding Time}" FontFamily="Consolas"/><TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></ListView.ItemTemplate>
+   </ListView>
+  </StackPanel>
+  </StackPanel>
   <Grid x:Name="Header" Grid.Row="3" ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock x:Name="EnglishHeader" Text="English" Foreground="#C8C8C8"/><TextBlock x:Name="JapaneseHeader" Grid.Column="1" Text="日本語" Foreground="#C8C8C8"/></Grid>
   <ListView x:Name="CaptionList" Grid.Row="4" SelectionMode="None" IsItemClickEnabled="False" Padding="0" ContainerContentChanging="CaptionContainerChanging" Loaded="CaptionListLoaded" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
    <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel ItemsUpdatingScrollMode="KeepItemsInView"/></ItemsPanelTemplate></ListView.ItemsPanel>
