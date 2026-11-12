@@ -18,7 +18,7 @@ The original site already had a coherent light palette and split hero. This was 
 4. Copy: a concrete headline and detailed feature descriptions instead of three short claims. Explain setup, optional models, device support and known limits.
 5. Type: use 600-weight headings and selective bold emphasis for important features and instructions, reduced negative tracking, separated body and supporting text, and removed forced no-wrap text.
 6. Layout: retain hero, features, setup and distribution order; expand features with four keyboard-accessible categories and add settings/FAQ content.
-7. Details: preserve a single direct ZIP action, accessible focus, checksums, language links and native details controls. Mobile navigation has expanded state and Escape dismissal.
+7. Details: preserve a single direct Setup action, accessible focus, checksums, language links and native details controls. Mobile navigation has expanded state and Escape dismissal.
 8. Visuals: caption demo is labeled as an illustration, not an actual live recognizer. The settings image is real, captured from the v1.0.38 release smoke test.
 9. Motion: brief, one-time hero entry and user-triggered tab/menu/FAQ reveals, plus subtle button feedback. Reduced-motion disables movement. No looping or scroll-driven animation.
 
@@ -34,7 +34,7 @@ Astryx informs semantic color roles, spacing, typography, state consistency and 
 
 Build and static tests: `npm run build`, `npm test`. Browser walkthrough: caption-mode tabs, feature tabs, language switch, mobile menu and checksum copy. Japanese desktop 1440x1000 and mobile 390x844, plus English route. No missing images, horizontal page overflow or browser console errors in the checked states. Browser plugin was tagged during the task; subsequent interactive validation used its in-app browser through CUA. Initial baseline used an isolated Playwright headless browser before that browser became available.
 
-Download metadata stays in `release.json` and is changed only after the corresponding ZIP and checksum have been verified on GitHub Releases.
+Download metadata stays in `release.json` and is changed only after the corresponding installer and checksum have been verified on GitHub Releases.
 
 Owner copy preference (2026-11-12): use explicit feature descriptions, not poetic slogans. The hero names Japanese transcription and English-to-Japanese translation; section headings name their functions.
 

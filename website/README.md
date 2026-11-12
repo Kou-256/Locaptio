@@ -19,10 +19,10 @@ Local preview: `http://127.0.0.1:4173`. Vercel project settings: Framework **Oth
 ## Releasing / 配布版の更新
 
 1. Build and test the Windows app; create a portable ZIP with `scripts/build-portable.ps1`.
-2. Publish the tested ZIP to GitHub Releases with the stable asset name **Locaptio-win-x64.zip**, plus **SHA256SUMS.txt**. The public download URL intentionally uses `releases/latest/download/Locaptio-win-x64.zip` so the button continues to work for later versions.
-3. Update `release.json` with the matching version, tag URL and SHA-256; run the site build/tests and commit. Keep the site metadata and Release asset in sync.
+2. Build Setup with `scripts/build-setup.ps1` and publish both tested files to GitHub Releases with the stable asset names **Locaptio-Setup-x64.exe** and **Locaptio-win-x64.zip**, plus **SHA256SUMS.txt**. The public download URL intentionally uses `releases/latest/download/Locaptio-Setup-x64.exe` so the button continues to work for later versions.
+3. Update `release.json` with the matching version, tag URL and SHA-256; run the site build/tests and commit. Keep the site metadata and Release asset in sync. Build Setup with scripts/build-setup.ps1 using the prepared portable folder.
 
-日本語・英語の内容は `content.mjs`、ページ生成は `build.mjs`、デザインは `public/style.css`、配布版の情報は `release.json` にあります。`dist` と `.vercel` はコミットしません。Windows用ZIPとモデルをVercelへアップロードせず、GitHub Releasesから配布します。
+日本語・英語の内容は `content.mjs`、ページ生成は `build.mjs`、デザインは `public/style.css`、配布版の情報は `release.json` にあります。`dist` と `.vercel` はコミットしません。Windows用Setup・ZIPとモデルをVercelへアップロードせず、GitHub Releasesから配布します。
 
 Artwork: existing Locaptio icon supplied by the project owner. The caption preview is a labeled HTML illustration over the original Windows-style wallpaper, retained at the owner's request; the settings image is captured from the packaged app using synthetic verification data. Important copy uses selective bold emphasis. Short entry and interaction animations respect reduced-motion preferences.
 
