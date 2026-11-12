@@ -21,6 +21,7 @@ public sealed partial class MainWindow
             // Record only this test process, silently, without models or the user's
             // microphone/system audio. Exercise the same recorder/clock as the UI.
             settings.CaptionMode = "japanese"; settings.AudioInputKind = "application";
+            captionsForVerification = async (token, _) => await Task.Delay(Timeout.Infinite, token);
             settings.AudioDeviceId = ""; settings.AudioProcessId = Environment.ProcessId;
             using (var current = Process.GetCurrentProcess()) settings.AudioProcessStarted = current.StartTime.ToUniversalTime().Ticks;
             ClearCaptions(); captionStop = new();
@@ -33,6 +34,7 @@ public sealed partial class MainWindow
             bool waitsForName = dialogOpen && recordingStop is null && !StartButton.IsEnabled && !RecordToggle.IsEnabled;
             naming.SetResult(null); await Task.Delay(100);
             bool cancelDoesNotRecord = recordingStop is null && RecordToggle.IsChecked == false && !dialogOpen;
+            captionStop?.Dispose(); captionStop = null;
             naming = new(TaskCreationOptions.RunContinuationsAsynchronously);
             string namedPath = Path.Combine(settings.RecordingSaveDirectory, $"named-recording-{Guid.NewGuid():N}.wav");
             RecordToggle.IsChecked = true;
@@ -42,7 +44,8 @@ public sealed partial class MainWindow
             recordingFilePickerForVerification = null;
             if (recordingStop is null) throw new Exception("Recorder did not remain active");
             bool automaticRecording = RecordToggle.IsChecked == true && !dialogOpen
-                && recordingPath == namedPath && File.Exists(recordingPath) && waitsForName && cancelDoesNotRecord;
+                && Path.GetFileName(recordingPath) == Path.GetFileName(namedPath) && File.Exists(recordingPath) && waitsForName && cancelDoesNotRecord;
+            for (int i = 1; i <= 300; i++) UpdateCaption(new(i, 1, $"文字起こしの履歴 {i:D3}", null, true, Stopwatch.GetTimestamp(), 0, 0));
             bool compactDetails = StatusDetailsPanel.Visibility == Visibility.Collapsed;
             var anchor = StatusDetailsButton.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point());
             double beforeOverlay = CaptionList.ActualHeight;
@@ -104,17 +107,19 @@ public sealed partial class MainWindow
             bool highlightRestored = RealizedCaptionRows.SelectMany(r => r.Children.OfType<TextBlock>()).Any(t => t.TextHighlighters.Count > 0);
             ClearTextSelection(); await Task.Delay(50);
             bool multiRowCorrectionResumed = middle.English == "選択中の途中行の補正" && selectedRowUpdates.Count == 0;
-            RecordToggle.IsChecked = false; await StopRecordingAsync();
-            bool uncheckedStopsRecordingOnly = recordingStop is null && captionStop is not null;
+            RecordToggle.IsChecked = false;
+            for (int attempt = 0; attempt < 100 && (recordingStop is not null || captionStop is not null || stoppingAll); attempt++) await Task.Delay(50);
+            bool uncheckedStopsAll = recordingStop is null && captionStop is null && StartButton.IsEnabled;
             await StopAllAsync();
             bool stopped = recordingStop is null && RecordingIndicator.Visibility == Visibility.Collapsed;
-            passed = stable && clockOnly && retainedSurface && recordingActive && stopped && automaticRecording && compactDetails && expandable && selectionEnabled && selectionRetained && correctionResumed && uncheckedStopsRecordingOnly && multiRowCopy && multiRowRetained && recycledSelectionRetained && highlightRestored && multiRowCorrectionResumed;
-            report = $"PASS={passed}; waitsForFilename={waitsForName}; cancelDoesNotRecord={cancelDoesNotRecord}; namedRecordingStarts={automaticRecording}; detailsInitiallyHidden={compactDetails}; detailsOverlayBelowWithoutMovement={expandable}; multiRowCopy={multiRowCopy}; multiRowRetained={multiRowRetained}; recycledSelectionRetained={recycledSelectionRetained}; highlightRestored={highlightRestored}; multiRowCorrectionResumed={multiRowCorrectionResumed}; selectionEnabled={selectionEnabled}; selectionRetainedDuringCorrection={selectionRetained}; correctionResumed={correctionResumed}; uncheckStopsOnlyRecording={uncheckedStopsRecordingOnly}; stableTextContainer={stable}; recordingClockOnly={clockOnly}; viewportBefore={viewport:F1}; viewportAfter={CaptionList.ActualHeight:F1}; staticPathChanges={pathChanges}; retainedSurface={retainedSurface}; nativeEraseRequests={backdrop.EraseRequestCount - eraseRequests}; repeatedSurfaceClears={backdrop.SurfaceClearCount - clears}; recordingActive={recordingActive}; stopped={stopped}";
+            passed = stable && clockOnly && retainedSurface && recordingActive && stopped && automaticRecording && compactDetails && expandable && selectionEnabled && selectionRetained && correctionResumed && uncheckedStopsAll && multiRowCopy && multiRowRetained && recycledSelectionRetained && highlightRestored && multiRowCorrectionResumed;
+            report = $"PASS={passed}; waitsForFilename={waitsForName}; cancelDoesNotRecord={cancelDoesNotRecord}; namedRecordingStarts={automaticRecording}; detailsInitiallyHidden={compactDetails}; detailsOverlayBelowWithoutMovement={expandable}; multiRowCopy={multiRowCopy}; multiRowRetained={multiRowRetained}; recycledSelectionRetained={recycledSelectionRetained}; highlightRestored={highlightRestored}; multiRowCorrectionResumed={multiRowCorrectionResumed}; selectionEnabled={selectionEnabled}; selectionRetainedDuringCorrection={selectionRetained}; correctionResumed={correctionResumed}; uncheckStopsAll={uncheckedStopsAll}; stableTextContainer={stable}; recordingClockOnly={clockOnly}; viewportBefore={viewport:F1}; viewportAfter={CaptionList.ActualHeight:F1}; staticPathChanges={pathChanges}; retainedSurface={retainedSurface}; nativeEraseRequests={backdrop.EraseRequestCount - eraseRequests}; repeatedSurfaceClears={backdrop.SurfaceClearCount - clears}; recordingActive={recordingActive}; stopped={stopped}";
         }
         catch (Exception ex) { report = ex.ToString(); }
         finally
         {
             recordingFilePickerForVerification = null;
+            captionsForVerification = null;
             if (pathCallback != 0) RecordingText.UnregisterPropertyChangedCallback(TextBlock.TextProperty, pathCallback);
             await StopAllAsync(); captionStop?.Dispose(); captionStop = null;
             settings.CaptionMode = mode; settings.AudioInputKind = input.Kind; settings.AudioDeviceId = input.DeviceId;

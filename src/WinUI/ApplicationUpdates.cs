@@ -11,6 +11,29 @@ public sealed partial class MainWindow
     private readonly CancellationTokenSource updateStop = new();
     private bool updateBusy;
     private Task? updateOperation;
+    private bool updatePromptOpen;
+    private Func<Task<bool>>? updateApprovalForVerification;
+    private async Task<bool> ApproveUpdateAsync(InfoBar notice, string title, string message, string action)
+    {
+        if (updateApprovalForVerification is not null) return await updateApprovalForVerification();
+        if (closing || dialogOpen || updatePromptOpen) return false;
+        updatePromptOpen = true;
+        try
+        {
+            var prompt = new ContentDialog { XamlRoot = notice.XamlRoot ?? Root.XamlRoot, Title = title, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, PrimaryButtonText = action, CloseButtonText = "後で", DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark };
+            return await prompt.ShowAsync() == ContentDialogResult.Primary;
+        }
+        finally { updatePromptOpen = false; }
+    }
+    private async Task ConfirmInstallUpdateAsync(string path, AppRelease release, InfoBar notice)
+    {
+        if (!await ApproveUpdateAsync(notice, $"Locaptio {release.Version} に更新しますか？", "許可すると録音・文字起こしを停止し、セットアップを開きます。「後で」を選ぶと現在の作業を続けます。", "インストールする")) return;
+        using (var file = File.OpenRead(path))
+            if (!Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(file)).Equals(release.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新ファイルが変更されています。再ダウンロードしてください。");
+        await StopAllAsync();
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        await ShutdownAsync();
+    }
     private async void CheckUpdatesClick(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(true);
     private static string CurrentAppVersion => (typeof(MainWindow).Assembly.GetName().Version ?? new Version(1, 0, 0)).ToString(3);
     private void UpdateAction(InfoBar notice, string label, Func<Task> action)
@@ -65,6 +88,8 @@ public sealed partial class MainWindow
                 try { updateOperation = DownloadUpdateAsync(service, release, notice); await updateOperation; }
                 finally { updateBusy = false; }
             });
+            if (!settings.AutoDownloadUpdates && await ApproveUpdateAsync(notice, $"Locaptio {release.Version} が公開されています", "更新ファイルをダウンロードしますか？インストールの前にも確認します。", "ダウンロード"))
+                await DownloadUpdateAsync(service, release, notice);
         }
         catch (OperationCanceledException) { if (!closing && manual) { notice.Title = "更新の確認を中断しました"; notice.Message = "通信がタイムアウトした場合は、後で再度お試しください。"; } }
         catch (Exception ex)
@@ -102,11 +127,14 @@ public sealed partial class MainWindow
         {
             if (setup)
             {
-                await StopAllAsync();
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
-                await ShutdownAsync();
+                await ConfirmInstallUpdateAsync(path, release, notice);
             }
             else await Windows.System.Launcher.LaunchFolderPathAsync(directory);
+        });
+        if (setup) DispatcherQueue.TryEnqueue(async () =>
+        {
+            try { await ConfirmInstallUpdateAsync(path, release, notice); }
+            catch (Exception ex) { if (!closing) { notice.Severity = InfoBarSeverity.Warning; notice.Message = ex.Message; } }
         });
     }
 }

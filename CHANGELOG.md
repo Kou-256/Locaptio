@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.41 — Recording sessions, retained history and stable captions
+
+- インストール先の選択画面を常に表示。更新のSetup実行前に確認ポップアップを追加し、「後で」では録音・文字起こしを継続します。
+- 初期値をWindows字幕連携・日本語文字起こし、メニュー背景一致、本体背景透過率10%、字幕背景透過率20%、英語水色／日本語白へ変更。
+- 字幕の折り返し幅を設定可能に。移動中は再レイアウトを保留し、表示領域をクライアント座標で計算。背景の不要な消去とフレーム再設定を抑制します。
+- 音声入力変更・文字起こしの再開で履歴を保持し、セッションをまたいでIDが衝突しないように修正。
+- 「新規録音」と「録音一覧・再生」を分離。録音ごとに専用フォルダーを作り、音声・JSON・TXTを保存。録音のチェックを外すと認識も停止し、Startを再度押せます。
+- Always show the destination picker; require approval before running an update installer; introduce per-recording folders/library, preserve input-switch history, and stabilize movable captions with configurable wrapping width.
+
 ## 1.0.40 — Setup checkboxes, playback highlighting and Windows microphone input
 
 - Setupのカスタム描画をネイティブコントロールに切り替え、高DPI環境でのチェックボックスの見切れを修正。スタートメニューへの追加（既定ON）を追加タスクとして明示しました。

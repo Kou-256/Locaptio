@@ -2,7 +2,7 @@
   #error AppSource must name the prepared distribution folder
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.40"
+  #define AppVersion "1.0.41"
 #endif
 [Setup]
 #ifdef SetupUiTest
@@ -20,6 +20,7 @@ AppVersion={#AppVersion}
 AppPublisher=Kou Hashizume
 AppPublisherURL=https://locaptio.vercel.app/
 DefaultDirName={localappdata}\Programs\Locaptio
+DisableDirPage=no
 DefaultGroupName=Locaptio
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible

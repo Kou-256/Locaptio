@@ -22,6 +22,9 @@ public sealed partial class MainWindow
     private bool indexDirty, updatingPlayback;
     private RecordingPhrase? highlightedPlaybackPhrase;
     private bool followPlayback = true;
+    private bool reviewingRecording;
+    private string RecordingRoot => string.IsNullOrWhiteSpace(settings.RecordingSaveDirectory)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "Locaptio") : settings.RecordingSaveDirectory;
     private sealed record RecordingSearchHit(RecordingPhrase Phrase)
     {
         public string Time => FormatMediaTime(Phrase.Seconds);
@@ -54,6 +57,7 @@ public sealed partial class MainWindow
     private void BeginRecordingIndex(string path)
     {
         ClosePlayback(); PlaybackPanel.Visibility = Visibility.Collapsed;
+        reviewingRecording = false; RecordingSearchPanel.Visibility = Visibility.Collapsed;
         recordingTranscript = new(path, recordingStarted, UseWindowsCaptionEngine);
         playbackDocument = null; playbackPath = path; indexDirty = true; recordingIndexTimer.Start();
         RefreshRecordingSearch();
@@ -73,6 +77,9 @@ public sealed partial class MainWindow
         if (recordingTranscript?.AudioPath == Path.GetFullPath(path) && File.Exists(path))
         {
             playbackDocument = recordingTranscript.Snapshot(); playbackPath = path;
+            try { await RecordingLibrary.SaveTextAsync(path, playbackDocument); }
+            catch (Exception ex) { Status("音声・検索データは保存しましたが、テキストの保存に失敗しました: " + ex.Message); }
+            reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path));
             PlaybackPanel.Visibility = Visibility.Visible;
             EnsurePlaybackSpace();
             PlaybackHint.Text = "文字をクリックすると、その発話の少し前から再生します。ドラッグで選択・コピーもできます。"
@@ -181,23 +188,41 @@ public sealed partial class MainWindow
         if (index >= 0) { PauseHistoryFollowing(); CaptionList.ScrollIntoView(history[index], ScrollIntoViewAlignment.Leading); }
     }
     private async void OpenRecordingClick(object sender, RoutedEventArgs e)
+        => await OpenRecordingLibraryAsync();
+    private async Task OpenRecordingLibraryAsync()
     {
         if (recordingStop is not null || captionStop is not null || dialogOpen) { Status("停止してから録音を開いてください。現在のテキストは先に保存できます。"); return; }
         dialogOpen = true;
+        StartButton.IsEnabled = RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = false;
         try
         {
-            var picker = new FileOpenPicker(AppWindow.Id) { Title = "録音を開く（同じ場所の .locaptio.json も必要です）" };
+            var recordings = await Task.Run(() => RecordingLibrary.List(RecordingRoot));
+            var list = new ListView { ItemsSource = recordings, DisplayMemberPath = nameof(SavedRecording.Title), MaxHeight = 360, SelectionMode = ListViewSelectionMode.Single };
+            var libraryContent = new StackPanel { Spacing = 12 };
+            libraryContent.Children.Add(new TextBlock { Text = recordings.Length == 0 ? "保存済みの録音はありません。本体の「新規録音」から録音できます。" : "音声とテキストをまとめて開きます。", TextWrapping = TextWrapping.Wrap });
+            libraryContent.Children.Add(list);
+            var library = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "録音一覧・再生（新規録音は開始しません）", Content = libraryContent, PrimaryButtonText = "選んだ録音を開く", SecondaryButtonText = "別の音声ファイル…", CloseButtonText = "閉じる", IsPrimaryButtonEnabled = false, RequestedTheme = ElementTheme.Dark };
+            list.SelectionChanged += (_, _) => library.IsPrimaryButtonEnabled = list.SelectedItem is SavedRecording;
+            var result = await library.ShowAsync();
+            if (result == ContentDialogResult.Primary && list.SelectedItem is SavedRecording selected) { await LoadRecordingAsync(selected.AudioPath); return; }
+            if (result != ContentDialogResult.Secondary) return;
+            var picker = new FileOpenPicker(AppWindow.Id) { Title = "保存済み録音を開く（隣の .locaptio.json も必要です）" };
             foreach (var extension in new[] { ".wav", ".mp3", ".m4a" }) picker.FileTypeFilter.Add(extension);
             var file = await picker.PickSingleFileAsync(); if (file is null) return;
             await LoadRecordingAsync(file.Path);
         }
         catch (Exception ex) { Status("録音を開けません: " + ex.Message); }
-        finally { dialogOpen = false; }
+        finally
+        {
+            dialogOpen = false; StartButton.IsEnabled = !closing && captionStop is null;
+            RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = !closing;
+        }
     }
     private async Task LoadRecordingAsync(string path)
     {
             RecordingDocument? document = File.Exists(RecordingTranscript.Sidecar(path)) ? await RecordingTranscript.LoadAsync(path) : null;
             ClosePlayback(); ClearCaptions(); playbackPath = path; playbackDocument = document;
+            reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path)) + " / " + Path.GetFileName(path);
             if (document is not null)
                 foreach (var phrase in document.Phrases)
                 {

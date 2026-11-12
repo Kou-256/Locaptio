@@ -27,6 +27,16 @@ internal static class RecordingPlaybackChecks
             await RecordingTranscript.SaveAsync(recording.AudioPath, document);
             var loaded = await RecordingTranscript.LoadAsync(recording.AudioPath);
             Check(loaded.Phrases.SequenceEqual(document.Phrases) && !File.Exists(RecordingTranscript.Sidecar(recording.AudioPath) + ".tmp"), "Roundtrip/atomic save failed");
+            string requested = Path.Combine(directory, "library", "会議.wav");
+            string session1 = RecordingLibrary.CreateSessionPath(requested), session2 = RecordingLibrary.CreateSessionPath(requested);
+            Check(Path.GetDirectoryName(session1) != Path.GetDirectoryName(session2), "Recording folders collided");
+            foreach (string audio in new[] { session1, session2 })
+            {
+                await File.WriteAllTextAsync(audio, "fixture");
+                await RecordingTranscript.SaveAsync(audio, document);
+                await RecordingLibrary.SaveTextAsync(audio, document);
+            }
+            Check(RecordingLibrary.List(Path.Combine(directory, "library")).Length == 2 && (await File.ReadAllTextAsync(session1 + ".txt")).Contains("修正後の会議"), "Recording library/text grouping failed");
             recording.Observe(first with { Revision = 4, English = "" });
             Check(recording.Snapshot().Phrases.Length == 1, "Withdrawn caption retained");
             var windows = new RecordingTranscript(recording.AudioPath, start, true); windows.Observe(first);

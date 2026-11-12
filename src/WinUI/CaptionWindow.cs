@@ -23,6 +23,8 @@ public sealed class CaptionWindow : Window
     private CaptionUpdate[] captions = [];
     private readonly DispatcherTimer idleTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private long lastRecognition;
+    private bool moving, arranging, appearancePending;
+    private bool nativeFrameConfigured;
     public CaptionWindow(Settings settings)
     {
         this.settings = settings; Title = "Locaptio — 字幕";
@@ -31,12 +33,12 @@ public sealed class CaptionWindow : Window
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
         presenter.SetBorderAndTitleBar(false, false); presenter.IsAlwaysOnTop = true; presenter.IsMaximizable = false; presenter.IsMinimizable = false; presenter.IsResizable = false;
-        SystemBackdrop = new TransparentWindowBackdrop();
+        SystemBackdrop = new TransparentWindowBackdrop(retainSurface: true);
         RemoveNativeFrame();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = GetDpiForWindow(hwnd) / 96.0;
-        int width = Math.Clamp(settings.CaptionWindowWidth > 0 ? settings.CaptionWindowWidth : (int)(960 * scale), Math.Min((int)(360 * scale), work.Width), work.Width);
+        int width = Math.Clamp((int)(settings.CaptionWrapWidth * scale), Math.Min((int)(360 * scale), work.Width), work.Width);
         int height = Math.Clamp(settings.CaptionWindowHeight > 0 ? settings.CaptionWindowHeight : (int)(260 * scale), Math.Min((int)(120 * scale), work.Height), work.Height);
         captionWidth = width;
         root.Width = width / scale; root.Height = height / scale;
@@ -46,7 +48,9 @@ public sealed class CaptionWindow : Window
         root.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(root).Properties.IsLeftButtonPressed) return;
-            e.Handled = true; ReleaseCapture(); SendMessageW(hwnd, 0x00A1, 2, 0);
+            e.Handled = true; moving = true;
+            try { ReleaseCapture(); SendMessageW(hwnd, 0x00A1, 2, 0); }
+            finally { moving = false; if (appearancePending) ApplyAppearance(); else UpdateWindowShape(); }
         };
         root.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Escape) { e.Handled = true; Close(); } };
         AppWindow.Changed += (_, args) =>
@@ -76,6 +80,7 @@ public sealed class CaptionWindow : Window
         int desired = (style & ~frame) | unchecked((int)0x80000000); // WS_POPUP
         int extended = GetWindowLongW(hwnd, -20);
         int desiredExtended = (extended & ~(0x00000100 | 0x00000200 | 0x00020000 | 0x00000001 | 0x00040000)) | 0x00000080; // tool window, no edges
+        if (nativeFrameConfigured && style == desired && extended == desiredExtended) return;
         if (style != desired) SetWindowLongW(hwnd, -16, desired);
         if (extended != desiredExtended) SetWindowLongW(hwnd, -20, desiredExtended);
         int disabled = 1, noBorder = unchecked((int)0xFFFFFFFE), noRounding = 1, noBackdrop = 1;
@@ -83,6 +88,7 @@ public sealed class CaptionWindow : Window
         DwmSetWindowAttribute(hwnd, 33, ref noRounding, sizeof(int));
         DwmSetWindowAttribute(hwnd, 34, ref noBorder, sizeof(int));
         DwmSetWindowAttribute(hwnd, 38, ref noBackdrop, sizeof(int));
+        nativeFrameConfigured = true;
         if (style != desired || extended != desiredExtended)
         {
             SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020);
@@ -92,15 +98,16 @@ public sealed class CaptionWindow : Window
     public void Update(IEnumerable<CaptionUpdate> updates)
     {
         var next = updates.TakeLast(settings.CaptionRows).ToArray();
+        if (next.SequenceEqual(captions)) { HideIfIdle(); return; }
         // Delayed translations and AI corrections do not revive expired subtitles.
         bool recognition = next.Any(c => !c.SourceCorrected && (c.Japanese is null || captions.Any(old => old.Id == c.Id && old.English != c.English)) && !string.IsNullOrWhiteSpace(c.English) && !captions.Any(old => old.Id == c.Id && old.Revision >= c.Revision));
         captions = next; ApplyAppearance();
-        if (recognition) { lastRecognition = System.Diagnostics.Stopwatch.GetTimestamp(); AppWindow.Show(false); RemoveNativeFrame(); UpdateWindowShape(); }
+        if (recognition) { lastRecognition = System.Diagnostics.Stopwatch.GetTimestamp(); if (!moving) { AppWindow.Show(false); UpdateWindowShape(); } }
         HideIfIdle();
     }
     public void HideIfIdle()
     {
-        if (captions.Length == 0 || lastRecognition == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(lastRecognition).TotalSeconds >= settings.CaptionHideSeconds) AppWindow.Hide();
+        if (!moving && (captions.Length == 0 || lastRecognition == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(lastRecognition).TotalSeconds >= settings.CaptionHideSeconds)) AppWindow.Hide();
     }
     public static SolidColorBrush SpeakerBrush(Settings settings, int speakerId)
     {
@@ -108,6 +115,13 @@ public sealed class CaptionWindow : Window
         return speakerId > 0 && speakerId <= colors.Length ? Brush(ParseColor(colors[speakerId - 1], 0xFFFFFF)) : OrdinaryBrush(settings, false);
     }
     public void ApplyAppearance()
+    {
+        if (moving) { appearancePending = true; return; }
+        appearancePending = false; arranging = true;
+        try { ApplyAppearanceCore(); }
+        finally { arranging = false; root.UpdateLayout(); UpdateWindowShape(); }
+    }
+    private void ApplyAppearanceCore()
     {
         bool light = settings.CaptionBackground == "light";
         root.RequestedTheme = light ? ElementTheme.Light : ElementTheme.Dark;
@@ -190,6 +204,7 @@ public sealed class CaptionWindow : Window
         // A partially scrolled first line must never become a subtitle.
         double scale = root.XamlRoot?.RasterizationScale ?? GetDpiForWindow(hwnd) / 96.0;
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        captionWidth = Math.Clamp((int)(Math.Clamp(settings.CaptionWrapWidth, 240, 2400) * scale), Math.Min((int)(240 * scale), work.Width), work.Width);
         double width = Math.Max(1, captionWidth / scale - 16);
         root.Width = captionWidth / scale;
         FitLatestText(width);
@@ -238,20 +253,21 @@ public sealed class CaptionWindow : Window
     private void UpdateWindowShape()
     {
         // The native region clips both rendering and hit testing outside the text bubbles.
-        if (root.XamlRoot is null || root.ActualWidth <= 0) return;
+        if (arranging || moving || root.XamlRoot is null || root.ActualWidth <= 0) return;
         double scale = root.XamlRoot.RasterizationScale;
-        GetWindowRect(hwnd, out var window); var client = new NativePoint(); ClientToScreen(hwnd, ref client);
+        // Borderless client coordinates remain stable during rapid moves. Combining
+        // separately sampled screen/window positions can transiently clip the text.
         var bounds = bubbles.Where(b => b.Visibility == Visibility.Visible && b.ActualWidth > 0 && b.ActualHeight > 0).Select(b =>
         {
             var p = b.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
-            return new NativeRect { Left = (int)Math.Floor(p.X * scale) + client.X - window.Left, Top = (int)Math.Floor(p.Y * scale) + client.Y - window.Top,
-                Right = (int)Math.Ceiling((p.X + b.ActualWidth) * scale) + client.X - window.Left, Bottom = (int)Math.Ceiling((p.Y + b.ActualHeight) * scale) + client.Y - window.Top };
+            return new NativeRect { Left = (int)Math.Floor(p.X * scale), Top = (int)Math.Floor(p.Y * scale),
+                Right = (int)Math.Ceiling((p.X + b.ActualWidth) * scale), Bottom = (int)Math.Ceiling((p.Y + b.ActualHeight) * scale) };
         }).ToArray();
         var viewportOrigin = scroll.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point());
-        int viewportLeft = (int)Math.Ceiling(viewportOrigin.X * scale) + client.X - window.Left;
-        int viewportTop = (int)Math.Ceiling(viewportOrigin.Y * scale) + client.Y - window.Top;
-        int viewportRight = (int)Math.Floor((viewportOrigin.X + scroll.ActualWidth) * scale) + client.X - window.Left;
-        int viewportBottom = (int)Math.Floor((viewportOrigin.Y + scroll.ActualHeight) * scale) + client.Y - window.Top;
+        int viewportLeft = (int)Math.Floor(viewportOrigin.X * scale);
+        int viewportTop = (int)Math.Floor(viewportOrigin.Y * scale);
+        int viewportRight = (int)Math.Ceiling((viewportOrigin.X + scroll.ActualWidth) * scale);
+        int viewportBottom = (int)Math.Ceiling((viewportOrigin.Y + scroll.ActualHeight) * scale);
         string geometry = $"{viewportLeft},{viewportTop},{viewportRight},{viewportBottom}:" + string.Join(';', bounds.Select(b => $"{b.Left},{b.Top},{b.Right},{b.Bottom}"));
         if (geometry == regionGeometry) return;
         regionGeometry = geometry;

@@ -25,19 +25,21 @@
    </MenuBarItem>
   </MenuBar>
   <StackPanel Grid.Row="1" Spacing="6">
-  <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><local:DownwardSelector x:Name="ModeSelector" Width="260" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="字幕モード" ToolTipService.ToolTip="切り替えると字幕履歴をクリアします。必要なテキストは切替前に保存してください。録音は継続します。"></local:DownwardSelector><local:DownwardSelector x:Name="AudioSelector" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="500" SelectionChanged="AudioChanged" DropDownOpened="AudioMenuOpened" AutomationProperties.Name="音声入力" ToolTipService.ToolTip="PC全体・マイク・PC内音声＋マイク同時入力・指定アプリの音声。同時入力の文字起こしはWhisperを使用します。切替時は字幕履歴をクリアし、録音は新しいファイルへ分割します。"/></Grid>
-  <StackPanel Orientation="Horizontal" Spacing="8">
-   <StackPanel.Resources>
+  <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><local:DownwardSelector x:Name="ModeSelector" Width="260" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="字幕モード" ToolTipService.ToolTip="切り替えると字幕履歴をクリアします。必要なテキストは切替前に保存してください。録音は継続します。"></local:DownwardSelector><local:DownwardSelector x:Name="AudioSelector" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="500" SelectionChanged="AudioChanged" DropDownOpened="AudioMenuOpened" AutomationProperties.Name="音声入力" ToolTipService.ToolTip="PC全体・マイク・PC内音声＋マイク同時入力・指定アプリの音声。同時入力の文字起こしはWhisperを使用します。入力を切り替えても会話履歴は保持します。録音中は同じ録音フォルダーの別ファイルに分割します。"/></Grid>
+  <local:ToolbarPanel>
+   <local:ToolbarPanel.Resources>
     <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}"><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
     <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}"><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="30"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
-   </StackPanel.Resources>
+   </local:ToolbarPanel.Resources>
    <Button x:Name="StartButton" Content="Start" Click="StartClick"/><Button x:Name="StopButton" Content="Stop" Click="StopClick" IsEnabled="False"/><Button Content="Clear" Click="ClearClick"/>
    <Button x:Name="CaptionButton" Content="字幕" Click="CaptionClick" ToolTipService.ToolTip="キャプションだけのウィンドウを開閉します。移動は字幕の背景をドラッグしてください。"/>
-   <Button x:Name="SaveButton" Content="テキスト保存" Click="SaveClick" IsEnabled="False"/><CheckBox x:Name="RecordToggle" Content="録音" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="録音" ToolTipService.ToolTip="ファイル名と保存先を指定し、保存を確定すると録音と文字起こしを開始します。キャンセルでは開始しません。外すと録音だけ停止します。"/>
+   <Button x:Name="SaveButton" Content="テキスト保存" Click="SaveClick" IsEnabled="False"/><CheckBox x:Name="RecordToggle" Content="新規録音" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="新規録音" ToolTipService.ToolTip="新しい録音を専用フォルダーに保存します。チェックを外すと録音・文字起こしを停止します。保存済みデータは録音一覧から開いてください。"/>
+   <Button Content="録音一覧・再生" Click="OpenRecordingClick" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"/>
    <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回Startから。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
    <Button Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;" FontSize="14"/></Button>
-  </StackPanel></StackPanel>
+  </local:ToolbarPanel></StackPanel>
   <StackPanel Grid.Row="2" Spacing="4">
+  <TextBlock x:Name="SessionTitle" Text="文字起こし（録音なし）／新規録音はチェック、保存済みデータは録音一覧から" FontSize="11" TextWrapping="Wrap"/>
   <Grid x:Name="RecordingIndicator" Visibility="Collapsed" ColumnSpacing="8">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
    <TextBlock Text="● 録音中" Foreground="#FF8F8F"/>

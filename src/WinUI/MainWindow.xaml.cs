@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window
     private bool initialized, modeChanging;
     private bool inputChanging, refreshingAudio, updatingRecordToggle;
     private Func<Task<string?>>? recordingFilePickerForVerification;
+    private Func<CancellationToken, long, Task>? captionsForVerification;
     private bool correctionChecked, windowsBridgeConnected;
     private readonly List<(CaptionUpdate Caption, long At)> translationVerificationUpdates = [];
     private readonly List<double> verifiedRenderLags = [];
@@ -124,6 +125,8 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-recovery")) await VerifyWindowsRecoveryAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-recording-ui")) await VerifyRecordingUiAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-recording-playback")) await VerifyRecordingPlaybackAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-session-workflow")) await VerifySessionWorkflowAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-library-view")) await VerifyLibraryViewAsync(); };
         Root.Loaded += async (_, _) =>
         {
             if (!Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) return;
@@ -166,6 +169,7 @@ public sealed partial class MainWindow : Window
     }
     private string FindRoot()
     {
+        if (Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify")) && IsRuntime(Environment.CurrentDirectory)) return Environment.CurrentDirectory;
         if (IsRuntime(settings.RuntimeDirectory)) return settings.RuntimeDirectory;
         for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent)
             if (IsRuntime(folder.FullName)) { settings.RuntimeDirectory = folder.FullName; settings.Save(); return folder.FullName; }
@@ -205,20 +209,28 @@ public sealed partial class MainWindow : Window
         }
         else if (captionStop is not null) Status("AI補正の変更は、次回Startから反映されます。");
     }
-    private async Task StartAsync()
+    private async Task StartAsync(bool allowRecordingDialog = false)
     {
-        if (captionStop is not null || closing || stoppingAll) return; root = FindRoot();
+        if (captionStop is not null || closing || stoppingAll || dialogOpen && !allowRecordingDialog) return; root = FindRoot();
         ClosePlayback();
+        if (reviewingRecording && recordingStop is null)
+        {
+            ClearCaptions(); reviewingRecording = false; playbackDocument = null;
+            PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;
+        }
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
-        ClearCaptions(); WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
+        WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
+        SessionTitle.Text = recordingStop is null ? "文字起こし（録音なし）" : "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(recordingPath));
         StatusText.Text = "ローカルモデルを読み込み中…"; captionTask = RunCaptionsAsync(captionStop.Token); await Task.Yield();
     }
     private async Task RunCaptionsAsync(CancellationToken token)
     {
+        long sessionIdOffset = historyIds.LastOrDefault();
         using var speakerStop = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task speakers = Task.CompletedTask, speakerMonitor = Task.CompletedTask;
         try
         {
+            if (captionsForVerification is not null) { await captionsForVerification(token, sessionIdOffset); return; }
             bool japanese = settings.CaptionMode == "japanese";
             SpeakerStatusText.Visibility = settings.SpeakerDiarization ? Visibility.Visible : Visibility.Collapsed;
             if (settings.SpeakerDiarization)
@@ -245,7 +257,7 @@ public sealed partial class MainWindow : Window
                 using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "microphone" ? ReadDefaultMicrophoneLevel : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds);
                 windowsSession = live;
                 var windowsProgress = BeginPreparation(); live.PreparationChanged += windowsProgress;
-                live.Caption += update => DispatcherQueue.TryEnqueue(() => UpdateCaption(update)); live.Status += Status;
+                live.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); }); live.Status += Status;
                 live.LanguageWarning += message => DispatcherQueue.TryEnqueue(() =>
                 {
                     if (closing || token.IsCancellationRequested) return;
@@ -278,7 +290,7 @@ public sealed partial class MainWindow : Window
             llm = session.Llm; llmReady = session.LlmReady;
             ReadyLocalLlm? readyLlm = llm is not null && llmReady is not null ? new(llm, llmReady) : null;
             Status(settings.CorrectTranscriptWithAi ? "文脈AI補正はONです。準備後、確定した発話を補正します。" : "文脈AI補正はOFFです。設定でONにできます。");
-            pipeline = new(speech, translation, japanese, !japanese && settings.UseLocalLlm ? readyLlm : null, SelectedAudio(), settings.FastTranscription, settings.CorrectTranscriptWithAi ? readyLlm : null, accurateSpeech is null ? null : new ReadySpeechBackend(accurateSpeech, session.AccuracyReady), translationGlossary: settings.TranslationGlossary); pipeline.Status += Status; pipeline.Caption += update => DispatcherQueue.TryEnqueue(() => UpdateCaption(update));
+            pipeline = new(speech, translation, japanese, !japanese && settings.UseLocalLlm ? readyLlm : null, SelectedAudio(), settings.FastTranscription, settings.CorrectTranscriptWithAi ? readyLlm : null, accurateSpeech is null ? null : new ReadySpeechBackend(accurateSpeech, session.AccuracyReady), translationGlossary: settings.TranslationGlossary); pipeline.Status += Status; pipeline.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); });
             if (speakerSession is { } speaker) pipeline.AudioFrameCaptured += speaker.Submit;
             StatusText.Text = japanese ? "日本語音声を待っています…" : "英語音声を待っています…"; await Task.Run(() => pipeline.RunAsync(token), token);
         }
@@ -678,7 +690,7 @@ public sealed partial class MainWindow : Window
     private async void RecordChanged(object sender, RoutedEventArgs e)
     {
         if (updatingRecordToggle || closing || !initialized) return;
-        if (RecordToggle.IsChecked != true) { await StopRecordingAsync(); return; }
+        if (RecordToggle.IsChecked != true) { await StopAllAsync(); return; }
         if (dialogOpen) { SetRecordingChecked(recordingStop is not null); return; }
         dialogOpen = true;
         RecordToggle.IsEnabled = false; StartButton.IsEnabled = false; ModeSelector.IsEnabled = false; AudioSelector.IsEnabled = false;
@@ -692,12 +704,15 @@ public sealed partial class MainWindow : Window
             if (recordingFilePickerForVerification is not null) path = await recordingFilePickerForVerification();
             else
             {
-                var file = await MakeSavePicker("録音ファイル名と保存先を指定", "." + settings.RecordingFormat, directory).PickSaveFileAsync();
+                var file = await MakeSavePicker("新規録音：名前を指定（専用フォルダーを作成）", "." + settings.RecordingFormat, directory).PickSaveFileAsync();
                 path = file?.Path;
             }
             if (string.IsNullOrWhiteSpace(path) || closing) { SetRecordingChecked(false); return; }
+            await StopAsync(); ClearCaptions();
+            settings.RecordingSaveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!; settings.Save();
+            path = RecordingLibrary.CreateSessionPath(path);
             StartRecording(path);
-            await StartAsync();
+            await StartAsync(allowRecordingDialog: true);
         }
         catch (Exception ex) { SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
         finally
@@ -742,7 +757,7 @@ public sealed partial class MainWindow : Window
             await Task.WhenAll(StopAsync(), StopRecordingAsync());
             settings.AudioInputKind = choice.Selection.Kind; settings.AudioDeviceId = choice.Selection.DeviceId;
             settings.AudioProcessId = choice.Selection.ProcessId; settings.AudioProcessStarted = choice.Selection.ProcessStarted;
-            settings.Save(); ClearCaptions();
+            settings.Save();
             if (recording) StartRecording(Path.Combine(recordingFolder, $"Locaptio-{DateTime.Now:yyyyMMdd-HHmmss-fff}.{settings.RecordingFormat}"));
             if (restart) await StartAsync(); else StatusText.Text = "音声入力を切り替えました。";
         }
@@ -753,14 +768,14 @@ public sealed partial class MainWindow : Window
     {
         recordingStop = new(); recordingPath = path; recordingStarted = Stopwatch.GetTimestamp();
         BeginRecordingIndex(path);
-        SetRecordingChecked(true); StopButton.IsEnabled = true; RecordingText.Text = path; RecordingIndicator.Visibility = Visibility.Visible; UpdateDiagnostics(); recordingTask = RecordAsync(path, recordingStop.Token);
+        SetRecordingChecked(true); RecordToggle.Content = "録音中"; SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path)); StopButton.IsEnabled = true; RecordingText.Text = path; RecordingIndicator.Visibility = Visibility.Visible; UpdateDiagnostics(); recordingTask = RecordAsync(path, recordingStop.Token);
     }
     private async Task RecordAsync(string path, CancellationToken token)
     {
         var recorder = new AudioRecording(SelectedAudio()); recorder.Status += Status;
         try { await Task.Run(() => recorder.RunAsync(path, token)); StatusText.Text = "録音を保存しました: " + path; }
         catch (Exception ex) { StatusText.Text = "録音に失敗しました: " + ex.Message; ShowStatusDetails(pin: true); }
-        finally { recordingStop?.Dispose(); recordingStop = null; await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; }
+        finally { recordingStop?.Dispose(); recordingStop = null; await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggle.Content = "新規録音"; RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
     }
     private async Task StopRecordingAsync()
     {
@@ -923,13 +938,14 @@ public sealed partial class MainWindow : Window
             };
             content.Children.Add(correctedColor); content.Children.Add(new Expander { Header = "色を選択", Content = colorPicker, HorizontalAlignment = HorizontalAlignment.Stretch });
             Slider("字幕：背景の透過率 (%)", 0, 100, (1 - settings.CaptionOpacity) * 100, v => settings.CaptionOpacity = 1 - v / 100);
+            Slider("字幕の幅・折り返し位置", 240, 1800, settings.CaptionWrapWidth, v => settings.CaptionWrapWidth = v);
             Slider("字幕：文字の不透明度 (%)", 0, 100, settings.CaptionTextOpacity * 100, v => settings.CaptionTextOpacity = v / 100);
             Slider("字幕の最大表示行数", 1, 20, settings.CaptionMaxLines, v => settings.CaptionMaxLines = (int)v);
             Toggle("文章の塊で字幕を表示（最新の発話だけを表示）", settings.CaptionSentenceMode, v => settings.CaptionSentenceMode = v);
             content.Children.Add(new TextBlock { Text = "行数を超える古い発話は非表示にします。1つの発話が長い場合は最新の部分を表示し、本体には全文を残します。", TextWrapping = TextWrapping.Wrap });
             Slider("字幕に表示する発話数", 1, 10, settings.CaptionRows, v => settings.CaptionRows = (int)v);
             Slider("字幕を消すまでの秒数（認識更新が止まった後）", 1, 20, settings.CaptionHideSeconds, v => settings.CaptionHideSeconds = v);
-            textPaletteSelector = Choice("字幕の文字色", ["英語: 白／日本語: 黄色", "両方とも白（既定）", "英語: 水色／日本語: 白", "指定した文字色"], settings.CaptionPalette == "custom" ? 3 : settings.CaptionPalette == "white" ? 1 : settings.CaptionPalette == "cyan-white" ? 2 : 0, i => settings.CaptionPalette = i == 3 ? "custom" : i == 1 ? "white" : i == 2 ? "cyan-white" : "white-yellow");
+            textPaletteSelector = Choice("字幕の文字色", ["英語: 白／日本語: 黄色", "両方とも白", "英語: 水色／日本語: 白（既定）", "指定した文字色"], settings.CaptionPalette == "custom" ? 3 : settings.CaptionPalette == "white" ? 1 : settings.CaptionPalette == "cyan-white" ? 2 : 0, i => settings.CaptionPalette = i == 3 ? "custom" : i == 1 ? "white" : i == 2 ? "cyan-white" : "white-yellow");
             surfaceSelector = Choice("字幕の背景", ["従来の暗い背景", "黒", "白（文字は濃色）", "ライブキャプション風／指定した背景色"], settings.CaptionBackground == "live" ? 3 : settings.CaptionBackground == "black" ? 1 : settings.CaptionBackground == "light" ? 2 : 0, i => settings.CaptionBackground = i == 3 ? "live" : i == 1 ? "black" : i == 2 ? "light" : "dark");
             Choice("字幕の文字揃え", ["中央", "左", "右"], settings.CaptionAlignment == "left" ? 1 : settings.CaptionAlignment == "right" ? 2 : 0, i => settings.CaptionAlignment = i == 1 ? "left" : i == 2 ? "right" : "center");
             Toggle("字幕の文字を太くする", settings.CaptionBold, v => settings.CaptionBold = v);
@@ -1031,8 +1047,8 @@ public sealed partial class MainWindow : Window
             Section("アプリの更新", "公式GitHubの公開版を確認します。音声や文字起こしは送信しません。");
             content.Children.Add(new TextBlock { Text = "現在のバージョン: " + CurrentAppVersion, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
             Toggle("起動時にアップデートを確認（次回起動から）", settings.CheckUpdatesOnStartup, v => settings.CheckUpdatesOnStartup = v);
-            Toggle("新しいバージョンのZIPを自動ダウンロード", settings.AutoDownloadUpdates, v => settings.AutoDownloadUpdates = v);
-            content.Children.Add(new TextBlock { Text = "新版はアプリデータ内のLocaptio/updatesに保存し、SHA-256を確認します。ダウンロード後に保存先を開き、ZIPを別フォルダーに展開して起動してください。録音中のアプリは置き換えません。", TextWrapping = TextWrapping.Wrap });
+            Toggle("新しいバージョンのSetupを自動ダウンロード（インストールは要確認）", settings.AutoDownloadUpdates, v => settings.AutoDownloadUpdates = v);
+            content.Children.Add(new TextBlock { Text = "新版はLocaptio/updatesに保存し、SHA-256を確認します。インストール前に許可のポップアップを表示し、「インストールする」を選んだ場合だけ録音を停止してSetupを開きます。「後で」なら作業を継続します。インストール先はSetupで変更できます。", TextWrapping = TextWrapping.Wrap });
             var checkUpdates = new Button { Content = "アプリの更新を確認" };
             var settingsUpdateNotice = new InfoBar { IsOpen = false, IsClosable = true, Severity = InfoBarSeverity.Informational };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(settingsUpdateNotice, "設定内の更新確認結果");

@@ -13,13 +13,25 @@ Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese t
 - System audio, a microphone, a selected application, or **system audio + microphone together**.
 - Immediate English text, FuguMT preview translation, and optional Qwen3 context-aware refinement.
 - Detachable **text-only caption bubbles** with configurable language order, fonts, colors and spacing.
-- Separate background/text opacity for both windows. Defaults: **70% transparent background, fully opaque white text**.
+- Separate background/text opacity for both windows. Defaults: **10% main-background transparency, 20% caption-background transparency, fully opaque cyan English / white Japanese**.
 - Full-session history with virtualization; scrolling up pauses automatic following.
 - UTF-8 text export and **WAV / MP3 / M4A** recording, with independent destinations.
 - CPU, NVIDIA CUDA, DirectML translation, and experimental AMD XDNA 2 NPU recognition.
 - Integration with the recognition results from Windows Live Captions.
 
 ## Download and requirements
+
+### Recording versus replay (v1.0.41)
+
+- **Start** starts/resumes transcription without recording. Changing audio input retains the conversation.
+- **New recording** names a fresh session and creates its own folder. Unchecking stops both recording and transcription, making Start available again.
+- **Recordings / Replay** opens saved audio and text without starting a new recording. An alternate file picker supports older recordings.
+
+Each session folder contains audio, `.locaptio.json` and `.txt`. Input changes during recording preserve history and split audio into another file in the same folder. A new recording, or Start after reviewing saved audio, opens a fresh workspace. Save unrecorded text manually when needed.
+
+Fresh-profile defaults: Windows captions integration, Japanese transcription, matching menu background, 10% main-background transparency, 20% caption-background transparency, cyan English and white Japanese. Existing recognition/mode choices and customizations are retained. Caption width and wrapping are configurable in Settings.
+
+Setup always offers a destination directory, including during updates. Downloaded updates require an explicit **Install** approval popup before Setup runs. Choosing Later keeps the current session running.
 
 Download **Locaptio-Setup-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
 
@@ -97,7 +109,7 @@ This prepares Python 3.12, base/small Whisper models and FuguMT. Downloads and c
 | Clear | Clear displayed/savable transcript history; recording continues |
 | 字幕 (Captions) | Open floating captions and minimize the main window; retain text in both |
 | テキスト保存 (Save text) | Export the full session as UTF-8 TXT |
-| 録音 (Record checkbox) | Choose a filename and destination, then confirm to start recording and transcription; cancel starts neither, and uncheck stops recording only |
+| 録音 (Record checkbox) | Choose a filename and destination, then confirm to start recording and transcription; cancel starts neither, and uncheck stops recording and transcription |
 | Scroll history | Pause automatic following and retain the reading position. Use **最新へ** (Latest) or End to resume |
 | Change input/mode | Clear caption history; changing input splits recording into a new file |
 

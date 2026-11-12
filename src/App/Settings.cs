@@ -5,15 +5,16 @@ namespace Locaptio.App;
 public sealed class Settings
 {
     public double FontSize { get; set; } = 22;
-    public double BackgroundOpacity { get; set; } = .3;
+    public double BackgroundOpacity { get; set; } = .9;
     public double TextOpacity { get; set; } = 1;
-    public string MenuBarTheme { get; set; } = "white";
+    public string MenuBarTheme { get; set; } = "matching";
     public string CaptionLayout { get; set; } = "english-top";
     public double CaptionEnglishSize { get; set; } = 28;
     public double CaptionJapaneseSize { get; set; } = 32;
-    public double CaptionOpacity { get; set; } = .3;
+    public double CaptionOpacity { get; set; } = .8;
+    public double CaptionWrapWidth { get; set; } = 960;
     public double CaptionTextOpacity { get; set; } = 1;
-    public string CaptionPalette { get; set; } = "white";
+    public string CaptionPalette { get; set; } = "cyan-white";
     public string CaptionBackground { get; set; } = "live";
     public string CaptionAlignment { get; set; } = "center";
     public bool CaptionBold { get; set; } = true;
@@ -27,7 +28,7 @@ public sealed class Settings
     public string CaptionTextColor { get; set; } = "#FFFFFF";
     public string CaptionSurfaceColor { get; set; } = "#363636";
     public string CaptionBorderColor { get; set; } = "#858585";
-    public string SpeechEngine { get; set; } = "whisper";
+    public string SpeechEngine { get; set; } = "windows-live";
     public bool AutoRestartWindowsCaptions { get; set; } = true;
     public int WindowsCaptionRestartSeconds { get; set; } = 180;
     public bool AutoSwitchWindowsCaptionLanguage { get; set; } = true;
@@ -67,7 +68,7 @@ public sealed class Settings
     public bool SpeakerDiarization { get; set; }
     public double SpeakerThreshold { get; set; } = .55;
     public string[] SpeakerColors { get; set; } = ["#7DD3FC", "#FCA5A5", "#86EFAC", "#FDE68A", "#C4B5FD", "#FDBA74", "#F9A8D4", "#5EEAD4"];
-    public string CaptionMode { get; set; } = "translate";
+    public string CaptionMode { get; set; } = "japanese";
     public string SpeechModel { get; set; } = "large-v3-turbo";
     public string SpeechPrompt { get; set; } = "";
     public string TranslationGlossary { get; set; } = "";
@@ -108,9 +109,17 @@ public sealed class Settings
                 if (settings.CaptionOpacity == 1) settings.CaptionOpacity = .3;
                 settings.AppearanceVersion = 3;
             }
+            if (settings.AppearanceVersion < 4)
+            {
+                if (settings.BackgroundOpacity == .3) settings.BackgroundOpacity = .9;
+                if (settings.CaptionOpacity == .3) settings.CaptionOpacity = .8;
+                if (settings.MenuBarTheme == "white") settings.MenuBarTheme = "matching";
+                if (settings.CaptionPalette == "white") settings.CaptionPalette = "cyan-white";
+                settings.AppearanceVersion = 4;
+            }
             return settings;
         }
-        catch { return new() { AppearanceVersion = 3 }; }
+        catch { return new() { AppearanceVersion = 4 }; }
     }
     public void Save()
     {

@@ -16,7 +16,7 @@ public sealed partial class MainWindow
         string report = "";
         try
         {
-            var appearance = new Settings { CaptionMode = "japanese", CaptionMaxLines = 3, CaptionRows = 3, CaptionWindowWidth = 600 };
+            var appearance = new Settings { CaptionMode = "japanese", CaptionMaxLines = 3, CaptionRows = 3, CaptionWrapWidth = 600 };
             testWindow = new CaptionWindow(appearance); testWindow.Activate(); testWindow.HideIfIdle();
             var sample = new CaptionUpdate(1, 1, "最初の文章です。", null, false, Stopwatch.GetTimestamp(), 0, 0);
             testWindow.Update([sample, sample with { Id = 2, English = "次の文章も途中で文字が切れずに表示されます。" }]);
