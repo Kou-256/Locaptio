@@ -1,9 +1,10 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿. (Join-Path $PSScriptRoot 'setup-common.ps1')
+$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
     if (-not (Test-Path models/fugumt-source/pytorch_model.bin)) { throw '先にscripts/setup.ps1でモデルを準備してください' }
-    uv venv --python 3.12 .venv-dml
+    uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv-dml
     if ($LASTEXITCODE) { throw 'Python environment failed' }
     uv pip install --python .venv-dml/Scripts/python.exe -r inference/requirements-directml.txt
     if ($LASTEXITCODE) { throw 'Dependencies failed' }

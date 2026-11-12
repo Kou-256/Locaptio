@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace Locaptio.Core.AI;
 
@@ -27,7 +28,8 @@ public static class LocalLlmPreparation
             string tools = await EnsureUvAsync(root, token);
             progress?.Invoke(new("llm", 1, 4, "Python・LLMライブラリを準備中"));
             var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"))
-            { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
+            { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true,
+                StandardOutputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
             foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Backend", cpu ? "cpu" : "vulkan" }) start.ArgumentList.Add(arg);
             start.Environment["PATH"] = tools + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
             start.Environment["PYTHONIOENCODING"] = "utf-8";

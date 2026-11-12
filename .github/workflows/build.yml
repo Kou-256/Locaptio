@@ -40,6 +40,8 @@ jobs:
         run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --recording-playback
       - name: Check audio file import and recording bundles
         run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --file-import
+      - name: Check Japanese setup diagnostics
+        run: dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --setup-encoding
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'

@@ -1,11 +1,12 @@
 ﻿param([ValidateSet('tiny.en','base.en','small.en')][string]$Speech = 'tiny.en', [switch]$SkipBuild)
+. (Join-Path $PSScriptRoot 'setup-common.ps1')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { throw 'uv is required: https://docs.astral.sh/uv/getting-started/installation/' }
     if (-not (Test-Path '.venv/Scripts/python.exe')) {
-        uv venv --python 3.12 .venv
+        uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv
         if ($LASTEXITCODE) { throw 'Python環境作成に失敗しました' }
     }
     uv pip install --python .venv/Scripts/python.exe -r inference/requirements.txt

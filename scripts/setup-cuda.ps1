@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿. (Join-Path $PSScriptRoot 'setup-common.ps1')
+$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $runtime = Join-Path $projectRoot 'runtime/cuda'
 $cache = Join-Path $runtime 'downloads'

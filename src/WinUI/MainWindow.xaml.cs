@@ -128,6 +128,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-session-workflow")) await VerifySessionWorkflowAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-library-view")) await VerifyLibraryViewAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-file-import")) await VerifyFileImportAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-preparation-failure")) await VerifyPreparationFailureAsync(); };
         Root.Loaded += async (_, _) =>
         {
             if (!Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) return;
@@ -296,6 +297,7 @@ public sealed partial class MainWindow : Window
         finally
         {
             speakerStop.Cancel();
+            preparationEpoch++; preparationVisible = false; PreparationPanel.Visibility = Visibility.Collapsed;
             if (token.IsCancellationRequested && prepared is not null && (!prepared.Ready.IsCompleted || !prepared.AccuracyReady.IsCompleted || prepared.LlmReady is { IsCompleted: false }))
             {
                 prepared.Dispose(); prepared = null; preparedKey = ""; preparationEpoch++; preparationVisible = false;

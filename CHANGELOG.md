@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.43 — Readable Japanese setup errors and Python preparation
+
+- 自動準備のPowerShell・外部プロセス・アプリの出力をUTF-8へ統一し、日本語エラーの文字化けを修正。
+- Pythonのバージョン別実体を直接指定し、マイナーバージョンのジャンクションで発生するWindowsエラー448を回避。利用可能な実体がなければアプリ用領域に準備します。
+- モデル準備失敗・中止後に0%の進捗バーを残さず、診断を保持して再試行できるように修正。
+- Preserve Japanese native diagnostics through Windows PowerShell, avoid Python minor-version junctions, and clear stale preparation progress after failure.
+
+## 1.0.42 — Audio import and recording management
+
+- MP3・M4A・WAVをローカルで文字起こし。不足する音声モデル・Python環境を自動準備。
+- 録音一覧から共有ZIP保存、音声・文章一式の移動、確認後のごみ箱削除を追加。
+- Local audio file transcription, automatic speech setup and recording bundle management.
+
 ## 1.0.41 — Recording sessions, retained history and stable captions
 
 - インストール先の選択画面を常に表示。更新のSetup実行前に確認ポップアップを追加し、「後で」では録音・文字起こしを継続します。

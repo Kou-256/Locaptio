@@ -1,9 +1,10 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿. (Join-Path $PSScriptRoot 'setup-common.ps1')
+$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
     if (!(Test-Path '.venv-winml/Scripts/python.exe')) {
-        uv venv --python 3.12 .venv-winml
+        uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv-winml
         if ($LASTEXITCODE) { throw 'NPU Python環境の作成に失敗しました' }
     }
     uv pip install --python .venv-winml/Scripts/python.exe -r inference/requirements-windowsml.txt

@@ -7,6 +7,30 @@ using Microsoft.UI.Xaml;
 namespace Locaptio.WinUI;
 public sealed partial class MainWindow
 {
+    private async Task VerifyPreparationFailureAsync()
+    {
+        bool passed = false; string report = "";
+        try
+        {
+            captionsForVerification = async (token, _) =>
+            {
+                BeginPreparation()(new("音声環境の自動準備", 0, 1, "日本語の診断"));
+                await Task.Delay(100, token);
+                throw new IOException("信頼されていないマウントポイントが含まれているため、パスをスキャンできません。");
+            };
+            await StartAsync(); if (captionTask is not null) await captionTask;
+            await Task.Delay(100);
+            passed = PreparationPanel.Visibility == Visibility.Collapsed && !preparationVisible && StartButton.IsEnabled && captionStop is null
+                && StatusText.Text.Contains("信頼されていないマウントポイント");
+            report = $"PASS={passed}; failed setup leaves no 0% progress panel; Japanese diagnostic retained; Start available";
+        }
+        catch (Exception ex) { report = ex.ToString(); }
+        finally
+        {
+            File.WriteAllText(Path.Combine(root, "artifacts", "preparation-failure-verification.txt"), report);
+            Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync();
+        }
+    }
     private async Task VerifyFileImportAsync()
     {
         string directory = settings.RecordingSaveDirectory, model = settings.SpeechModel, device = settings.InferenceDevice, mode = settings.CaptionMode;

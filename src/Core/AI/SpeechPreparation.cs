@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Locaptio.Core.AI;
 
@@ -33,7 +34,8 @@ public static class SpeechPreparation
         progress?.Invoke(new("音声環境の自動準備", 0, 1, "初回のみダウンロードします。ネット接続と数GBの空き容量が必要です。Stopで中止できます。"));
         string tools = await LocalLlmPreparation.EnsureUvAsync(root, token);
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"))
-        { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
+        { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true,
+            StandardOutputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
         foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file }.Concat(args)) start.ArgumentList.Add(arg);
         start.Environment["PATH"] = tools + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
         start.Environment["PYTHONIOENCODING"] = "utf-8";

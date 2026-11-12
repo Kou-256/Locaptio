@@ -1,10 +1,11 @@
 ﻿param([ValidateSet('tiny','base','small','medium','large-v3-turbo')][string]$Model = 'small', [switch]$Translation)
+. (Join-Path $PSScriptRoot 'setup-common.ps1')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
     if (-not (Test-Path '.venv/Scripts/python.exe')) {
-        uv venv --python 3.12 .venv
+        uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv
         if ($LASTEXITCODE) { throw 'Python environment creation failed' }
     }
     uv pip install --python .venv/Scripts/python.exe -r inference/requirements.txt
