@@ -20,6 +20,9 @@ internal static class RecordingPlaybackChecks
             Check(!recording.Observe(first with { Id = 2, Started = start - 1 }), "Pre-recording caption linked");
             var document = recording.Snapshot();
             Check(document.Phrases.Length == 2 && document.Phrases[0].Seconds == 2 && document.Phrases[0].Text == "修正後の会議", "Timing, revisions, or reused ID handling failed");
+            Check(RecordingTranscript.At(document, 1) is null && RecordingTranscript.At(document, 2)?.Seconds == 2 && RecordingTranscript.At(document, 6)?.Seconds == 6, "Playback highlight boundary failed");
+            Check(WindowsCaptionInputPolicy.Supported(new()) && WindowsCaptionInputPolicy.Supported(new("microphone"))
+                && !WindowsCaptionInputPolicy.Supported(new("microphone", "specific-device")) && !WindowsCaptionInputPolicy.Supported(new("mixed")) && !WindowsCaptionInputPolicy.Supported(new("application")), "Windows microphone routing failed");
             Check(RecordingTranscript.Search(document, "meeting").Length == 1 && RecordingTranscript.Search(document, "会議").Length == 2 && RecordingTranscript.Search(document, " ").Length == 0, "Bilingual search failed");
             await RecordingTranscript.SaveAsync(recording.AudioPath, document);
             var loaded = await RecordingTranscript.LoadAsync(recording.AudioPath);

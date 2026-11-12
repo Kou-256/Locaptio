@@ -29,6 +29,17 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
     public RecordingDocument Snapshot() => new(1, Path.GetFileName(AudioPath), RecordedAt, approximateTiming, phrases.Values.OrderBy(p => p.Seconds).ThenBy(p => p.Id).ToArray());
     public static RecordingPhrase[] Search(RecordingDocument document, string query) => string.IsNullOrWhiteSpace(query) ? []
         : document.Phrases.Where(p => p.Text.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) || (p.Translation?.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)).ToArray();
+    public static RecordingPhrase? At(RecordingDocument document, double seconds)
+    {
+        int low = 0, high = document.Phrases.Length - 1, found = -1;
+        while (low <= high)
+        {
+            int middle = low + (high - low) / 2;
+            if (document.Phrases[middle].Seconds <= seconds) { found = middle; low = middle + 1; }
+            else high = middle - 1;
+        }
+        return found < 0 ? null : document.Phrases[found];
+    }
     public static async Task SaveAsync(string audio, RecordingDocument document)
     {
         string target = Sidecar(audio), temporary = target + ".tmp";
@@ -42,6 +53,6 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
         var document = JsonSerializer.Deserialize<RecordingDocument>(await File.ReadAllTextAsync(info.FullName)) ?? throw new InvalidDataException("録音の文字起こしを読み込めません。");
         if (document.Version != 1 || document.Phrases is null || document.Phrases.Any(p => !double.IsFinite(p.Seconds) || p.Seconds < 0 || p.Text is null)) throw new InvalidDataException("録音の文字起こし形式に対応していません。");
         // Never follow a path supplied by the sidecar; audio is selected by the user.
-        return document;
+        return document with { Phrases = document.Phrases.OrderBy(p => p.Seconds).ThenBy(p => p.Id).ToArray() };
     }
 }

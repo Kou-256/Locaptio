@@ -27,6 +27,10 @@ public sealed partial class MainWindow
             bool playback = playbackOutput?.PlaybackState == PlaybackState.Playing && playbackReader!.CurrentTime.TotalSeconds >= .6 && playbackReader.CurrentTime.TotalSeconds < 2.5;
             PlaybackClick(PlaybackButton, new RoutedEventArgs()); bool paused = playbackOutput?.PlaybackState == PlaybackState.Paused;
             PlaybackPosition.Value = 3; bool seek = Math.Abs(playbackReader!.CurrentTime.TotalSeconds - 3) < .2;
+            bool highlight = highlightedPlaybackPhrase?.Id == 2;
+            await Task.Delay(100);
+            highlight &= RealizedCaptionRows.Where(row => row.DataContext is CaptionHistoryEntry entry && entry.Id == 2)
+                .SelectMany(row => row.Children.OfType<Microsoft.UI.Xaml.Controls.TextBlock>()).Any(text => text.TextHighlighters.Count > 0);
             SetTextSelection(new(new(1, 0), new(2, 5), 0)); await CopyTextSelectionAsync();
             string copied = await Windows.ApplicationModel.DataTransfer.Clipboard.GetContent().GetTextAsync();
             bool selection = copied.Contains("会議") && copied.Contains(Environment.NewLine);
@@ -36,8 +40,9 @@ public sealed partial class MainWindow
             captionStop.Dispose(); captionStop = null; await LoadRecordingAsync(path);
             PlayCaption(history[0].Id); bool reopened = history.Count == 2 && playbackOutput?.PlaybackState == PlaybackState.Playing;
             playbackOutput?.Pause();
-            passed = search && playback && paused && seek && selection && persisted && reopened;
-            report = $"PASS={passed}; search={search}; playback={playback}; pause={paused}; seek={seek}; multiRowCopy={selection}; sidecar={persisted}; reopen={reopened}; synthetic silence only; no user audio or models captured";
+            PlaybackPosition.Value = playbackDocument!.Phrases[0].Seconds + .1;
+            passed = search && playback && paused && seek && selection && persisted && reopened && highlight;
+            report = $"PASS={passed}; search={search}; playback={playback}; pause={paused}; seek={seek}; highlight={highlight}; multiRowCopy={selection}; sidecar={persisted}; reopen={reopened}; synthetic silence only; no user audio or models captured";
             await Task.Delay(200);
             var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap(); await bitmap.RenderAsync(Root);
             var pixels = await bitmap.GetPixelsAsync();

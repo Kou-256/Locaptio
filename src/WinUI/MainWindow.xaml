@@ -71,6 +71,7 @@
    <InfoBar x:Name="UpdateNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="アプリの更新"/>
    <InfoBar x:Name="WindowsCaptionWarning" Severity="Warning" IsOpen="False" IsClosable="False" Title="Windowsライブキャプションとの接続が切れました"/>
    <InfoBar x:Name="WindowsLanguageWarning" Severity="Warning" IsOpen="False" IsClosable="True" Title="Windows字幕の言語を確認してください"/>
+   <InfoBar x:Name="WindowsMicrophoneNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="Windows字幕でマイクを使うには" Message="Windowsライブキャプションの設定 → 基本設定 → マイク音声を含めるをONにしてください。Windowsの既定の入力を使用し、PC音声と重なるとPC音声が優先されます。マイクのアクセス許可が必要な場合はWindows側で許可してください。"/>
    <StackPanel x:Name="PreparationPanel" Spacing="3" Visibility="Collapsed" ToolTipService.ToolTip="割合は完了した準備工程の割合です。残り時間やNPUコンパイル内部の進捗を推測した値ではありません。">
     <TextBlock x:Name="PreparationText" FontSize="12" Foreground="#FFFFFF" TextWrapping="Wrap"/>
     <ProgressBar x:Name="PreparationBar" Minimum="0" Maximum="100" Height="5"/>

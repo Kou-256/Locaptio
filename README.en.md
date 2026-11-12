@@ -25,6 +25,8 @@ Download **Locaptio-Setup-x64.exe** from the [latest release](https://github.com
 
 ### Recording search and replay (v1.0.39)
 
+Since v1.0.40, the current **utterance is highlighted** during playback. Scrolling or selecting text pauses playback following; replaying from text or search resumes it. Exact word-level highlighting is not provided.
+
 After stopping a recording, click transcript text to replay from just before that utterance. Drag to select and Ctrl+C still work; the selection context menu also offers replay. Use the magnifying-glass button to search source/translated text and play timestamped results. Playback includes pause and seeking.
 
 The app saves an adjacent `audio-filename.locaptio.json` containing transcript text and media offsets. Keep it with the audio when moving or sharing files. Use **File → Open recording and transcript** to reopen them. Timing is utterance-level; Windows caption timing is estimated from display updates, without exact word timestamps. Older audio without this sidecar plays as audio only. Replay is available after recording stops to avoid recording its own playback.
@@ -32,6 +34,12 @@ The app saves an adjacent `audio-filename.locaptio.json` containing transcript t
 ### Automatic local LLM setup
 
 Enabling AI correction or context translation automatically prepares missing Python dependencies and the default Qwen3 model. No manual PowerShell command is needed. Initial preparation needs internet and several GB of storage; the app shows preparation stages and Stop/exit cancels it. Prepared models are reused and inference does not send audio or text to a cloud service. Missing custom models must be provided or reset to the default in Settings.
+
+### Microphone input with Windows captions (v1.0.40)
+
+Select Windows captions integration and **Microphone (default input)**, then Start. In Windows captions, enable **Settings → Preferences → Include microphone audio**. Windows resets this option to OFF each time captions starts; privacy permission prompts must be handled in Windows. Windows uses its default input and prioritizes PC audio if both sources overlap. [Microsoft documentation](https://support.microsoft.com/en-us/accessibility/windows/use-live-captions-to-better-understand-audio). Specific devices, applications and mixed input use Whisper.
+
+Setup offers Start menu (enabled by default) and desktop shortcuts as separate tasks. It adds an All apps entry without changing pinned items.
 
 | Item | Requirement |
 | --- | --- |

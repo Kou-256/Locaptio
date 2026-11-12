@@ -20,6 +20,8 @@ public sealed partial class MainWindow
     private readonly DispatcherTimer searchTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private Task indexWrite = Task.CompletedTask;
     private bool indexDirty, updatingPlayback;
+    private RecordingPhrase? highlightedPlaybackPhrase;
+    private bool followPlayback = true;
     private sealed record RecordingSearchHit(RecordingPhrase Phrase)
     {
         public string Time => FormatMediaTime(Phrase.Seconds);
@@ -35,6 +37,7 @@ public sealed partial class MainWindow
     private void InitializeRecordingPlayback()
     {
         playbackTimer.Tick += (_, _) => UpdatePlaybackPosition();
+        CaptionList.PointerWheelChanged += (_, _) => followPlayback = false;
         recordingIndexTimer.Tick += async (_, _) => { if (indexWrite.IsCompleted) await SaveRecordingIndexAsync(); };
         searchTimer.Tick += (_, _) => { searchTimer.Stop(); RefreshRecordingSearch(); };
         Closed += (_, _) => { ClosePlayback(); recordingIndexTimer.Stop(); searchTimer.Stop(); };
@@ -81,6 +84,7 @@ public sealed partial class MainWindow
     {
         playbackTimer.Stop(); playbackOutput?.Stop(); playbackOutput?.Dispose(); playbackOutput = null;
         playbackReader?.Dispose(); playbackReader = null;
+        SetPlaybackHighlight(null);
     }
     private bool EnsurePlayback()
     {
@@ -99,6 +103,7 @@ public sealed partial class MainWindow
     {
         if (!EnsurePlayback()) return;
         playbackReader!.CurrentTime = TimeSpan.FromSeconds(Math.Clamp(phrase.Seconds - .35, 0, playbackReader.TotalTime.TotalSeconds));
+        followPlayback = true;
         playbackOutput!.Play(); UpdatePlaybackPosition();
     }
     private void PlayCaption(long id)
@@ -122,6 +127,28 @@ public sealed partial class MainWindow
         updatingPlayback = true; PlaybackPosition.Value = playbackReader.CurrentTime.TotalSeconds; updatingPlayback = false;
         PlaybackTime.Text = FormatMediaTime(playbackReader.CurrentTime.TotalSeconds) + " / " + FormatMediaTime(playbackReader.TotalTime.TotalSeconds);
         PlaybackButton.Content = playbackOutput?.PlaybackState == PlaybackState.Playing ? "一時停止" : "再生";
+        SetPlaybackHighlight(playbackDocument is not null && playbackReader.CurrentTime < playbackReader.TotalTime
+            ? RecordingTranscript.At(playbackDocument, playbackReader.CurrentTime.TotalSeconds) : null);
+    }
+    private void SetPlaybackHighlight(RecordingPhrase? phrase)
+    {
+        if (highlightedPlaybackPhrase == phrase) return;
+        highlightedPlaybackPhrase = phrase;
+        foreach (var row in RealizedCaptionRows) ApplyTextSelection(row);
+        if (phrase is null || !followPlayback || draggingText || HasTranscriptSelection) return;
+        int index = historyIds.BinarySearch(phrase.Id);
+        if (index >= 0 && history[index].Caption.Started == phrase.Started) CaptionList.ScrollIntoView(history[index]);
+    }
+    private void ApplyPlaybackHighlight(Microsoft.UI.Xaml.Controls.TextBlock text, CaptionHistoryEntry entry)
+    {
+        if (highlightedPlaybackPhrase is not { } phrase || entry.Id != phrase.Id || entry.Caption.Started != phrase.Started || text.Text.Length == 0) return;
+        var highlight = new Microsoft.UI.Xaml.Documents.TextHighlighter
+        {
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 34, 91, 110)),
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
+        };
+        highlight.Ranges.Add(new Microsoft.UI.Xaml.Documents.TextRange { StartIndex = 0, Length = text.Text.Length });
+        text.TextHighlighters.Add(highlight);
     }
     private void PlaybackSeekChanged(object sender, RangeBaseValueChangedEventArgs e)
     {

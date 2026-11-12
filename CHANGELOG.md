@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.40 — Setup checkboxes, playback highlighting and Windows microphone input
+
+- Setupのカスタム描画をネイティブコントロールに切り替え、高DPI環境でのチェックボックスの見切れを修正。スタートメニューへの追加（既定ON）を追加タスクとして明示しました。
+- 再生中の発話を強調し、発話に合わせて表示位置を追従。選択・スクロール中は追従を止め、コピーの選択色は再生の強調より優先します。
+- 「マイク（既定の入力）」をWindows字幕連携でも使用可能にし、Windows側のマイクON操作を案内します。マイクのアクセス許可やWindowsの入力機器設定は自動変更しません。
+- Fixed Setup checkbox rendering, added an explicit Start menu task, highlighted the current recorded utterance, and enabled default-microphone Windows captions integration with setup guidance.
+
 ## 1.0.39 — Setup installer, automatic LLM preparation and recording replay
 
 - 管理者権限不要の `Locaptio-Setup-x64.exe` を追加。スタートメニュー・アンインストールに対応し、アプリの更新もSetupを優先します。ZIP版は継続します。

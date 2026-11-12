@@ -57,6 +57,7 @@ public sealed partial class MainWindow
     {
         var point = e.GetCurrentPoint(CaptionList);
         if (!point.Properties.IsLeftButtonPressed) return;
+        followPlayback = false;
         var hit = RealizedCaptionRows.SelectMany(row => row.Children.OfType<TextBlock>()).FirstOrDefault(text =>
         {
             var top = text.TransformToVisual(CaptionList).TransformPoint(new Point());
@@ -167,6 +168,7 @@ public sealed partial class MainWindow
         for (int column = 0; column < 2; column++)
         {
             var text = (TextBlock)row.Children[column]; text.TextHighlighters.Clear();
+            ApplyPlaybackHighlight(text, entry);
             if (textSelection is null || textSelection.Column != column) continue;
             var range = textSelection.Range(entry.Id, text.Text.Length);
             if (range.Length == 0) continue;
@@ -179,6 +181,7 @@ public sealed partial class MainWindow
         textSelection = null; releasedSelectionText = "";
         foreach (var row in RealizedCaptionRows)
             foreach (var text in row.Children.OfType<TextBlock>()) { text.TextHighlighters.Clear(); text.Select(text.ContentStart, text.ContentStart); }
+        foreach (var row in RealizedCaptionRows) ApplyTextSelection(row);
         FlushSelectedRowUpdates();
         if (!draggingText) UpdateHistoryFollowingFromViewport();
     }
