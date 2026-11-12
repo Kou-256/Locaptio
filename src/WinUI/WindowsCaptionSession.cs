@@ -32,6 +32,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         {
             translation.PreparationChanged += p => PreparationChanged?.Invoke(p with { Component = "翻訳モデル" });
             translation.Status += s => Status?.Invoke(s);
+            await SpeechPreparation.EnsureAsync(root, "base", true, cpu ? "cpu" : device == "cuda" ? "cuda" : "auto", p => PreparationChanged?.Invoke(p), linked.Token);
             await translation.StartAsync(root, "translation", cpu || device == "cpu", linked.Token, false, device: device == "cuda" ? "cuda" : "auto");
             Status?.Invoke("速報翻訳の準備完了。英文表示と並行して日本語訳を更新します。");
         }

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Locaptio.Core;
 using Locaptio.Core.Audio;
 using Microsoft.UI.Windowing;
@@ -7,14 +7,42 @@ using Microsoft.UI.Xaml;
 namespace Locaptio.WinUI;
 public sealed partial class MainWindow
 {
+    private async Task VerifyFileImportAsync()
+    {
+        string directory = settings.RecordingSaveDirectory, model = settings.SpeechModel, device = settings.InferenceDevice, mode = settings.CaptionMode;
+        bool cpu = settings.CpuOnly, correction = settings.CorrectTranscriptWithAi;
+        bool passed = false; string report = "";
+        try
+        {
+            settings.RecordingSaveDirectory = Path.Combine(root, "artifacts", "file-import-verification-" + Guid.NewGuid().ToString("N"));
+            settings.SpeechModel = "small"; settings.InferenceDevice = "cpu"; settings.CpuOnly = true; settings.CaptionMode = "japanese"; settings.CorrectTranscriptWithAi = false;
+            ApplySettings();
+            string source = Path.Combine(root, "artifacts", "test-ja.wav");
+            captionStop = new(); captionTask = ImportAudioAsync(source, captionStop.Token); await captionTask;
+            bool imported = reviewingRecording && history.Count > 0 && history.Any(p => p.Caption.English.Contains("日本語")) && File.Exists(playbackPath + ".txt") && File.Exists(source);
+            bool restart = captionStop is null && StartButton.IsEnabled && !StopButton.IsEnabled;
+            bool replay = playbackDocument?.Phrases.Length == history.Count && playbackReader is not null;
+            captionStop = new(); captionStop.Cancel(); captionTask = ImportAudioAsync(source, captionStop.Token); await captionTask;
+            bool cancel = captionStop is null && StartButton.IsEnabled && history.Count > 0;
+            passed = imported && restart && replay && cancel;
+            report = $"PASS={passed}; actualJapaneseImport={imported}; restart={restart}; replay={replay}; cancelPreservesText={cancel}";
+        }
+        catch (Exception ex) { report = ex.ToString(); }
+        finally
+        {
+            settings.RecordingSaveDirectory = directory; settings.SpeechModel = model; settings.InferenceDevice = device; settings.CaptionMode = mode; settings.CpuOnly = cpu; settings.CorrectTranscriptWithAi = correction;
+            File.WriteAllText(Path.Combine(root, "artifacts", "file-import-ui-verification.txt"), report);
+            Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync();
+        }
+    }
     private async Task VerifyLibraryViewAsync()
     {
         string original = settings.RecordingSaveDirectory; double background = settings.BackgroundOpacity;
         try
         {
-            Title = "Locaptio — 録音一覧の表示確認";
+            Title = "Locaptio — 録音一覧の表示確認"; AppWindow.Show(); Activate();
             settings.BackgroundOpacity = 1; ApplySettings();
-            settings.RecordingSaveDirectory = Path.Combine(root, "artifacts", "library-view-1.0.41");
+            settings.RecordingSaveDirectory = Path.Combine(root, "artifacts", "library-view-1.0.42");
             foreach (string name in new[] { "打ち合わせ", "講義メモ" })
             {
                 string path = RecordingLibrary.CreateSessionPath(Path.Combine(settings.RecordingSaveDirectory, name + ".wav"));

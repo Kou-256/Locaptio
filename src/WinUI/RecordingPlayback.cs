@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Locaptio.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -196,26 +196,91 @@ public sealed partial class MainWindow
         StartButton.IsEnabled = RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = false;
         try
         {
-            var recordings = await Task.Run(() => RecordingLibrary.List(RecordingRoot));
-            var list = new ListView { ItemsSource = recordings, DisplayMemberPath = nameof(SavedRecording.Title), MaxHeight = 360, SelectionMode = ListViewSelectionMode.Single };
-            var libraryContent = new StackPanel { Spacing = 12 };
-            libraryContent.Children.Add(new TextBlock { Text = recordings.Length == 0 ? "保存済みの録音はありません。本体の「新規録音」から録音できます。" : "音声とテキストをまとめて開きます。", TextWrapping = TextWrapping.Wrap });
-            libraryContent.Children.Add(list);
-            var library = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "録音一覧・再生（新規録音は開始しません）", Content = libraryContent, PrimaryButtonText = "選んだ録音を開く", SecondaryButtonText = "別の音声ファイル…", CloseButtonText = "閉じる", IsPrimaryButtonEnabled = false, RequestedTheme = ElementTheme.Dark };
-            list.SelectionChanged += (_, _) => library.IsPrimaryButtonEnabled = list.SelectedItem is SavedRecording;
-            var result = await library.ShowAsync();
-            if (result == ContentDialogResult.Primary && list.SelectedItem is SavedRecording selected) { await LoadRecordingAsync(selected.AudioPath); return; }
-            if (result != ContentDialogResult.Secondary) return;
-            var picker = new FileOpenPicker(AppWindow.Id) { Title = "保存済み録音を開く（隣の .locaptio.json も必要です）" };
-            foreach (var extension in new[] { ".wav", ".mp3", ".m4a" }) picker.FileTypeFilter.Add(extension);
-            var file = await picker.PickSingleFileAsync(); if (file is null) return;
-            await LoadRecordingAsync(file.Path);
+            while (!closing)
+            {
+                var recordings = await Task.Run(() => RecordingLibrary.List(RecordingRoot));
+                var list = new ListView { ItemsSource = recordings, DisplayMemberPath = nameof(SavedRecording.Title), MaxHeight = 300, SelectionMode = ListViewSelectionMode.Single };
+                var content = new StackPanel { Spacing = 12 };
+                content.Children.Add(new TextBlock { Text = "音声とテキストをまとめて管理します。共有はZIPを作成し、ご自身で送信先を選べます。", TextWrapping = TextWrapping.Wrap });
+                content.Children.Add(list);
+                var library = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "録音一覧・再生", Content = content, PrimaryButtonText = "開く", SecondaryButtonText = "別の音声…", CloseButtonText = "閉じる", IsPrimaryButtonEnabled = false, RequestedTheme = ElementTheme.Dark };
+                string action = "";
+                var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+                foreach (var item in new[] { ("共有ZIPを作成…", "share"), ("移動…", "move"), ("削除…", "delete") })
+                {
+                    var button = new Button { Content = item.Item1, IsEnabled = false };
+                    list.SelectionChanged += (_, _) => button.IsEnabled = list.SelectedItem is SavedRecording;
+                    button.Click += (_, _) => { action = item.Item2; library.Hide(); };
+                    actions.Children.Add(button);
+                }
+                content.Children.Add(actions);
+                list.SelectionChanged += (_, _) => library.IsPrimaryButtonEnabled = list.SelectedItem is SavedRecording;
+                var result = await library.ShowAsync();
+                if (list.SelectedItem is SavedRecording selected)
+                {
+                    if (action.Length > 0)
+                    {
+                        try { await ManageRecordingAsync(selected, action); }
+                        catch (Exception ex)
+                        {
+                            await new ContentDialog { XamlRoot = Root.XamlRoot, Title = "録音の操作に失敗しました", Content = ex.Message, CloseButtonText = "閉じる", RequestedTheme = ElementTheme.Dark }.ShowAsync();
+                        }
+                        continue;
+                    }
+                    if (result == ContentDialogResult.Primary) { await LoadRecordingAsync(selected.AudioPath); return; }
+                }
+                if (result != ContentDialogResult.Secondary) return;
+                var picker = new FileOpenPicker(AppWindow.Id) { Title = "保存済み録音を開く（隣の .locaptio.json も必要です）" };
+                foreach (var extension in new[] { ".wav", ".mp3", ".m4a" }) picker.FileTypeFilter.Add(extension);
+                var file = await picker.PickSingleFileAsync(); if (file is null) continue;
+                await LoadRecordingAsync(file.Path); return;
+            }
         }
         catch (Exception ex) { Status("録音を開けません: " + ex.Message); }
         finally
         {
             dialogOpen = false; StartButton.IsEnabled = !closing && captionStop is null;
             RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = !closing;
+        }
+    }
+    private async Task ManageRecordingAsync(SavedRecording selected, string action)
+    {
+        if (action == "share")
+        {
+            var picker = new FileSavePicker(AppWindow.Id) { Title = "共有用ZIPを保存（音声・文字起こし・検索データ）", SuggestedFileName = Path.GetFileNameWithoutExtension(selected.AudioPath) + ".zip" };
+            picker.FileTypeChoices.Add("共有用ZIP", new List<string> { ".zip" });
+            var file = await picker.PickSaveFileAsync(); if (file is null) return;
+            // Windows' save picker may reserve an empty destination; ask before replacing actual content.
+            if (File.Exists(file.Path))
+            {
+                var confirmation = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "既存のZIPを置き換えますか？", Content = file.Path, PrimaryButtonText = "置き換える", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark };
+                if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+            }
+            string temporary = Path.Combine(Path.GetDirectoryName(file.Path)!, Guid.NewGuid().ToString("N") + ".zip");
+            try { await RecordingFiles.ShareAsync(selected.AudioPath, temporary); File.Move(temporary, file.Path, true); }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { "/select,", file.Path }, UseShellExecute = false });
+            return;
+        }
+        if (action == "move")
+        {
+            var picker = new FolderPicker(AppWindow.Id) { Title = "録音とテキストの移動先" };
+            var folder = await picker.PickSingleFolderAsync(); if (folder is null) return;
+            ClosePlayback();
+            string moved = await RecordingFiles.MoveAsync(selected.AudioPath, folder.Path);
+            if (playbackPath.Equals(selected.AudioPath, StringComparison.OrdinalIgnoreCase)) await LoadRecordingAsync(moved);
+            await new ContentDialog { XamlRoot = Root.XamlRoot, Title = "移動しました", Content = moved + "\n移動先のフォルダーからも録音を開けます。", CloseButtonText = "閉じる", RequestedTheme = ElementTheme.Dark }.ShowAsync();
+            return;
+        }
+        var confirm = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "録音をごみ箱に移しますか？", Content = selected.Title + "\n音声・文字起こし・検索データが対象です。", PrimaryButtonText = "ごみ箱に移す", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        ClosePlayback();
+        foreach (string file in RecordingFiles.Bundle(selected.AudioPath))
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(file, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin, Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+        if (playbackPath.Equals(selected.AudioPath, StringComparison.OrdinalIgnoreCase))
+        {
+            playbackPath = ""; playbackDocument = null; PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;
+            SessionTitle.Text = "録音を削除しました。表示中の文章は保存できます。";
         }
     }
     private async Task LoadRecordingAsync(string path)

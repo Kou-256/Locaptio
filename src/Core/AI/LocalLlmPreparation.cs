@@ -24,25 +24,7 @@ public static class LocalLlmPreparation
             if (!Path.GetFullPath(model).Equals(Path.GetFullPath(defaultModel), StringComparison.OrdinalIgnoreCase) && !File.Exists(model))
                 throw new FileNotFoundException("指定したカスタムLLMモデルがありません。設定で既定のモデルに戻すか、ファイルを選び直してください。", model);
             progress?.Invoke(new("llm", 0, 4, "初回のAI環境を自動準備中（インターネット接続が必要）"));
-            string tools = Path.Combine(root, "tools"); Directory.CreateDirectory(tools);
-            string uv = Path.Combine(tools, "uv.exe");
-            if (!File.Exists(uv))
-            {
-                using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-                string zip = Path.Combine(tools, Guid.NewGuid().ToString("N") + ".zip");
-                try
-                {
-                    using var response = await http.GetAsync($"https://github.com/astral-sh/uv/releases/download/{UvVersion}/uv-x86_64-pc-windows-msvc.zip", HttpCompletionOption.ResponseHeadersRead, token);
-                    response.EnsureSuccessStatusCode();
-                    await using (var target = File.Create(zip)) await response.Content.CopyToAsync(target, token);
-                    await using (var input = File.OpenRead(zip))
-                        if (!Convert.ToHexString(await SHA256.HashDataAsync(input, token)).Equals(UvSha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("環境準備ツールのSHA-256が一致しません。");
-                    using var archive = ZipFile.OpenRead(zip);
-                    var entry = archive.Entries.Single(e => e.Name == "uv.exe");
-                    entry.ExtractToFile(uv, true);
-                }
-                finally { if (File.Exists(zip)) File.Delete(zip); }
-            }
+            string tools = await EnsureUvAsync(root, token);
             progress?.Invoke(new("llm", 1, 4, "Python・LLMライブラリを準備中"));
             var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"))
             { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -67,4 +49,34 @@ public static class LocalLlmPreparation
         }
         finally { gate.Release(); }
     }
+    private static readonly SemaphoreSlim uvGate = new(1);
+    internal static async Task<string> EnsureUvAsync(string root, CancellationToken token)
+    {
+        await uvGate.WaitAsync(token);
+        try
+        {
+            string tools = Path.Combine(root, "tools"); Directory.CreateDirectory(tools);
+            string uv = Path.Combine(tools, "uv.exe");
+            if (!File.Exists(uv))
+            {
+                using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                string zip = Path.Combine(tools, Guid.NewGuid().ToString("N") + ".zip");
+                try
+                {
+                    using var response = await http.GetAsync($"https://github.com/astral-sh/uv/releases/download/{UvVersion}/uv-x86_64-pc-windows-msvc.zip", HttpCompletionOption.ResponseHeadersRead, token);
+                    response.EnsureSuccessStatusCode();
+                    await using (var target = File.Create(zip)) await response.Content.CopyToAsync(target, token);
+                    await using (var input = File.OpenRead(zip))
+                        if (!Convert.ToHexString(await SHA256.HashDataAsync(input, token)).Equals(UvSha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("環境準備ツールのSHA-256が一致しません。");
+                    using var archive = ZipFile.OpenRead(zip);
+                    var entry = archive.Entries.Single(e => e.Name == "uv.exe");
+                    entry.ExtractToFile(uv, true);
+                }
+                finally { if (File.Exists(zip)) File.Delete(zip); }
+            }
+            return tools;
+        }
+        finally { uvGate.Release(); }
+    }
+
 }

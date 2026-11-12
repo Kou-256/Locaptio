@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml.Media;
 using System.Text;
@@ -127,6 +127,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-recording-playback")) await VerifyRecordingPlaybackAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-session-workflow")) await VerifySessionWorkflowAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-library-view")) await VerifyLibraryViewAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-file-import")) await VerifyFileImportAsync(); };
         Root.Loaded += async (_, _) =>
         {
             if (!Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) return;
@@ -275,12 +276,7 @@ public sealed partial class MainWindow : Window
             }
             bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu" || Environment.GetCommandLineArgs().Contains("--cpu");
             string model = settings.FastTranscription && !settings.RealtimeCaptions && !japanese ? (File.Exists(Path.Combine(root, "models", "speech-base", "model.bin")) ? "base" : "small") : settings.SpeechModel;
-            if (!File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin")))
-            {
-                model = new[] { "small", "base", "tiny" }.FirstOrDefault(candidate => File.Exists(Path.Combine(root, "models", "speech-" + candidate, "model.bin"))) ?? "legacy";
-                if (japanese && model == "legacy") throw new InvalidOperationException("日本語用モデルがありません。scripts/setup-speech.ps1を実行してください。");
-                Status("選択したモデルが未準備のため、準備済みモデルを使用します: " + model);
-            }
+            await SpeechPreparation.EnsureAsync(root, model, !japanese, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
             var session = PrepareModels(japanese, model, cpu);
             await session.Ready.WaitAsync(token);
             speech = session.LiveSpeech; translation = session.Translation;
@@ -362,7 +358,7 @@ public sealed partial class MainWindow : Window
         root = FindRoot(); if (root.Length == 0) return;
         bool japanese = settings.CaptionMode == "japanese";
         string model = settings.FastTranscription && !settings.RealtimeCaptions && !japanese ? "base" : settings.SpeechModel;
-        if (!File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin"))) { Status("選択モデルは未準備です。モデルのヘルプを確認してください。"); return; }
+        if (!File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin"))) { Status("選択モデルは未準備です。Startで自動ダウンロードします（初回のみ）。"); return; }
         try
         {
             Status("モデルを準備中…（音声の取得は開始しません）");

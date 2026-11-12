@@ -1,4 +1,4 @@
-<p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
+﻿<p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
 <p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
@@ -18,6 +18,20 @@ Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバ�
 - UTF-8テキスト保存、**WAV／MP3／M4A録音**。保存先を別々に指定。
 - CPU、NVIDIA CUDA、DirectML翻訳、実験的なAMD XDNA 2 NPU認識。
 - Windowsライブキャプションが認識した文章の取り込み。
+
+## 音声ファイルの文字起こし・録音管理（v1.0.42）
+
+- **音声ファイル読込**（またはファイルメニュー）で、MP3・M4A・WAVを文字起こしできます。日本語文字起こし／英語→日本語のモードを先に選んでください。
+- ファイル認識には**ローカルWhisper**を使用します。Windowsライブキャプションを音声ファイルに直接接続する方式ではありません。初回は不足するPython環境・音声モデル・翻訳モデルを自動取得します。ネット接続と数GBの空き容量が必要で、通常の認識はローカル処理です。
+- 進捗を表示し、**Stopで中止**できます。認識済み部分は保存します。長い音声は分割して処理し、原本は変更せず録音一覧へコピーします。再生位置は発話単位の推定時刻です。
+- **録音一覧・再生**で録音を選択すると、音声・テキスト・検索データの一式を**共有ZIPとして保存／別フォルダーへ移動／確認後にごみ箱へ削除**できます。ZIPの送信先はご自身で選んでください。
+- PC内音声＋マイクなどではWindows連携からWhisperに切り替わるため、日本語用モデルが別途必要です。Start時に不足分を自動準備するので、PowerShellスクリプトを手動実行する必要はありません。ネットワークや容量の問題があれば、状態欄を確認して再試行してください。
+
+### Audio file import and library management
+
+Use **Import audio** on the main toolbar (Japanese UI: 音声ファイル読込) to transcribe MP3, M4A or WAV files with local Whisper. Select Japanese transcription or English-to-Japanese mode first. Missing Python, speech and translation components are downloaded automatically on first use; internet access and several GB of free space are required for setup. Inference stays local.
+
+Files are decoded in bounded chunks. **Stop** cancels processing and saves completed phrases. The original file is preserved, with a copy and timestamped transcript stored in a new library folder for search and replay. Replay timestamps are approximate, at utterance level. Select a recording to **export a shareable ZIP, move its audio/transcript bundle, or delete it to the Recycle Bin after confirmation**. Sharing creates a local ZIP; it does not send your recording to anyone automatically.
 
 ## ダウンロード・必要環境
 

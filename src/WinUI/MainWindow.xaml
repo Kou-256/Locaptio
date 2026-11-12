@@ -7,6 +7,7 @@
     <MenuFlyoutItem Text="テキストを保存…" Click="SaveClick"/>
     <MenuFlyoutItem Text="全文をコピー" Click="CopyTranscriptClick"/>
     <MenuFlyoutItem Text="録音と文字起こしを開く…" Click="OpenRecordingClick"/>
+    <MenuFlyoutItem Text="音声ファイルから文字起こし…" Click="ImportAudioClick"/>
     <MenuFlyoutSeparator/>
     <MenuFlyoutItem Text="終了" Click="CloseClick"/>
    </MenuBarItem>
@@ -35,6 +36,7 @@
    <Button x:Name="CaptionButton" Content="字幕" Click="CaptionClick" ToolTipService.ToolTip="キャプションだけのウィンドウを開閉します。移動は字幕の背景をドラッグしてください。"/>
    <Button x:Name="SaveButton" Content="テキスト保存" Click="SaveClick" IsEnabled="False"/><CheckBox x:Name="RecordToggle" Content="新規録音" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="新規録音" ToolTipService.ToolTip="新しい録音を専用フォルダーに保存します。チェックを外すと録音・文字起こしを停止します。保存済みデータは録音一覧から開いてください。"/>
    <Button Content="録音一覧・再生" Click="OpenRecordingClick" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"/>
+   <Button Content="音声ファイル読込" Click="ImportAudioClick" ToolTipService.ToolTip="MP3・M4A・WAVをローカルで文字起こし。原本は変更しません。"/>
    <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回Startから。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
    <Button Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;" FontSize="14"/></Button>
   </local:ToolbarPanel></StackPanel>
