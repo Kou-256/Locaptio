@@ -226,11 +226,12 @@ public sealed partial class MainWindow
             if (document is not null)
                 foreach (var phrase in document.Phrases)
                 {
-                    var caption = new CaptionUpdate(history.Count + 1, phrase.Revision, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, phrase.Language);
+                    var caption = new CaptionUpdate(history.Count + 1, phrase.Revision, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, !string.IsNullOrWhiteSpace(phrase.Translation) ? "en" : phrase.Language);
                     UpdateHistory(caption); transcript.Update(caption);
                 }
             // Rebind IDs to visible rows after resolving any reused session IDs.
             if (document is not null) playbackDocument = document with { Phrases = document.Phrases.Select((p, i) => p with { Id = history[i].Id }).ToArray() };
+            RenderCaptions();
             SaveButton.IsEnabled = transcript.Count > 0; EnsurePlayback(); RefreshRecordingSearch();
             PlaybackHint.Text = document is null ? "文字起こしデータがないため、音声のみ再生します。新しい録音では検索用データも保存されます。" : "文字や検索結果をクリックすると、その発話から再生します。時刻は発話単位です。";
     }

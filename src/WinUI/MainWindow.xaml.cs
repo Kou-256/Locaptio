@@ -220,6 +220,7 @@ public sealed partial class MainWindow : Window
         }
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
         WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
+        RenderCaptions();
         SessionTitle.Text = recordingStop is null ? "文字起こし（録音なし）" : "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(recordingPath));
         StatusText.Text = "ローカルモデルを読み込み中…"; captionTask = RunCaptionsAsync(captionStop.Token); await Task.Yield();
     }
@@ -617,6 +618,14 @@ public sealed partial class MainWindow : Window
         ? panel.Children.OfType<ListViewItem>().Select(c => c.ContentTemplateRoot).OfType<Grid>().ToArray() : [];
     private void RenderCaptions()
     {
+        bool review = reviewingRecording && captionStop is null && playbackDocument is not null;
+        bool japanese = review ? !playbackDocument!.Phrases.Any(p => p.Language != "ja" || !string.IsNullOrWhiteSpace(p.Translation)) : settings.CaptionMode == "japanese";
+        EnglishHeader.Text = review ? "文字起こし" : japanese ? "日本語" : "English";
+        JapaneseHeader.Text = review ? "翻訳" : "日本語";
+        Header.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0);
+        Header.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
+        EnglishHeader.Visibility = japanese || settings.English ? Visibility.Visible : Visibility.Collapsed;
+        JapaneseHeader.Visibility = !japanese && settings.Japanese ? Visibility.Visible : Visibility.Collapsed;
         // Appearance changes touch only realized rows, not the full session history.
         foreach (var row in RealizedCaptionRows)
             if (row.DataContext is CaptionHistoryEntry entry) StyleHistoryRow(row, entry.Caption);
@@ -834,10 +843,6 @@ public sealed partial class MainWindow : Window
         settings.FontSize = Math.Clamp(settings.FontSize, 14, 40); settings.BackgroundOpacity = Math.Clamp(settings.BackgroundOpacity, 0, 1); settings.TextOpacity = Math.Clamp(settings.TextOpacity, 0, 1);
         if (!settings.English && !settings.Japanese) settings.Japanese = true;
         WindowAppearance.SetOpacity(hwnd, 1); ApplyMainTextOpacity(Root); WindowAppearance.SetBorder(hwnd, settings.CaptionBorderColor);
-        bool japanese = settings.CaptionMode == "japanese";
-        EnglishHeader.Text = japanese ? "日本語" : "English";
-        Header.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0); Header.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
-        EnglishHeader.Visibility = japanese || settings.English ? Visibility.Visible : Visibility.Collapsed; JapaneseHeader.Visibility = !japanese && settings.Japanese ? Visibility.Visible : Visibility.Collapsed;
         MetricsText.Visibility = settings.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
         while (captions.Count > settings.CaptionRows) captions.Remove(captions.Keys.First()); RenderCaptions(); settings.Save();
     }
