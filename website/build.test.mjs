@@ -15,7 +15,7 @@ test('both languages contain the correct release and direct download link', asyn
   }
 });
 test('release links are scoped to the public Locaptio repository',()=>{
-  assert.match(release.download,/^https:\/\/github.com\/Kou-256\/Locaptio\/releases\/latest\/download\/Locaptio-(?:Setup-x64\.exe|win-x64\.zip)$/);
+  assert.equal(release.download, `${release.repository}/releases/download/v${release.version}/Locaptio-Setup-${release.version}-x64.exe`);
   assert.equal(release.release, `${release.repository}/releases/tag/v${release.version}`);
   assert.match(release.sha256,/^[a-f0-9]{64}$/);
 });
