@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using Locaptio.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -8,6 +8,7 @@ namespace Locaptio.WinUI;
 public sealed partial class MainWindow
 {
     private static readonly HttpClient updateHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private HttpClient? updateHttpForVerification;
     private readonly CancellationTokenSource updateStop = new();
     private bool updateBusy;
     private Task? updateOperation;
@@ -74,7 +75,7 @@ public sealed partial class MainWindow
         try
         {
             if (manual) { notice.IsOpen = true; notice.Severity = InfoBarSeverity.Informational; notice.Title = "更新を確認中"; notice.Message = "公式GitHubの公開版を確認しています。"; notice.ActionButton = null; }
-            var service = new AppUpdates(updateHttp);
+            var service = new AppUpdates(updateHttpForVerification ?? updateHttp);
             var current = typeof(MainWindow).Assembly.GetName().Version ?? new Version(1, 0, 0);
             var release = await service.CheckAsync(current, timeout.Token);
             if (closing) return;
@@ -86,16 +87,14 @@ public sealed partial class MainWindow
             notice.IsOpen = true; notice.Severity = InfoBarSeverity.Informational;
             notice.Title = $"Locaptio {release.Version} が利用できます";
             notice.Message = $"更新ファイル（約{release.Size / 1048576d:F0}MB）をダウンロードできます。";
-            if (settings.AutoDownloadUpdates) await DownloadUpdateAsync(service, release, notice);
-            else UpdateAction(notice, "ダウンロード", async () =>
+            UpdateAction(notice, "ダウンロード", async () =>
             {
                 if (updateBusy) return;
                 updateBusy = true;
                 try { updateOperation = DownloadUpdateAsync(service, release, notice); await updateOperation; }
                 finally { updateBusy = false; }
             });
-            if (!settings.AutoDownloadUpdates && await ApproveUpdateAsync(notice, $"Locaptio {release.Version} が公開されています", "更新ファイルをダウンロードしますか？インストールの前にも確認します。", "ダウンロード"))
-                await DownloadUpdateAsync(service, release, notice);
+
         }
         catch (OperationCanceledException) { if (!closing && manual) { notice.Title = "更新の確認を中断しました"; notice.Message = "通信がタイムアウトした場合は、後で再度お試しください。"; } }
         catch (Exception ex)

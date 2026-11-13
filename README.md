@@ -1,7 +1,7 @@
-﻿<p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
+<p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.44/Locaptio-Setup-1.0.44-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバーレイ・録音アプリです。動画や会議の音声を読みながら、必要な文章と音声を保存できます。
 
@@ -25,7 +25,7 @@ Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバ�
 - ファイル認識には**ローカルWhisper**を使用します。Windowsライブキャプションを音声ファイルに直接接続する方式ではありません。初回は不足するPython環境・音声モデル・翻訳モデルを自動取得します。ネット接続と数GBの空き容量が必要で、通常の認識はローカル処理です。
 - 進捗を表示し、**Stopで中止**できます。認識済み部分は保存します。長い音声は分割して処理し、原本は変更せず録音一覧へコピーします。再生位置は発話単位の推定時刻です。
 - **録音一覧・再生**で録音を選択すると、音声・テキスト・検索データの一式を**共有ZIPとして保存／別フォルダーへ移動／確認後にごみ箱へ削除**できます。ZIPの送信先はご自身で選んでください。
-- PC内音声＋マイクなどではWindows連携からWhisperに切り替わるため、日本語用モデルが別途必要です。Start時に不足分を自動準備するので、PowerShellスクリプトを手動実行する必要はありません。ネットワークや容量の問題があれば、状態欄を確認して再試行してください。
+- マイク単独・指定アプリ・指定機器はWhisperを明示的に選んで使用します。Windows連携ではPC内音声／PC内音声＋マイクを選び、Whisperへ自動では切り替えません。Start時に不足分を自動準備するので、PowerShellスクリプトを手動実行する必要はありません。ネットワークや容量の問題があれば、状態欄を確認して再試行してください。
 
 ### Audio file import and library management
 
@@ -47,9 +47,9 @@ Files are decoded in bounded chunks. **Stop** cancels processing and saves compl
 
 Setupは更新時もインストール先の選択画面を表示します。更新ファイルを自動取得する場合でも、**インストールの許可ポップアップ**で「インストールする」を選ぶまでSetupは実行しません。「後で」を選ぶと作業を続けられます。
 
-[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe)
+[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.44/Locaptio-Setup-1.0.44-x64.exe)
 
-[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
+[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.44-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
 
 ### 録音の検索・聞き直し（v1.0.39）
 
@@ -67,7 +67,7 @@ AI補正／文脈LLM翻訳を有効にすると、未準備のPython環境・依
 
 ### Windows字幕でマイクを使う（v1.0.40）
 
-音声認識エンジンをWindowsライブキャプション連携、入力を**マイク（既定の入力）**にしてStartします。Windows字幕の **設定 → 基本設定 → マイク音声を含める** をONにしてください。Windowsが起動するたびに、この設定は既定でOFFになります。必要なアクセス許可はWindows側で操作してください。Windowsの既定の入力を使用し、PC音声と同時に話すとPC音声が優先されます。[Microsoftの説明](https://support.microsoft.com/en-us/accessibility/windows/use-live-captions-to-better-understand-audio)。指定した機器・アプリ・混合入力はWhisperを使用します。
+Windows連携では**PC内音声／PC内音声＋マイク**の2種類を選択できます。後者でStartするとWindowsの「マイクオーディオを含める」を自動でON、PC内音声に戻すとOFFにします。Windows再起動後も設定を再確認します。PC音声と重なるとPC音声が優先されます。マイク単独・指定アプリ・指定機器にはWhisperを明示的に選択してください。
 
 Setupの追加タスクでは、スタートメニューへの追加（既定ON）とデスクトップへの追加を選べます。スタートメニューの「すべてのアプリ」へショートカットを作成するもので、ピン留めの強制変更はしません。
 
@@ -139,7 +139,7 @@ Python 3.12環境、Whisperのbase/small、FuguMT翻訳モデルを準備しま�
 
 **PC内音声＋マイク（既定の機器・同時入力）**を選び、録音にチェックします。既定の再生機器とマイクを各50%で混ぜ、片方が無音でも継続します。
 
-この入力では、Windows連携を選んでいても**自動でWhisperを使用**します。Whisperモデルが必要です。話者の分離・エコー除去は行いません。スピーカー音をマイクでも拾う場合はヘッドホンが役立ちます。
+Windows連携ではWindowsが認識し、マイク設定を自動で切り替えます。Whisperを選択した場合はローカルWhisperで混合音声を認識します。話者の分離・エコー除去は行いません。スピーカー音をマイクでも拾う場合はヘッドホンが役立ちます。
 
 ## 速度・精度・モデルの選び方
 
@@ -254,7 +254,7 @@ Locaptioのソースは [MIT License](LICENSE)。モデル・依存物は各ラ�
 
 Stopは録音・認識を停止し、Windowsライブキャプションと独立字幕も閉じます。本体を×で閉じた場合もWindows字幕を閉じます。本体の文章は保存・コピー用に残します。設定の「保存先・録音」で、保存日時・セッション時間（準備／無音を含み停止後は加算しない）・本文行数／発話数をそれぞれON/OFFできます。本文行数は折り返し・空行を数えません。初期ファイル名は`20261111_.txt`のような年月日です。テンプレートの`{yyyy}{MM}{dd}_`に任意の文字や`{HH}{mm}{ss}`を追加できます。保存画面でも編集可能です。
 
-「アプリの更新」で起動時の更新確認と自動ダウンロードを切り替えます（両方既定ON）。ヘルプから手動確認も可能です。公式GitHubへの通信は公開版の情報と更新ファイル取得のみで、認識音声や文章は送信しません。更新は`%LOCALAPPDATA%/Locaptio/updates/<version>/`へ保存し、SHA-256照合後にSetupを実行できます。旧版ZIPのみのReleaseでは展開して起動してください。
+起動時は更新の有無だけを確認します（設定でOFF可）。更新ファイルは**「ダウンロード」を押すまで取得しません**。以前の自動ダウンロード設定も無効になります。ヘルプから手動確認も可能です。公式GitHubへの通信は公開版の情報と更新ファイル取得のみで、認識音声や文章は送信しません。更新は`%LOCALAPPDATA%/Locaptio/updates/<version>/`へ保存し、SHA-256照合後にSetupを実行できます。旧版ZIPのみのReleaseでは展開して起動してください。
 
 
 設定ウィンドウは左側のSVGアイコン付きカテゴリをクリックし、右側で設定します。カテゴリ切替で値は保持され、設定は自動保存されます。

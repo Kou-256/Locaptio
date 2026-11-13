@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -11,7 +11,7 @@
   <Identity
     Name="Locaptio"
     Publisher="CN=Locaptio"
-    Version="1.0.43.0" />
+    Version="1.0.44.0" />
 
   <mp:PhoneIdentity PhoneProductId="5E78771F-ADD9-4AFE-9E41-45AA68AC5858" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

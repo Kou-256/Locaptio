@@ -12,16 +12,17 @@ public sealed class AppUpdates(HttpClient http)
 {
     public const string LatestApi = "https://api.github.com/repos/Kou-256/Locaptio/releases/latest";
     private const long MaximumSize = 1_073_741_824;
+    public static string InstallerName(Version version) => $"Locaptio-Setup-{new Version(version.Major, version.Minor, Math.Max(0, version.Build)).ToString(3)}-x64.exe";
     public static AppRelease? Parse(string json, Version current)
     {
         using var doc = JsonDocument.Parse(json); var data = doc.RootElement;
         if (data.GetProperty("draft").GetBoolean() || data.GetProperty("prerelease").GetBoolean()) return null;
         string tag = data.GetProperty("tag_name").GetString() ?? "";
         if (!Version.TryParse(tag.TrimStart('v'), out var version) || Normalize(version) <= Normalize(current)) return null;
-        foreach (var asset in data.GetProperty("assets").EnumerateArray().OrderBy(a => a.GetProperty("name").GetString() == "Locaptio-Setup-x64.exe" ? 0 : 1))
+        foreach (var asset in data.GetProperty("assets").EnumerateArray().OrderBy(a => a.GetProperty("name").GetString() == InstallerName(version) ? 0 : a.GetProperty("name").GetString() == "Locaptio-Setup-x64.exe" ? 1 : 2))
         {
             string name = asset.GetProperty("name").GetString() ?? "";
-            if (name is not ("Locaptio-win-x64.zip" or "Locaptio-Setup-x64.exe")) continue;
+            if (name is not ("Locaptio-win-x64.zip" or "Locaptio-Setup-x64.exe") && name != InstallerName(version)) continue;
             string expected = $"https://github.com/Kou-256/Locaptio/releases/download/{tag}/{name}";
             if (asset.GetProperty("browser_download_url").GetString() != expected) throw new InvalidDataException("更新ファイルの配布元が一致しません。");
             long size = asset.GetProperty("size").GetInt64();
@@ -47,7 +48,8 @@ public sealed class AppUpdates(HttpClient http)
     public async Task<string> DownloadAsync(AppRelease release, string directory, Action<int>? progress, CancellationToken token)
     {
         Directory.CreateDirectory(directory);
-        string name = release.Download.AbsolutePath.EndsWith("/Locaptio-Setup-x64.exe", StringComparison.Ordinal) ? "Locaptio-Setup-x64.exe" : "Locaptio-win-x64.zip";
+        string name = Path.GetFileName(release.Download.LocalPath);
+        if (name != InstallerName(release.Version) && name is not ("Locaptio-Setup-x64.exe" or "Locaptio-win-x64.zip")) throw new InvalidDataException("更新ファイル名が正しくありません。");
         string target = Path.Combine(directory, name);
         if (File.Exists(target) && await MatchesAsync(target, release, token)) { progress?.Invoke(100); return target; }
         string temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".partial");

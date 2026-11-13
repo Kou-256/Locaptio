@@ -129,6 +129,8 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-library-view")) await VerifyLibraryViewAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-file-import")) await VerifyFileImportAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-preparation-failure")) await VerifyPreparationFailureAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-update-notification")) await VerifyUpdateNotificationAsync(); };
+        Root.Loaded += (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-input-view")) PrepareWindowsInputView(); };
         Root.Loaded += async (_, _) =>
         {
             if (!Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) return;
@@ -158,6 +160,7 @@ public sealed partial class MainWindow : Window
             if (saveTask is not null) { try { await saveTask; } catch { } }
             if (((OverlappedPresenter)AppWindow.Presenter).State == OverlappedPresenterState.Restored) RememberBounds();
             if (Environment.GetCommandLineArgs().Contains("--verify-lifecycle")) { settings.CaptionMode = originalMode; settings.UseLocalLlm = originalLlm; }
+            restoreInputViewSettings?.Invoke(); restoreInputViewSettings = null;
             settings.Save();
             if (Environment.GetCommandLineArgs().Contains("--verify-lifecycle"))
             {
@@ -254,10 +257,10 @@ public sealed partial class MainWindow : Window
             }
             if (UseWindowsCaptionEngine)
             {
-                WindowsMicrophoneNotice.IsOpen = settings.AudioInputKind == "microphone";
+                WindowsMicrophoneNotice.IsOpen = false;
                 prepared?.Dispose(); prepared = null; preparedKey = ""; speech = translation = accurateSpeech = null; llm = null;
                 windowsBridgeConnected = false;
-                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "microphone" ? ReadDefaultMicrophoneLevel : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds);
+                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed");
                 windowsSession = live;
                 var windowsProgress = BeginPreparation(); live.PreparationChanged += windowsProgress;
                 live.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); }); live.Status += Status;
@@ -729,7 +732,7 @@ public sealed partial class MainWindow : Window
             ModeSelector.IsEnabled = AudioSelector.IsEnabled = !closing && !inputChanging && !modeChanging;
         }
     }
-    // Windows captions cannot accept this application's mixed PCM stream.
+    // Windows captions use their own PC/microphone capture, never our mixed PCM stream.
     private bool UseWindowsCaptionEngine => settings.SpeechEngine == "windows-live" && WindowsCaptionInputPolicy.Supported(SelectedAudio());
     private static bool ReadDefaultMicrophoneLevel()
     {
@@ -743,7 +746,13 @@ public sealed partial class MainWindow : Window
         refreshingAudio = true;
         try
         {
-            var choices = AudioInputCatalog.List(); var selection = SelectedAudio();
+            bool windows = settings.SpeechEngine == "windows-live";
+            if (windows)
+            {
+                var normalized = WindowsCaptionInputPolicy.Normalize(SelectedAudio());
+                settings.AudioInputKind = normalized.Kind; settings.AudioDeviceId = ""; settings.AudioProcessId = 0; settings.AudioProcessStarted = 0;
+            }
+            var choices = windows ? WindowsCaptionInputPolicy.Choices() : AudioInputCatalog.List(); var selection = SelectedAudio();
             var selected = choices.FirstOrDefault(c => c.Selection == selection);
             if (selected is null) { selected = new("前回の入力（再選択が必要）", selection); choices.Add(selected); }
             AudioSelector.ItemsSource = choices; AudioSelector.SelectedItem = selected;
@@ -957,13 +966,13 @@ public sealed partial class MainWindow : Window
             ja.Click += (_, _) => { settings.Japanese = ja.IsChecked == true; if (!settings.English && !settings.Japanese) { settings.English = true; en.IsChecked = true; } ApplySettings(); };
             content.Children.Add(en); content.Children.Add(ja);
             Section("音声認識・Windows連携", "認識エンジン、GPU/NPU、モデルと高速認識を設定します。準備状況は本体の進捗バーで確認できます。");
-            Choice("音声認識エンジン（次回Startから）", ["Whisper（アプリ単独で認識）", "Windowsライブキャプション連携（Windowsも起動）"], settings.SpeechEngine == "windows-live" ? 1 : 0, i => settings.SpeechEngine = i == 1 ? "windows-live" : "whisper");
+            Choice("音声認識エンジン（次回Startから）", ["Whisper（アプリ単独で認識）", "Windowsライブキャプション連携（Windowsも起動）"], settings.SpeechEngine == "windows-live" ? 1 : 0, i => { settings.SpeechEngine = i == 1 ? "windows-live" : "whisper"; RefreshAudioInputs(); });
             Toggle("PC音声があるのにWindows字幕の更新が止まったら自動復旧", settings.AutoRestartWindowsCaptions, v => settings.AutoRestartWindowsCaptions = v);
             Slider("Windows字幕の自動復旧までの秒数（既定180秒＝3分）", 10, 1800, settings.WindowsCaptionRestartSeconds, v => settings.WindowsCaptionRestartSeconds = (int)v);
             Toggle("本体のモードにWindows字幕の言語を自動で合わせる（次回Startから）", settings.AutoSwitchWindowsCaptionLanguage, v => settings.AutoSwitchWindowsCaptionLanguage = v);
             content.Children.Add(new TextBlock { Text = "英日翻訳では英語（米国）、日本語文字起こしでは日本語（日本）へWindows側の言語を切り替えます。初期値はON。Windowsの画面操作を自動化するため、言語選択画面が一時的に表示されます。言語ファイルの初回準備はWindows側で完了してください。Windows更新などで切り替えに失敗した場合は警告を表示します。画面を開かずに認識する場合はWhisper＋GPU/AMD NPUを選びます。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "自動復旧は既定でON、待ち時間は3分です。無音だけでは再起動しません。Windows字幕と連携用プロセスを再起動し、ウィンドウを再表示します。再試行は60秒以上空け、10分で3回まで。PCの音量で判定するため、音楽などでも作動する場合はOFFにしてください。録音と保存済みの文章は保持します。", TextWrapping = TextWrapping.Wrap });
-            content.Children.Add(new TextBlock { Text = "Windows連携はWindowsの字幕を読み取り、本体・独立字幕・保存に反映します。Windows側の認識言語を合わせてください。「マイク（既定の入力）」でもWindows字幕を使用できます。Windows字幕の設定で「マイク音声を含める」をONにしてください。PC音声と重なるとPC音声が優先されます。特定の機器・アプリ・混合入力にはWhisperを使います。認識デバイスはWindows側に従います。「PC内音声＋マイク」の同時入力を選ぶと、混合音声を認識するため自動的にWhisperを使います。連携前の履歴は取り込みません。文字起こしのAI補正は下の設定でON/OFFできます。英日翻訳はAI翻訳モデルで速報を出し、ローカルLLMがONなら文脈を使って後から訳を改善します。Windows更新で連携できなくなる場合があります。", TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(new TextBlock { Text = "Windows連携の入力はPC内音声、PC内音声＋マイクの2種類です。Startと入力切替時に、Windows側の「マイクオーディオを含める」を自動でON/OFFします。PC音声とマイクが重なるとPC音声が優先されます。マイク単独・指定アプリ・指定機器はWhisperを明示的に選択したときに使えます。Windows連携からWhisperへ自動では切り替えません。認識デバイスはWindows側に従います。Windows更新などでマイクの状態を確認できない場合は、診断を表示して停止します。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "音声認識に使うデバイス（Whisper／次回Startから）" });
             var device = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "GPU自動（使えない場合はCPU）", "NVIDIA GPU（CUDA）", "AMD XDNA 2 NPU", "CPU" }, SelectedIndex = settings.CpuOnly || settings.InferenceDevice == "cpu" ? 3 : settings.InferenceDevice == "npu" ? 2 : settings.InferenceDevice == "cuda" ? 1 : 0 };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(device, "音声認識デバイス");
@@ -1050,7 +1059,7 @@ public sealed partial class MainWindow : Window
             Section("アプリの更新", "公式GitHubの公開版を確認します。音声や文字起こしは送信しません。");
             content.Children.Add(new TextBlock { Text = "現在のバージョン: " + CurrentAppVersion, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
             Toggle("起動時にアップデートを確認（次回起動から）", settings.CheckUpdatesOnStartup, v => settings.CheckUpdatesOnStartup = v);
-            Toggle("新しいバージョンのSetupを自動ダウンロード（インストールは要確認）", settings.AutoDownloadUpdates, v => settings.AutoDownloadUpdates = v);
+            content.Children.Add(new TextBlock { Text = "起動時は更新の有無だけを確認します。更新ファイルは「ダウンロード」を押すまで取得しません。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "新版はLocaptio/updatesに保存し、SHA-256を確認します。インストール前に許可のポップアップを表示し、「インストールする」を選んだ場合だけ録音を停止してSetupを開きます。「後で」なら作業を継続します。インストール先はSetupで変更できます。", TextWrapping = TextWrapping.Wrap });
             var checkUpdates = new Button { Content = "アプリの更新を確認" };
             var settingsUpdateNotice = new InfoBar { IsOpen = false, IsClosable = true, Severity = InfoBarSeverity.Informational };

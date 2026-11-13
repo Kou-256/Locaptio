@@ -1,11 +1,18 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/latest/download/Locaptio-Setup-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.44/Locaptio-Setup-1.0.44-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese translation, floating captions, and recording. Read audio from videos or meetings and save the text and audio you need.
 
 > **Experimental personal project.** The application UI is currently mostly Japanese; this guide explains its controls in English. Accuracy and latency depend on the audio, model and hardware.
+
+## v1.0.44 input and update behavior
+
+Windows integration offers **PC audio** and **PC audio + microphone**. Start/input switching synchronizes Include microphone audio in Windows automatically. It does not silently fall back to Whisper. Microphone-only, per-app and specific-device capture remain available when you explicitly select Whisper.
+
+Setup downloads include the version in the filename and display the Locaptio icon. Startup checks fetch metadata only; click Download to fetch an update, and approve installation separately.
+
 
 ## Features
 
@@ -33,7 +40,7 @@ Fresh-profile defaults: Windows captions integration, Japanese transcription, ma
 
 Setup always offers a destination directory, including during updates. Downloaded updates require an explicit **Install** approval popup before Setup runs. Choosing Later keeps the current session running.
 
-Download **Locaptio-Setup-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
+Download **Locaptio-Setup-1.0.44-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
 
 ### Recording search and replay (v1.0.39)
 
@@ -49,7 +56,7 @@ Enabling AI correction or context translation automatically prepares missing Pyt
 
 ### Microphone input with Windows captions (v1.0.40)
 
-Select Windows captions integration and **Microphone (default input)**, then Start. In Windows captions, enable **Settings → Preferences → Include microphone audio**. Windows resets this option to OFF each time captions starts; privacy permission prompts must be handled in Windows. Windows uses its default input and prioritizes PC audio if both sources overlap. [Microsoft documentation](https://support.microsoft.com/en-us/accessibility/windows/use-live-captions-to-better-understand-audio). Specific devices, applications and mixed input use Whisper.
+Windows integration offers PC audio or PC audio plus the default microphone. Locaptio automatically enables Include microphone audio for the latter and disables it when switching back to PC audio. Windows prioritizes PC audio when both overlap. Microphone-only, application and specific-device capture require explicitly selecting Whisper. [Microsoft documentation](https://support.microsoft.com/en-us/accessibility/windows/use-live-captions-to-better-understand-audio).
 
 Setup offers Start menu (enabled by default) and desktop shortcuts as separate tasks. It adds an All apps entry without changing pinned items.
 
@@ -119,7 +126,7 @@ Captions appear when recognition updates arrive and hide after a configurable id
 
 Choose **PC内音声＋マイク（既定の機器・同時入力）**, enable recording, and press Start. The default playback device and microphone are mixed at 50% each; a silent input does not block the other.
 
-This input **automatically uses Whisper**, even when Windows integration is selected, because Windows captions cannot accept the app's mixed PCM. Prepare Whisper first. Speaker separation and echo cancellation are not implemented. Headphones help avoid picking up playback through the microphone.
+Windows integration uses Windows recognition for PC audio plus the default microphone, automatically enabling the microphone option and disabling it when returning to PC audio. Select Whisper explicitly to recognize the app's mixed PCM. Speaker separation and echo cancellation are not implemented. Headphones help avoid picking up playback through the microphone.
 
 ## Speed, accuracy and models
 
@@ -234,7 +241,7 @@ Windows caption recovery can be disabled or given a custom timeout (default 180 
 
 Stop cancels recognition and recording, then closes Windows Live Captions and the popout while preserving the main transcript. Save settings independently toggle save time, session duration (including preparation/silence, frozen after Stop) and nonblank content-line/utterance counts. Filename templates default to `{yyyy}{MM}{dd}_`, for example `20261111_.txt`; literal text and `{HH}{mm}{ss}` are supported.
 
-Startup checks and automatic update downloads are independently configurable (both enabled by default). Help also offers a manual check. Only official public GitHub release metadata and assets are requested; audio and transcripts are never sent. Verified updates are saved in `%LOCALAPPDATA%/Locaptio/updates/<version>/`. The app offers an explicit action to run Setup. It does not run a downloaded installer automatically. Older ZIP-only releases can be extracted into a separate directory.
+Startup checks fetch release information only and can be disabled. **Update files are downloaded only after you click Download**, even if automatic downloads were enabled in an older version. Help also offers a manual check. Only official public GitHub release metadata and assets are requested; audio and transcripts are never sent. Verified updates are saved in `%LOCALAPPDATA%/Locaptio/updates/<version>/`. The app offers an explicit action to run Setup. It does not run a downloaded installer automatically. Older ZIP-only releases can be extracted into a separate directory.
 
 
 Settings use an SVG-icon sidebar; selecting a category displays its controls on the right. Closing the main window with × also closes Windows Live Captions after recognition is canceled.

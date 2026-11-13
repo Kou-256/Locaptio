@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.44 — Windows input selection and explicit update downloads
+
+- Setupの標準ファイル名に版番号を追加し、ウィザードの画像をLocaptioのアイコンへ変更。
+- 起動時は更新情報だけを確認し、旧設定にかかわらず、更新ファイルはボタンを押すまでダウンロードしません。
+- Windows字幕連携の候補をPC内音声／PC内音声＋マイクに限定。Whisperへ自動で切り替わる動作を廃止。マイク単独・指定アプリはWhisperを選んだときに使用できます。
+- Windowsのマイク設定を状態確認付きで自動ON/OFFし、設定を確認できない場合は診断を表示して停止します。実機でON→OFFを確認しました。
+- Versioned Setup filenames and app branding; metadata-only startup checks; supported Windows input choices with verified microphone synchronization.
+
 ## 1.0.43 — Readable Japanese setup errors and Python preparation
 
 - 自動準備のPowerShell・外部プロセス・アプリの出力をUTF-8へ統一し、日本語エラーの文字化けを修正。

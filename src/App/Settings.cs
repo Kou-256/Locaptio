@@ -51,7 +51,7 @@ public sealed class Settings
     public bool ExportLineCount { get; set; } = true;
     public string TextFileNamePattern { get; set; } = "{yyyy}{MM}{dd}_";
     public bool CheckUpdatesOnStartup { get; set; } = true;
-    public bool AutoDownloadUpdates { get; set; } = true;
+    public bool AutoDownloadUpdates { get; set; } = false; // Retained for old settings; downloads are always explicit.
     public string RecordingSaveDirectory { get; set; } = "";
     public string RuntimeDirectory { get; set; } = "";
     public bool PreferNpu { get; set; } = true;
@@ -89,6 +89,7 @@ public sealed class Settings
         try
         {
             var settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText(File.Exists(FilePath) ? FilePath : LegacyFilePath)) ?? new();
+            settings.AutoDownloadUpdates = false;
             if (settings.AppearanceVersion < 1)
             {
                 if (settings.CaptionPalette == "white-yellow") settings.CaptionPalette = "white";

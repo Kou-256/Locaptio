@@ -7,6 +7,53 @@ using Microsoft.UI.Xaml;
 namespace Locaptio.WinUI;
 public sealed partial class MainWindow
 {
+    private Action? restoreInputViewSettings;
+    private void PrepareWindowsInputView()
+    {
+        string json = System.Text.Json.JsonSerializer.Serialize(settings);
+        restoreInputViewSettings = () =>
+        {
+            var original = System.Text.Json.JsonSerializer.Deserialize<Locaptio.App.Settings>(json)!;
+            foreach (var property in typeof(Locaptio.App.Settings).GetProperties().Where(p => p.CanRead && p.CanWrite)) property.SetValue(settings, property.GetValue(original));
+        };
+        settings.SpeechEngine = "windows-live"; settings.CaptionMode = "japanese"; settings.AudioInputKind = "system";
+        settings.AudioDeviceId = ""; settings.AudioProcessId = 0; settings.AudioProcessStarted = 0;
+        settings.CorrectTranscriptWithAi = settings.UseLocalLlm = settings.SpeakerDiarization = false;
+        settings.BackgroundOpacity = 1; RefreshAudioInputs(); ApplySettings();
+        Title = "Locaptio — Windows入力の確認"; AppWindow.Show(); Activate();
+    }
+    private sealed class NotificationOnlyHandler : System.Net.Http.HttpMessageHandler
+    {
+        public int Checks, Downloads;
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsoluteUri != AppUpdates.LatestApi) { Downloads++; throw new Exception("Unexpected automatic download"); }
+            Checks++;
+            string payload = System.Text.Json.JsonSerializer.Serialize(new { tag_name = "v99.0.0", draft = false, prerelease = false,
+                assets = new[] { new { name = "Locaptio-Setup-99.0.0-x64.exe", browser_download_url = "https://github.com/Kou-256/Locaptio/releases/download/v99.0.0/Locaptio-Setup-99.0.0-x64.exe", size = 123, digest = "sha256:" + new string('1',64) } } });
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent(payload) });
+        }
+    }
+    private async Task VerifyUpdateNotificationAsync()
+    {
+        bool original = settings.AutoDownloadUpdates, passed = false; string report = "";
+        using var handler = new NotificationOnlyHandler(); using var client = new System.Net.Http.HttpClient(handler);
+        try
+        {
+            settings.AutoDownloadUpdates = true; updateHttpForVerification = client;
+            updateApprovalForVerification = () => throw new Exception("Startup unexpectedly opened an approval prompt");
+            await CheckForUpdatesAsync(false); await Task.Delay(150);
+            passed = handler.Checks == 1 && handler.Downloads == 0 && UpdateNotice.IsOpen && UpdateNotice.ActionButton is not null;
+            report = $"PASS={passed}; oldAutoDownload=true; metadataRequests={handler.Checks}; assetDownloads={handler.Downloads}; explicitDownloadButton={UpdateNotice.ActionButton is not null}";
+        }
+        catch (Exception ex) { report = ex.ToString(); }
+        finally
+        {
+            settings.AutoDownloadUpdates = original; updateHttpForVerification = null; updateApprovalForVerification = null;
+            File.WriteAllText(Path.Combine(root,"artifacts","update-notification-verification.txt"),report);
+            Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync();
+        }
+    }
     private async Task VerifyPreparationFailureAsync()
     {
         bool passed = false; string report = "";

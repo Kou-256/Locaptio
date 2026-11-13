@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Locaptio.Core;
 using NAudio.CoreAudioApi;
@@ -58,7 +58,7 @@ internal sealed class WindowsCaptionRecovery(
         }
     }
 
-    private static bool ReadSystemAudio()
+    internal static bool ReadSystemAudio()
     {
         // Peak metering uses no loopback buffers or inference and follows output
         // device changes. Audio is neither retained nor written to disk.

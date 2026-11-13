@@ -6,7 +6,7 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null) : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false) : IDisposable
 {
     private Process? worker;
     private readonly LocalBackend translation = new();
@@ -70,6 +70,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                 // Windows is deliberately launched outside this disposable bridge's
                 // process tree. Stop/exit only terminates the bridge.
                 var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false) };
+                start.ArgumentList.Add("--microphone"); start.ArgumentList.Add(includeMicrophone ? "on" : "off");
                 if (blockFirstBridge) { start.ArgumentList.Add("--verify-blocked-pipe"); blockFirstBridge = false; }
                 if (synchronizeLanguage) { start.ArgumentList.Add("--language"); start.ArgumentList.Add(japanese ? "ja-JP" : "en-US"); synchronizeLanguage = false; }
                 worker = Process.Start(start) ?? throw new InvalidOperationException("Windows連携を開始できませんでした。");

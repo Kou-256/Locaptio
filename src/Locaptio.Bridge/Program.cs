@@ -17,6 +17,9 @@ var connection = new CaptionConnectionMonitor();
 nint windowHandle = 0;
 string? requestedLanguage = args.SkipWhile(a => a != "--language").Skip(1).FirstOrDefault();
 bool languageHandled = requestedLanguage is null;
+string? microphoneArgument = args.SkipWhile(a => a != "--microphone").Skip(1).FirstOrDefault();
+bool? includeMicrophone = microphoneArgument is "on" ? true : microphoneArgument is "off" ? false : null;
+nint microphoneAppliedWindow = 0;
 var languageRecovery = new CaptionLanguageRecoveryState(requestedLanguage ?? "");
 long lastLanguageObservation = 0;
 void ObserveManualLanguage(bool captionUpdated = false)
@@ -73,6 +76,21 @@ try
                         if (!result.Success) languageRecovery.Failed(); else languageRecovery.Verified();
                         Send(new { type = result.Success ? "language-ready" : "language-error", text = result.Message });
                         window = AutomationElement.FromHandle(windowHandle);
+                    }
+                    if (includeMicrophone is bool desired && microphoneAppliedWindow != windowHandle)
+                    {
+                        var operation = Task.Run(() => CaptionMicrophonePolicy.Synchronize(new CaptionMicrophoneUi(windowHandle), desired));
+                        try
+                        {
+                            if (!operation.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("マイク設定の変更がタイムアウトしました。");
+                            operation.GetAwaiter().GetResult(); microphoneAppliedWindow = windowHandle;
+                            Send(new { type = "status", text = "Windows字幕の「マイクオーディオを含める」を" + (desired ? "ON" : "OFF") + "にしました。" });
+                        }
+                        catch (Exception ex)
+                        {
+                            Send(new { type = "error", text = "Windows字幕のマイク設定を" + (desired ? "ON" : "OFF") + "にできませんでした。Windows側の「設定 → マイクオーディオを含める」を確認し、Startで再試行してください。" + ex.GetBaseException().Message });
+                            Environment.Exit(1);
+                        }
                     }
                     needsBaseline = true;
                     captionText = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CaptionsTextBlock"));

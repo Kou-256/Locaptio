@@ -1,8 +1,8 @@
-#ifndef AppSource
+﻿#ifndef AppSource
   #error AppSource must name the prepared distribution folder
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.43"
+  #define AppVersion "1.0.44"
 #endif
 [Setup]
 #ifdef SetupUiTest
@@ -26,8 +26,11 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.26100
-OutputBaseFilename=Locaptio-Setup-x64
+OutputBaseFilename=Locaptio-Setup-{#AppVersion}-x64
 SetupIconFile={#AppSource}\Assets\Locaptio.ico
+WizardImageFile={#AppSource}\Assets\Locaptio.png
+WizardSmallImageFile={#AppSource}\Assets\Locaptio.png
+WizardImageBackColor=clWhite
 UninstallDisplayIcon={app}\Locaptio.exe
 Compression=lzma2/fast
 SolidCompression=yes
@@ -84,6 +87,11 @@ end;
 
 procedure InitializeWizard();
 begin
+  { Preserve the square icon's aspect ratio in the sidebar. }
+  WizardForm.WizardBitmapImage.Top := WizardForm.WizardBitmapImage.Top + (WizardForm.WizardBitmapImage.Height - WizardForm.WizardBitmapImage.Width) div 2;
+  WizardForm.WizardBitmapImage.Height := WizardForm.WizardBitmapImage.Width;
+  WizardForm.WizardBitmapImage2.Top := WizardForm.WizardBitmapImage2.Top + (WizardForm.WizardBitmapImage2.Height - WizardForm.WizardBitmapImage2.Width) div 2;
+  WizardForm.WizardBitmapImage2.Height := WizardForm.WizardBitmapImage2.Width;
   { TNewCheckListBox's owner-drawn glyph can clip on mixed/high DPI displays.
     Real checkbox controls have their own padded, native layout instead. }
   StartMenuCheck := TNewCheckBox.Create(WizardForm);
