@@ -53,7 +53,7 @@ internal static class FileImportChecks
             string runtime = Path.Combine(directory, "runtime"); Directory.CreateDirectory(Path.Combine(runtime, "scripts")); Directory.CreateDirectory(Path.Combine(runtime, "tools"));
             await File.WriteAllTextAsync(Path.Combine(runtime, "tools", "uv.exe"), "unused fixture");
             string script = Path.Combine(runtime, "scripts", "setup-speech.ps1");
-            await File.WriteAllTextAsync(script, "param($Model,[switch]$Translation)\nNew-Item -ItemType Directory -Force '.venv/Scripts',('models/speech-'+$Model),'models/translation' | Out-Null\nSet-Content '.venv/Scripts/python.exe' fixture\nSet-Content ('models/speech-'+$Model+'/model.bin') fixture\nif ($Translation) { Set-Content 'models/translation/model.bin' fixture }\n");
+            await File.WriteAllTextAsync(script, "param($Model,[switch]$Translation)\nNew-Item -ItemType Directory -Force '.venv/Scripts',('models/speech-'+$Model),'models/translation' | Out-Null\nSet-Content '.venv/Scripts/python.exe' fixture\nSet-Content '.venv/.locaptio-speech-v2' ready\nSet-Content ('models/speech-'+$Model+'/model.bin') fixture\nif ($Translation) { Set-Content 'models/translation/model.bin' fixture }\n");
             await SpeechPreparation.EnsureAsync(runtime, "small", true, "cpu", null, CancellationToken.None);
             Check(File.Exists(Path.Combine(runtime, "models", "speech-small", "model.bin")), "Automatic speech setup failed");
             await File.WriteAllTextAsync(script, "throw 'must not repeat'");

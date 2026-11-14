@@ -4,6 +4,9 @@ $utf8 = New-Object System.Text.UTF8Encoding $false
 $OutputEncoding = $utf8
 $env:PYTHONIOENCODING = 'utf-8'
 $env:PYTHONUTF8 = '1'
+$env:UV_PYTHON_NO_REGISTRY = '1'
+$env:UV_PYTHON_INSTALL_DIR = Join-Path (Split-Path $PSScriptRoot -Parent) 'tools/python'
+$env:UV_LINK_MODE = 'copy'
 
 function Get-LocaptioPython([string]$Root) {
     # Use a versioned installation directly. uv's minor-version junction can fail
@@ -28,4 +31,18 @@ function Get-LocaptioPython([string]$Root) {
     $python = Join-Path $private 'cpython-3.12.13-windows-x86_64-none/python.exe'
     if (-not (Test-Path -LiteralPath $python)) { throw 'The downloaded Python executable was not found.' }
     return $python
+}
+
+function Initialize-LocaptioEnvironment([string]$Root, [string]$Name) {
+    $python = Get-LocaptioPython -Root $Root
+    $environment = Join-Path $Root $Name
+    # Repair existing environments too: v1.0.42 could leave home pointing at
+    # uv's minor-version junction. Keep installed packages and all user data.
+    & uv venv --allow-existing --python $python $environment
+    if ($LASTEXITCODE) { throw 'Python environment creation or repair failed.' }
+    $config = Join-Path $environment 'pyvenv.cfg'
+    $pythonHome = Split-Path $python -Parent
+    $lines = [IO.File]::ReadAllLines($config)
+    $lines = @($lines | ForEach-Object { if ($_ -match '^home\s*=') { 'home = ' + $pythonHome } else { $_ } })
+    [IO.File]::WriteAllLines($config, [string[]]$lines, (New-Object System.Text.UTF8Encoding $false))
 }

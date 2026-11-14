@@ -13,7 +13,7 @@ public static class SpeechPreparation
         await gate.WaitAsync(token);
         try
         {
-            bool python = File.Exists(Path.Combine(root, ".venv", "Scripts", "python.exe"));
+            bool python = File.Exists(Path.Combine(root, ".venv", "Scripts", "python.exe")) && File.Exists(Path.Combine(root, ".venv", ".locaptio-speech-v2"));
             bool speech = File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin"));
             bool translate = File.Exists(Path.Combine(root, "models", "translation", "model.bin"));
             if (!python || !speech || translation && !translate)
@@ -45,11 +45,17 @@ public static class SpeechPreparation
         async Task Drain(StreamReader reader)
         {
             while (await reader.ReadLineAsync(token) is { } line)
-                lock (sync) { tail.Enqueue(line); while (tail.Count > 8) tail.Dequeue(); }
+                lock (sync) { tail.Enqueue(line); while (tail.Count > 20) tail.Dequeue(); }
         }
         await Task.WhenAll(Drain(process.StandardOutput), Drain(process.StandardError), process.WaitForExitAsync(token));
         token.ThrowIfCancellationRequested();
-        if (process.ExitCode != 0) throw new IOException("音声モデルの自動準備に失敗しました。ネット接続・空き容量を確認して再試行してください。\n" + string.Join("\n", tail));
+        if (process.ExitCode != 0)
+        {
+            string detail = string.Join("\n", tail);
+            throw new IOException((detail.Contains("os error 448", StringComparison.OrdinalIgnoreCase)
+                ? "WindowsがPython環境の参照先へのアクセスを拒否しました（マウントポイントの信頼性エラー）。環境の自動修復を完了できませんでした。\n"
+                : "音声環境の自動準備に失敗しました。\n") + detail);
+        }
         progress?.Invoke(new("音声環境の自動準備", 1, 1, "ダウンロード完了"));
     }
 }

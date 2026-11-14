@@ -4,10 +4,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
-    if (-not (Test-Path '.venv/Scripts/python.exe')) {
-        uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv
-        if ($LASTEXITCODE) { throw 'Python environment creation failed' }
-    }
+    Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv'
     uv pip install --python .venv/Scripts/python.exe -r inference/requirements.txt
     if ($LASTEXITCODE) { throw 'Speech dependencies installation failed' }
     & .venv/Scripts/python.exe inference/setup_speech.py --model $Model
@@ -16,4 +13,5 @@ try {
         & .venv/Scripts/python.exe inference/setup_models.py
         if ($LASTEXITCODE) { throw 'Translation preparation failed' }
     }
+    Set-Content -LiteralPath '.venv/.locaptio-speech-v2' -Value 'ready' -Encoding utf8
 } finally { Pop-Location }

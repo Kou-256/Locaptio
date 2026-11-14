@@ -1,4 +1,4 @@
-using System.Windows.Automation;
+﻿using System.Windows.Automation;
 
 namespace Locaptio.Bridge;
 
@@ -78,7 +78,15 @@ internal sealed class CaptionMicrophoneUi(nint handle) : ICaptionMicrophoneUi
             if (FindMenu("言語を変更", "Change language", "設定", "Preferences", "Settings") is not null)
             {
                 var settings = AutomationElement.FromHandle(handle).FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsButton"));
-                if (settings?.TryGetCurrentPattern(InvokePattern.Pattern, out var invoke) == true) ((InvokePattern)invoke).Invoke();
+                // Invoke shows the flyout again; it is not a close operation.
+                if (settings?.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var collapse) == true) ((ExpandCollapsePattern)collapse).Collapse();
+            }
+            // Escape is posted only to this Live Captions window while its known
+            // settings menu is visible. Never send keys to whichever app has focus.
+            for (int i = 0; i < 3 && FindId("SettingsMenuFlyout") is not null; i++)
+            {
+                NativeWindow.DismissMenu(handle);
+                Thread.Sleep(100);
             }
         }
         catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException) { }

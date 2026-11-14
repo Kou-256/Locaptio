@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using System.Collections.Concurrent;
 using Locaptio.Core;
 using Locaptio.Core.AI;
 
@@ -13,6 +14,39 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
     private readonly LocalLlmBackend llm = new();
     private StreamingSpeechCorrection? correction;
     private bool correctionEnabled = correctTranscript;
+    private WindowsCaptionTracker? tracker;
+    private string snapshot = "";
+    private CancellationToken sessionToken;
+    private long commandId;
+    private readonly SemaphoreSlim commandWriter = new(1);
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<bool>> microphoneCommands = new();
+    private readonly TaskCompletionSource workerReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public int? BridgeProcessId => worker is { HasExited: false } ? worker.Id : null;
+    public int LanguageChecks { get; private set; }
+    public void ResetTranscript() => tracker?.ResetBaseline(snapshot);
+    public async Task SetMicrophoneAsync(bool enabled, CancellationToken token = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, sessionToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        long request = Interlocked.Increment(ref commandId);
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        microphoneCommands[request] = completion;
+        try
+        {
+            await workerReady.Task.WaitAsync(timeout.Token);
+            await commandWriter.WaitAsync(timeout.Token);
+            try
+            {
+                var active = worker ?? throw new InvalidOperationException("Windows字幕にまだ接続できていません。");
+                await active.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { type = "microphone", request, enabled }).AsMemory(), timeout.Token);
+                await active.StandardInput.FlushAsync(timeout.Token);
+                if (await completion.Task.WaitAsync(timeout.Token) != enabled) throw new InvalidOperationException("Windowsのマイク状態が一致しません。");
+                includeMicrophone = enabled;
+            }
+            finally { commandWriter.Release(); }
+        }
+        finally { microphoneCommands.TryRemove(request, out _); }
+    }
     public event Action<CaptionUpdate>? Caption;
     public event Action<string>? Status;
     public event Action<bool, string>? ConnectionChanged;
@@ -28,6 +62,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         string executable = Path.Combine(directory, "bridge", "Locaptio.Bridge.exe");
         if (!File.Exists(executable)) throw new InvalidOperationException("Windows字幕連携用のbridgeフォルダーがありません。更新版のフォルダー全体を使用してください。");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token);
+        sessionToken = linked.Token;
         async Task InitializeTranslationAsync()
         {
             translation.PreparationChanged += p => PreparationChanged?.Invoke(p with { Component = "翻訳モデル" });
@@ -60,7 +95,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
             bool connectionWarning = false;
             var recovery = new WindowsCaptionRecovery(autoRecovery ?? (() => true), s => Status?.Invoke(s), s => { connectionWarning = true; ConnectionChanged?.Invoke(false, s); }, readSystemAudio, restartSeconds: restartSeconds);
             await recovery.EnsureStartedAsync(linked.Token);
-            var tracker = new WindowsCaptionTracker(japanese); string snapshot = "";
+            tracker = new WindowsCaptionTracker(japanese); snapshot = "";
             bool textChanged = false;
             bool blockFirstBridge = verifyBlockedBridge;
             bool synchronizeLanguage = autoSwitchLanguage;
@@ -69,11 +104,12 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
             {
                 // Windows is deliberately launched outside this disposable bridge's
                 // process tree. Stop/exit only terminates the bridge.
-                var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false) };
+                var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = new UTF8Encoding(false) };
                 start.ArgumentList.Add("--microphone"); start.ArgumentList.Add(includeMicrophone ? "on" : "off");
                 if (blockFirstBridge) { start.ArgumentList.Add("--verify-blocked-pipe"); blockFirstBridge = false; }
                 if (synchronizeLanguage) { start.ArgumentList.Add("--language"); start.ArgumentList.Add(japanese ? "ja-JP" : "en-US"); synchronizeLanguage = false; }
                 worker = Process.Start(start) ?? throw new InvalidOperationException("Windows連携を開始できませんでした。");
+                workerReady.TrySetResult();
                 worker.ErrorDataReceived += (_, _) => { }; worker.BeginErrorReadLine();
                 using var reading = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
                 using var registration = linked.Token.Register(KillWorker);
@@ -99,9 +135,17 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                         pending = worker.StandardOutput.ReadLineAsync(reading.Token).AsTask();
                         using var message = JsonDocument.Parse(line); var data = message.RootElement;
                         string type = data.GetProperty("type").GetString() ?? "";
+                        if (type == "microphone-ready")
+                        {
+                            long request = data.GetProperty("request").GetInt64();
+                            if (microphoneCommands.TryGetValue(request, out var completion)) completion.TrySetResult(data.GetProperty("enabled").GetBoolean());
+                            continue;
+                        }
+                        if (type == "microphone-error") throw new InvalidOperationException(data.GetProperty("text").GetString());
                         if (type == "error") throw new InvalidOperationException(data.GetProperty("text").GetString());
                         if (type is "language-ready" or "language-error" or "language-manual")
                         {
+                            LanguageChecks++;
                             string languageMessage = data.GetProperty("text").GetString() ?? "";
                             languageApplied = type == "language-ready";
                             LanguageWarning?.Invoke(type == "language-error" ? "言語の自動切り替えを確認できませんでした。Windows側で希望の言語を選んで続行してください。字幕の準備・更新を確認すると、この警告は自動で消えます。" : ""); Status?.Invoke(type == "language-error" ? "Windows字幕の手動設定を待っています。" : languageMessage); continue;
@@ -133,7 +177,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                 }
             }
         }
-        finally { linked.Cancel(); KillWorker(); try { await Task.WhenAll(translating, correcting); } catch (OperationCanceledException) { } correction = null; await Task.WhenAll(fastObserver, qualityObserver); }
+        finally { linked.Cancel(); workerReady.TrySetCanceled(); foreach (var completion in microphoneCommands.Values) completion.TrySetCanceled(); KillWorker(); try { await Task.WhenAll(translating, correcting); } catch (OperationCanceledException) { } correction = null; await Task.WhenAll(fastObserver, qualityObserver); }
     }
     private void KillWorker() { try { if (worker is { HasExited: false }) worker.Kill(true); } catch (InvalidOperationException) { } }
     private sealed class ReadyTranslation(LocalBackend backend, Task ready) : ITranslationBackend

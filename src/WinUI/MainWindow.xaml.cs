@@ -361,6 +361,7 @@ public sealed partial class MainWindow : Window
         if (UseWindowsCaptionEngine) return;
         if (closing || captionStop is not null) return;
         root = FindRoot(); if (root.Length == 0) return;
+        if (!File.Exists(Path.Combine(root, ".venv", ".locaptio-speech-v2"))) { Status("音声環境の初回準備・修復はStartから実行します。"); return; }
         bool japanese = settings.CaptionMode == "japanese";
         string model = settings.FastTranscription && !settings.RealtimeCaptions && !japanese ? "base" : settings.SpeechModel;
         if (!File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin"))) { Status("選択モデルは未準備です。Startで自動ダウンロードします（初回のみ）。"); return; }
@@ -676,7 +677,7 @@ public sealed partial class MainWindow : Window
         settings.ExportSavedAt, settings.ExportDuration, settings.ExportLineCount);
     private FileSavePicker MakeSavePicker(string title, string extension, string directory)
     {
-        var picker = new FileSavePicker(AppWindow.Id) { Title = title, SuggestedFileName = extension == ".txt" ? TranscriptExport.FileName(settings.TextFileNamePattern, DateTimeOffset.Now) : $"Locaptio-{DateTime.Now:yyyyMMdd-HHmmss}{extension}" };
+        var picker = new FileSavePicker(AppWindow.Id) { Title = title, SuggestedFileName = extension == ".txt" ? TranscriptExport.FileName(settings.TextFileNamePattern, DateTimeOffset.Now) : DateTime.Now.ToString("yyyyMMdd") + "_" + extension };
         picker.FileTypeChoices.Add(extension == ".txt" ? "テキスト" : extension.TrimStart('.').ToUpperInvariant() + "音声", new List<string> { extension });
         if (Directory.Exists(directory)) picker.SuggestedFolder = directory; return picker;
     }
@@ -718,11 +719,14 @@ public sealed partial class MainWindow : Window
                 path = file?.Path;
             }
             if (string.IsNullOrWhiteSpace(path) || closing) { SetRecordingChecked(false); return; }
-            await StopAsync(); ClearCaptions();
+            bool keepWindowsConnection = windowsSession is not null && captionStop is { IsCancellationRequested: false };
+            if (!keepWindowsConnection) await StopAsync();
+            ClearCaptions(); windowsSession?.ResetTranscript();
             settings.RecordingSaveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!; settings.Save();
             path = RecordingLibrary.CreateSessionPath(path);
             StartRecording(path);
-            await StartAsync(allowRecordingDialog: true);
+            if (!keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
+            else SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path));
         }
         catch (Exception ex) { SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
         finally
@@ -769,6 +773,23 @@ public sealed partial class MainWindow : Window
         string recordingFolder = Path.GetDirectoryName(recordingPath) ?? settings.RecordingSaveDirectory;
         try
         {
+            if (windowsSession is { } existing && settings.SpeechEngine == "windows-live" && WindowsCaptionInputPolicy.Supported(choice.Selection))
+            {
+                int? originalBridge = existing.BridgeProcessId; int languageChecks = existing.LanguageChecks;
+                if (recording) await StopRecordingAsync();
+                await existing.SetMicrophoneAsync(choice.Selection.Kind == "mixed");
+                settings.AudioInputKind = choice.Selection.Kind; settings.AudioDeviceId = "";
+                settings.AudioProcessId = 0; settings.AudioProcessStarted = 0; settings.Save();
+                if (recording)
+                {
+                    existing.ResetTranscript();
+                    StartRecording(Path.Combine(recordingFolder, $"Locaptio-{DateTime.Now:yyyyMMdd-HHmmss-fff}.{settings.RecordingFormat}"));
+                }
+                StatusText.Text = "音声入力を切り替えました。字幕の接続・言語・履歴は維持しています。";
+                if (Environment.GetCommandLineArgs().Contains("--verify-windows-input-view"))
+                    File.AppendAllText(Path.Combine(root,"artifacts","windows-input-live-verification.txt"), $"mic={choice.Selection.Kind == "mixed"}; sameBridge={originalBridge == existing.BridgeProcessId}; languageChecksBefore={languageChecks}; after={existing.LanguageChecks}\n");
+                return;
+            }
             prepared?.Dispose(); prepared = null;
             await Task.WhenAll(StopAsync(), StopRecordingAsync());
             settings.AudioInputKind = choice.Selection.Kind; settings.AudioDeviceId = choice.Selection.DeviceId;

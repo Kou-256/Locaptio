@@ -29,6 +29,17 @@ internal static class CaptionMicrophoneChecks
         Check(failed.Closed == 1, "Failed mic change left menus open");
         Check(WindowsCaptionInputPolicy.Choices().Count == 2 && WindowsCaptionInputPolicy.Choices().All(c => WindowsCaptionInputPolicy.Supported(c.Selection)), "Windows offered unsupported inputs");
         Check(WindowsCaptionInputPolicy.Normalize(new("microphone", "old-device")).Kind == "mixed" && WindowsCaptionInputPolicy.Normalize(new("application", ProcessId: 123)).Kind == "system", "Old selections did not migrate");
+        var boundary = new CaptionBaselineBoundary();
+        var tracker = new WindowsCaptionTracker(true);
+        Check(boundary.Begin("process-1:start-1"), "Initial connection did not establish a boundary");
+        tracker.ResetBaseline("過去の文章。");
+        Check(!boundary.Begin("process-1:start-1"), "Menu/UIA replacement discarded early speech");
+        var early = tracker.Observe("過去の文章。録音開始直後の発話。", System.Diagnostics.Stopwatch.GetTimestamp()).Single();
+        Check(early.English == "録音開始直後の発話。", "Setup-time speech was lost or old text leaked");
+        tracker.ResetBaseline("過去の文章。録音開始直後の発話。");
+        var newRecording = tracker.Observe("過去の文章。録音開始直後の発話。新規録音の最初。", System.Diagnostics.Stopwatch.GetTimestamp()).Single();
+        Check(newRecording.English == "新規録音の最初。" && newRecording.Id > early.Id, "Recording reset lost the first new phrase or reused an ID");
+        Check(boundary.Begin("process-1:start-2"), "Native process restart retained an obsolete boundary");
         Console.WriteLine("PASS: PC/mixed Windows routes; legacy input normalization; mic ON/OFF state verification, idempotence, unknown-state safety, failure cleanup");
     }
 }

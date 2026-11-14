@@ -1,4 +1,5 @@
-using System.IO;
+﻿using System.IO;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -10,9 +11,10 @@ Console.OutputEncoding = new UTF8Encoding(false);
 // Verification fixture: the session watchdog must recover even when no bridge
 // messages arrive. Normal invocations never use this argument.
 if (args.Contains("--verify-blocked-pipe")) { Thread.Sleep(Timeout.Infinite); return; }
-void Send(object data) { Console.WriteLine(JsonSerializer.Serialize(data)); Console.Out.Flush(); }
+object outputLock = new();
+void Send(object data) { lock (outputLock) { Console.WriteLine(JsonSerializer.Serialize(data)); Console.Out.Flush(); } }
 AutomationElement? window = null, captionText = null;
-string last = ""; bool reported = false, needsBaseline = true;
+string last = ""; bool reported = false;
 var connection = new CaptionConnectionMonitor();
 nint windowHandle = 0;
 string? requestedLanguage = args.SkipWhile(a => a != "--language").Skip(1).FirstOrDefault();
@@ -20,6 +22,25 @@ bool languageHandled = requestedLanguage is null;
 string? microphoneArgument = args.SkipWhile(a => a != "--microphone").Skip(1).FirstOrDefault();
 bool? includeMicrophone = microphoneArgument is "on" ? true : microphoneArgument is "off" ? false : null;
 nint microphoneAppliedWindow = 0;
+bool? appliedMicrophone = null;
+long pendingMicrophoneRequest = 0;
+var baselineBoundary = new CaptionBaselineBoundary();
+var commands = new ConcurrentQueue<(long Request, bool Enabled)>();
+_ = Task.Run(async () =>
+{
+    while (await Console.In.ReadLineAsync() is { } line)
+    {
+        if (line.Length > 1024) continue;
+        try
+        {
+            using var command = JsonDocument.Parse(line);
+            var data = command.RootElement;
+            if (data.GetProperty("type").GetString() == "microphone" && commands.Count < 4)
+                commands.Enqueue((data.GetProperty("request").GetInt64(), data.GetProperty("enabled").GetBoolean()));
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException) { }
+    }
+});
 var languageRecovery = new CaptionLanguageRecoveryState(requestedLanguage ?? "");
 long lastLanguageObservation = 0;
 void ObserveManualLanguage(bool captionUpdated = false)
@@ -42,6 +63,10 @@ try
     {
         try
         {
+            while (commands.TryDequeue(out var command))
+            {
+                includeMicrophone = command.Enabled; pendingMicrophoneRequest = command.Request;
+            }
             if (window is not null && (!NativeWindow.IsWindow(windowHandle) || !NativeWindow.IsWindowVisible(windowHandle)))
             {
                 window = captionText = null; windowHandle = 0;
@@ -59,6 +84,15 @@ try
                 }
                 if (window is not null)
                 {
+                    string processIdentity;
+                    using (var nativeProcess = Process.GetProcessById(window.Current.ProcessId)) processIdentity = nativeProcess.Id + ":" + nativeProcess.StartTime.ToUniversalTime().Ticks;
+                    if (baselineBoundary.Begin(processIdentity))
+                    {
+                        captionText = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CaptionsTextBlock"));
+                        last = captionText?.Current.Name ?? "";
+                        Send(new { type = "baseline", text = last });
+                        languageHandled = requestedLanguage is null;
+                    }
                     if (!languageHandled)
                     {
                         languageHandled = true;
@@ -77,30 +111,28 @@ try
                         Send(new { type = result.Success ? "language-ready" : "language-error", text = result.Message });
                         window = AutomationElement.FromHandle(windowHandle);
                     }
-                    if (includeMicrophone is bool desired && microphoneAppliedWindow != windowHandle)
-                    {
-                        var operation = Task.Run(() => CaptionMicrophonePolicy.Synchronize(new CaptionMicrophoneUi(windowHandle), desired));
-                        try
-                        {
-                            if (!operation.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("マイク設定の変更がタイムアウトしました。");
-                            operation.GetAwaiter().GetResult(); microphoneAppliedWindow = windowHandle;
-                            Send(new { type = "status", text = "Windows字幕の「マイクオーディオを含める」を" + (desired ? "ON" : "OFF") + "にしました。" });
-                        }
-                        catch (Exception ex)
-                        {
-                            Send(new { type = "error", text = "Windows字幕のマイク設定を" + (desired ? "ON" : "OFF") + "にできませんでした。Windows側の「設定 → マイクオーディオを含める」を確認し、Startで再試行してください。" + ex.GetBaseException().Message });
-                            Environment.Exit(1);
-                        }
-                    }
-                    needsBaseline = true;
-                    captionText = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CaptionsTextBlock"));
-                    last = captionText?.Current.Name ?? "";
-                    // Let an existing accessibility provider finish populating its
-                    // initial text before excluding the pre-connection history.
-                    Thread.Sleep(100);
-                    captionText ??= window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "CaptionsTextBlock"));
-                    last = captionText?.Current.Name ?? last;
                 }
+            }
+            if (window is not null && includeMicrophone is bool desired &&
+                (microphoneAppliedWindow != windowHandle || appliedMicrophone != desired || pendingMicrophoneRequest != 0))
+            {
+                if (microphoneAppliedWindow != windowHandle || appliedMicrophone != desired)
+                {
+                    var operation = Task.Run(() => CaptionMicrophonePolicy.Synchronize(new CaptionMicrophoneUi(windowHandle), desired));
+                    try
+                    {
+                        if (!operation.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("マイク設定の変更がタイムアウトしました。");
+                        operation.GetAwaiter().GetResult(); microphoneAppliedWindow = windowHandle; appliedMicrophone = desired;
+                    }
+                    catch (Exception ex)
+                    {
+                        Send(new { type = "microphone-error", request = pendingMicrophoneRequest, text = "Windows字幕のマイク設定を" + (desired ? "ON" : "OFF") + "にできませんでした。" + ex.GetBaseException().Message });
+                        Environment.Exit(1);
+                    }
+                    captionText = null;
+                }
+                Send(new { type = "microphone-ready", request = pendingMicrophoneRequest, enabled = desired });
+                pendingMicrophoneRequest = 0;
             }
             if (window is null)
             {
@@ -115,8 +147,7 @@ try
                 if (window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "ReadyToCaptionTextBlock")) is not null)
                 {
                     ObserveConnection(true);
-                    if (needsBaseline) { needsBaseline = false; last = ""; reported = false; Send(new { type = "baseline", text = "" }); }
-                    else Send(new { type = "tick" });
+                    reported = false; Send(new { type = "tick" });
                     Thread.Sleep(100); continue;
                 }
                 ObserveConnection(false);
@@ -125,13 +156,6 @@ try
             }
             string text = captionText.Current.Name;
             ObserveConnection(true);
-            // Baseline only after the provider is ready, including a blank one.
-            if (needsBaseline)
-            {
-                last = text; needsBaseline = false; reported = false;
-                Send(new { type = "baseline", text });
-                continue;
-            }
             if (text != last) { ObserveManualLanguage(!string.IsNullOrWhiteSpace(text)); Send(new { type = "snapshot", text }); last = text; }
             else Send(new { type = "tick" });
         }
@@ -149,6 +173,32 @@ catch (Exception ex) { Send(new { type = "error", text = ex.Message }); Environm
 
 internal static class NativeWindow
 {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        internal uint Size, Flags;
+        internal nint Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        internal int Left, Top, Right, Bottom;
+    }
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint hwnd, out uint process);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    internal static void DismissMenu(nint window)
+    {
+        uint thread = GetWindowThreadProcessId(window, out uint process);
+        var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf<GuiThreadInfo>() };
+        nint target = window;
+        // WinUI routes keyboard input through its focused child HWND. Posting to
+        // the top-level window leaves the XAML flyout open. Keep all messages
+        // inside this Live Captions process, even when another app is foreground.
+        if (GetGUIThreadInfo(thread, ref info) && info.Focus != 0)
+        {
+            GetWindowThreadProcessId(info.Focus, out uint focusedProcess);
+            if (focusedProcess == process) target = info.Focus;
+        }
+        PostMessage(target, 0x0100, 0x1B, 1);
+        PostMessage(target, 0x0101, 0x1B, unchecked((nint)0xC0000001));
+    }
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool PostMessage(nint hwnd, uint message, nint wparam, nint lparam);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool IsWindow(nint hwnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool IsWindowVisible(nint hwnd);
 }

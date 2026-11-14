@@ -2,7 +2,7 @@
   #error AppSource must name the prepared distribution folder
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.44"
+  #define AppVersion "1.0.45"
 #endif
 [Setup]
 #ifdef SetupUiTest
@@ -114,6 +114,13 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
   UpdatingChecks := True;
+  WizardForm.WizardSmallBitmapImage.Visible := CurPageID <> wpInstalling;
+#ifdef SetupUiTest
+  if CurPageID = wpInstalling then begin
+    if WizardForm.WizardSmallBitmapImage.Visible then Log('UI-CHECK installation icon visible: FAIL') else Log('UI-CHECK installation icon hidden: PASS');
+    WizardForm.Update(); Sleep(4000);
+  end;
+#endif
   if CurPageID = wpSelectTasks then begin
     StartMenuCheck.Checked := WizardIsTaskSelected('startmenuicon');
     DesktopCheck.Checked := WizardIsTaskSelected('desktopicon');

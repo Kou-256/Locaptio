@@ -19,7 +19,32 @@ public sealed partial class MainWindow
         settings.SpeechEngine = "windows-live"; settings.CaptionMode = "japanese"; settings.AudioInputKind = "system";
         settings.AudioDeviceId = ""; settings.AudioProcessId = 0; settings.AudioProcessStarted = 0;
         settings.CorrectTranscriptWithAi = settings.UseLocalLlm = settings.SpeakerDiarization = false;
+        settings.AutoSwitchWindowsCaptionLanguage = true;
         settings.BackgroundOpacity = 1; RefreshAudioInputs(); ApplySettings();
+        var probe = new Microsoft.UI.Xaml.Controls.Button { Content = "録音＋確認音声（検証用）", HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Left, FontSize = 12 };
+        Microsoft.UI.Xaml.Controls.Grid.SetRow(probe, 5); Root.Children.Add(probe);
+        probe.Click += async (_, _) =>
+        {
+            probe.IsEnabled = false;
+            try
+            {
+                settings.RecordingSaveDirectory = Path.Combine(root,"artifacts","windows-start-audio-" + Guid.NewGuid().ToString("N"));
+                recordingFilePickerForVerification = () => Task.FromResult<string?>(Path.Combine(settings.RecordingSaveDirectory,"20261115_.wav"));
+                int? bridge = windowsSession?.BridgeProcessId;
+                RecordToggle.IsChecked = true;
+                for (int i = 0; i < 100 && (recordingStop is null || dialogOpen); i++) await Task.Delay(50);
+                if (recordingStop is null) throw new Exception("Recording did not start");
+                using var reader = new NAudio.Wave.AudioFileReader(Path.Combine(root,"artifacts","test-ja.wav"));
+                using var player = new NAudio.Wave.WaveOutEvent(); player.Init(reader); player.Play();
+                await Task.Delay(reader.TotalTime + TimeSpan.FromSeconds(3));
+                bool text = history.Any(row => row.Caption.English.Contains("日本語"));
+                File.AppendAllText(Path.Combine(root,"artifacts","windows-input-live-verification.txt"), $"newRecordingFirstSpeech={text}; sameBridge={bridge == windowsSession?.BridgeProcessId}; rows={history.Count}\n");
+                await StopRecordingAsync();
+                StatusText.Text = text ? "確認音声の録音開始直後の文字を表示しました。" : "確認音声の文字が見つかりませんでした。";
+            }
+            catch (Exception ex) { StatusText.Text = ex.Message; }
+            finally { recordingFilePickerForVerification = null; probe.IsEnabled = true; }
+        };
         Title = "Locaptio — Windows入力の確認"; AppWindow.Show(); Activate();
     }
     private sealed class NotificationOnlyHandler : System.Net.Http.HttpMessageHandler

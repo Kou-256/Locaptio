@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.45 — Stable Windows input switching and speech environment repair
+
+- インストール進行中のページだけ右上のアイコンを非表示にしました。
+- PC内音声／PC内音声＋マイクの変更は接続を維持してマイク設定だけを変更。言語を再選択せず、Windowsの字幕スタイルも変更しません。
+- 新規録音でも動作中のWindows字幕連携を維持し、接続準備中・一時的なUI再取得で最初の発話を履歴として捨てないように修正。
+- 新規録音の初期ファイル名を `yyyyMMdd_` に変更。
+- 既存のPython環境も自動修復し、旧バージョンのジャンクション参照が残る場合に音声ファイルの読み込みがエラー448で失敗する問題へ対応。
+- Hide the installation-progress header icon, retain the Windows caption connection and language during input/recording changes, preserve early utterances, use date-prefixed recording names, and repair existing Python environments before file transcription.
+
 ## 1.0.44 — Windows input selection and explicit update downloads
 
 - Setupの標準ファイル名に版番号を追加し、ウィザードの画像をLocaptioのアイコンへ変更。

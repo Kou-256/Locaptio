@@ -81,7 +81,7 @@ public sealed partial class MainWindow
             StatusText.Text = "ファイルの文字起こしが完了しました。録音一覧から検索・再生できます。";
         }
         catch (OperationCanceledException) { StatusText.Text = "ファイル文字起こしを中止しました。認識済みの文章は保存します。"; }
-        catch (Exception ex) { StatusText.Text = "ファイル文字起こしに失敗しました: " + ex.Message; ShowStatusDetails(pin: true); }
+        catch (Exception ex) { StatusText.Text = "ファイル文字起こしに失敗しました: " + ex.Message; if (Environment.GetCommandLineArgs().Contains("--verify-file-import")) File.WriteAllText(Path.Combine(root, "artifacts", "file-import-failure.txt"), ex.ToString()); ShowStatusDetails(pin: true); }
         finally
         {
             if (audio is not null)
