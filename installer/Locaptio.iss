@@ -2,7 +2,7 @@
   #error AppSource must name the prepared distribution folder
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.45"
+  #define AppVersion "1.0.46"
 #endif
 [Setup]
 #ifdef SetupUiTest
@@ -87,6 +87,9 @@ end;
 
 procedure InitializeWizard();
 begin
+  WizardForm.WizardSmallBitmapImage.Visible := False;
+  WizardForm.WizardBitmapImage.Visible := False;
+  WizardForm.WizardBitmapImage2.Visible := False;
   { Preserve the square icon's aspect ratio in the sidebar. }
   WizardForm.WizardBitmapImage.Top := WizardForm.WizardBitmapImage.Top + (WizardForm.WizardBitmapImage.Height - WizardForm.WizardBitmapImage.Width) div 2;
   WizardForm.WizardBitmapImage.Height := WizardForm.WizardBitmapImage.Width;
@@ -114,7 +117,9 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
   UpdatingChecks := True;
-  WizardForm.WizardSmallBitmapImage.Visible := CurPageID <> wpInstalling;
+  WizardForm.WizardSmallBitmapImage.Visible := False;
+  WizardForm.WizardBitmapImage.Visible := False;
+  WizardForm.WizardBitmapImage2.Visible := CurPageID = wpFinished;
 #ifdef SetupUiTest
   if CurPageID = wpInstalling then begin
     if WizardForm.WizardSmallBitmapImage.Visible then Log('UI-CHECK installation icon visible: FAIL') else Log('UI-CHECK installation icon hidden: PASS');

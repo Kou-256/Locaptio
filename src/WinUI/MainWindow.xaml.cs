@@ -130,7 +130,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-file-import")) await VerifyFileImportAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-preparation-failure")) await VerifyPreparationFailureAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-update-notification")) await VerifyUpdateNotificationAsync(); };
-        Root.Loaded += (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-input-view")) PrepareWindowsInputView(); };
+        Root.Loaded += (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-input-view") || Environment.GetCommandLineArgs().Contains("--verify-windows-controls-view")) PrepareWindowsInputView(); };
         Root.Loaded += async (_, _) =>
         {
             if (!Environment.GetCommandLineArgs().Contains("--verify-selection-ui")) return;
@@ -262,6 +262,10 @@ public sealed partial class MainWindow : Window
                 windowsBridgeConnected = false;
                 using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, settings.TranslationGlossary, () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed");
                 windowsSession = live;
+                live.OperationChanged += active => DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!closing && ReferenceEquals(windowsSession, live)) WindowsOperationText.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+                });
                 var windowsProgress = BeginPreparation(); live.PreparationChanged += windowsProgress;
                 live.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); }); live.Status += Status;
                 live.LanguageWarning += message => DispatcherQueue.TryEnqueue(() =>
@@ -311,7 +315,7 @@ public sealed partial class MainWindow : Window
             speakerSession?.Dispose(); speakerSession = null;
             if (SpeakerStatusText.Visibility == Visibility.Visible) SpeakerStatusText.Text = "話者識別: 停止";
             transcriptClock.Stop();
-            windowsSession = null;
+            windowsSession = null; WindowsOperationText.Visibility = Visibility.Collapsed;
             WindowsLanguageWarning.IsOpen = false;
             WindowsMicrophoneNotice.IsOpen = false;
             WindowsCaptionWarning.IsOpen = false; windowsBridgeConnected = false;
@@ -698,6 +702,20 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) { StatusText.Text = "コピーできません: " + ex.Message; ShowStatusDetails(pin: true); }
     }
+    private Func<Task<bool>>? confirmNewRecordingForVerification;
+    private async Task<bool> ConfirmNewRecordingAsync()
+    {
+        if (history.Count == 0) return true;
+        if (confirmNewRecordingForVerification is not null) return await confirmNewRecordingForVerification();
+        var confirmation = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot, Title = "新規録音を開始しますか？",
+            Content = "表示中のテキストをクリアして、新しい録音を開始します。必要なテキストは先に保存してください。保存済みの録音やテキストファイルは削除しません。",
+            PrimaryButtonText = "クリアして新規録音", CloseButtonText = "キャンセル",
+            DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark
+        };
+        return await confirmation.ShowAsync() == ContentDialogResult.Primary;
+    }
     private async void RecordChanged(object sender, RoutedEventArgs e)
     {
         if (updatingRecordToggle || closing || !initialized) return;
@@ -707,6 +725,8 @@ public sealed partial class MainWindow : Window
         RecordToggle.IsEnabled = false; StartButton.IsEnabled = false; ModeSelector.IsEnabled = false; AudioSelector.IsEnabled = false;
         try
         {
+            bool confirmedExistingText = history.Count > 0;
+            if (!await ConfirmNewRecordingAsync() || closing) { SetRecordingChecked(false); return; }
             string directory = string.IsNullOrWhiteSpace(settings.RecordingSaveDirectory)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "Locaptio")
                 : settings.RecordingSaveDirectory;
@@ -719,14 +739,24 @@ public sealed partial class MainWindow : Window
                 path = file?.Path;
             }
             if (string.IsNullOrWhiteSpace(path) || closing) { SetRecordingChecked(false); return; }
+            // Speech can arrive while the filename picker is open. Do not clear
+            // those new words unless the user has also approved clearing text.
+            if (!confirmedExistingText && !await ConfirmNewRecordingAsync()) { SetRecordingChecked(false); return; }
             bool keepWindowsConnection = windowsSession is not null && captionStop is { IsCancellationRequested: false };
+            if (UseWindowsCaptionEngine && captionsForVerification is null)
+            {
+                WindowsOperationText.Visibility = Visibility.Visible;
+                try { await new WindowsCaptionWindow().EnsureStartedAsync(captionStop?.Token ?? CancellationToken.None); }
+                finally { WindowsOperationText.Visibility = Visibility.Collapsed; }
+            }
             if (!keepWindowsConnection) await StopAsync();
-            ClearCaptions(); windowsSession?.ResetTranscript();
-            settings.RecordingSaveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!; settings.Save();
+            string saveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             path = RecordingLibrary.CreateSessionPath(path);
+            ClearCaptions(); windowsSession?.ResetTranscript();
+            settings.RecordingSaveDirectory = saveDirectory; settings.Save();
             StartRecording(path);
             if (!keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
-            else SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path));
+            if (keepWindowsConnection) SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path));
         }
         catch (Exception ex) { SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
         finally

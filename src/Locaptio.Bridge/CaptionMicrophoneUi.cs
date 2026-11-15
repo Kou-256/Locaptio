@@ -5,6 +5,7 @@ namespace Locaptio.Bridge;
 internal sealed class CaptionMicrophoneUi(nint handle) : ICaptionMicrophoneUi
 {
     private AutomationElement? microphone, preferences;
+    private readonly nint previousForeground = NativeWindow.GetForegroundWindow();
     private AutomationElement[] Roots()
     {
         var root = AutomationElement.FromHandle(handle);
@@ -59,17 +60,6 @@ internal sealed class CaptionMicrophoneUi(nint handle) : ICaptionMicrophoneUi
         if (microphone.TryGetCurrentPattern(TogglePattern.Pattern, out var toggle)) ((TogglePattern)toggle).Toggle();
         else Invoke(microphone);
     }
-    public bool WaitFor(bool enabled)
-    {
-        long until = Environment.TickCount64 + 3000;
-        do
-        {
-            if (FindMicrophone() is null) Open();
-            if (Enabled == enabled) return true;
-            Thread.Sleep(100);
-        } while (Environment.TickCount64 < until);
-        return false;
-    }
     public void Close()
     {
         try
@@ -87,6 +77,14 @@ internal sealed class CaptionMicrophoneUi(nint handle) : ICaptionMicrophoneUi
             {
                 NativeWindow.DismissMenu(handle);
                 Thread.Sleep(100);
+            }
+            // Remove keyboard selection from Settings, then return focus only
+            // if the user has not switched to an unrelated application.
+            nint foreground = NativeWindow.GetForegroundWindow();
+            if (foreground == previousForeground || NativeWindow.SameProcess(foreground, handle))
+            {
+                try { AutomationElement.FromHandle(handle).SetFocus(); }
+                finally { if (previousForeground != 0 && previousForeground != handle) NativeWindow.SetForegroundWindow(previousForeground); }
             }
         }
         catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException) { }

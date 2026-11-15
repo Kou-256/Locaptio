@@ -33,6 +33,8 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         microphoneCommands[request] = completion;
         try
         {
+            OperationChanged?.Invoke(true);
+            await new WindowsCaptionWindow().EnsureStartedAsync(timeout.Token);
             await workerReady.Task.WaitAsync(timeout.Token);
             await commandWriter.WaitAsync(timeout.Token);
             try
@@ -45,8 +47,9 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
             }
             finally { commandWriter.Release(); }
         }
-        finally { microphoneCommands.TryRemove(request, out _); }
+        finally { microphoneCommands.TryRemove(request, out _); OperationChanged?.Invoke(false); }
     }
+    public event Action<bool>? OperationChanged;
     public event Action<CaptionUpdate>? Caption;
     public event Action<string>? Status;
     public event Action<bool, string>? ConnectionChanged;
@@ -94,7 +97,9 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         {
             bool connectionWarning = false;
             var recovery = new WindowsCaptionRecovery(autoRecovery ?? (() => true), s => Status?.Invoke(s), s => { connectionWarning = true; ConnectionChanged?.Invoke(false, s); }, readSystemAudio, restartSeconds: restartSeconds);
-            await recovery.EnsureStartedAsync(linked.Token);
+            OperationChanged?.Invoke(true);
+            try { await recovery.EnsureStartedAsync(linked.Token); }
+            finally { OperationChanged?.Invoke(false); }
             tracker = new WindowsCaptionTracker(japanese); snapshot = "";
             bool textChanged = false;
             bool blockFirstBridge = verifyBlockedBridge;
@@ -135,6 +140,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                         pending = worker.StandardOutput.ReadLineAsync(reading.Token).AsTask();
                         using var message = JsonDocument.Parse(line); var data = message.RootElement;
                         string type = data.GetProperty("type").GetString() ?? "";
+                        if (type == "operation") { OperationChanged?.Invoke(data.GetProperty("active").GetBoolean()); continue; }
                         if (type == "microphone-ready")
                         {
                             long request = data.GetProperty("request").GetInt64();
@@ -177,7 +183,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                 }
             }
         }
-        finally { linked.Cancel(); workerReady.TrySetCanceled(); foreach (var completion in microphoneCommands.Values) completion.TrySetCanceled(); KillWorker(); try { await Task.WhenAll(translating, correcting); } catch (OperationCanceledException) { } correction = null; await Task.WhenAll(fastObserver, qualityObserver); }
+        finally { OperationChanged?.Invoke(false); linked.Cancel(); workerReady.TrySetCanceled(); foreach (var completion in microphoneCommands.Values) completion.TrySetCanceled(); KillWorker(); try { await Task.WhenAll(translating, correcting); } catch (OperationCanceledException) { } correction = null; await Task.WhenAll(fastObserver, qualityObserver); }
     }
     private void KillWorker() { try { if (worker is { HasExited: false }) worker.Kill(true); } catch (InvalidOperationException) { } }
     private sealed class ReadyTranslation(LocalBackend backend, Task ready) : ITranslationBackend

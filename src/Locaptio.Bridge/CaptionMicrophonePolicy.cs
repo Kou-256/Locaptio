@@ -5,7 +5,6 @@ internal interface ICaptionMicrophoneUi
     void Open();
     bool? Enabled { get; }
     void Toggle();
-    bool WaitFor(bool enabled);
     void Close();
 }
 internal static class CaptionMicrophonePolicy
@@ -17,7 +16,9 @@ internal static class CaptionMicrophonePolicy
             ui.Open();
             bool current = ui.Enabled ?? throw new InvalidOperationException("Windows側のマイク設定の状態を読み取れませんでした。");
             if (current != desired) ui.Toggle();
-            if (!ui.WaitFor(desired)) throw new InvalidOperationException("Windows側のマイク設定の変更を確認できませんでした。");
+            // Toggle is a synchronous UIA action. Reopening the dismissed flyout
+            // to read its state again repeats the visible operation. Read once,
+            // toggle only when needed, and close without a second menu pass.
         }
         finally { ui.Close(); }
     }

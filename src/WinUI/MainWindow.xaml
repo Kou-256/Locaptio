@@ -72,6 +72,7 @@
   </ListView>
   <Button x:Name="ResumeHistoryButton" Grid.Row="4" Content="最新へ" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,12" Click="ResumeHistoryClick" ToolTipService.ToolTip="最新の字幕へ移動し、自動スクロールを再開します。"/>
   <StackPanel Grid.Row="5" Spacing="3">
+   <TextBlock x:Name="WindowsOperationText" Text="ライブキャプション操作中" Visibility="Collapsed" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
    <InfoBar x:Name="UpdateNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="アプリの更新"/>
    <InfoBar x:Name="WindowsCaptionWarning" Severity="Warning" IsOpen="False" IsClosable="False" Title="Windowsライブキャプションとの接続が切れました"/>
    <InfoBar x:Name="WindowsLanguageWarning" Severity="Warning" IsOpen="False" IsClosable="True" Title="Windows字幕の言語を確認してください"/>

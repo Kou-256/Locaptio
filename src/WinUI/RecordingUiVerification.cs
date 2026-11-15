@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Locaptio.Core;
 using Microsoft.UI.Xaml;
@@ -28,12 +28,21 @@ public sealed partial class MainWindow
             for (int i = 1; i <= 300; i++) UpdateCaption(new(i, 1, $"文字起こしの履歴 {i:D3}", null, true, Stopwatch.GetTimestamp(), 0, 0));
             settings.RecordingSaveDirectory = Path.Combine(root, "artifacts", "recording-checkbox-test");
             settings.RecordingFormat = "wav";
+            int confirmations = 0;
+            var preservedStop = captionStop;
+            confirmNewRecordingForVerification = () => { confirmations++; return Task.FromResult(false); };
+            recordingFilePickerForVerification = () => throw new Exception("Picker opened after declined confirmation");
+            RecordToggle.IsChecked = true; await Task.Delay(100);
+            bool declinedPreserves = confirmations == 1 && history.Count == 300 && ReferenceEquals(captionStop, preservedStop)
+                && recordingStop is null && RecordToggle.IsChecked == false && !dialogOpen;
+            if (!declinedPreserves) throw new Exception("Declining a new recording changed existing text or capture");
             var naming = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            confirmNewRecordingForVerification = () => Task.FromResult(true);
             recordingFilePickerForVerification = () => naming.Task;
             RecordToggle.IsChecked = true; await Task.Delay(50);
             bool waitsForName = dialogOpen && recordingStop is null && !StartButton.IsEnabled && !RecordToggle.IsEnabled;
             naming.SetResult(null); await Task.Delay(100);
-            bool cancelDoesNotRecord = recordingStop is null && RecordToggle.IsChecked == false && !dialogOpen;
+            bool cancelDoesNotRecord = recordingStop is null && RecordToggle.IsChecked == false && !dialogOpen && history.Count == 300 && ReferenceEquals(captionStop, preservedStop);
             captionStop?.Dispose(); captionStop = null;
             naming = new(TaskCreationOptions.RunContinuationsAsynchronously);
             string namedPath = Path.Combine(settings.RecordingSaveDirectory, $"named-recording-{Guid.NewGuid():N}.wav");
@@ -113,12 +122,13 @@ public sealed partial class MainWindow
             await StopAllAsync();
             bool stopped = recordingStop is null && RecordingIndicator.Visibility == Visibility.Collapsed;
             passed = stable && clockOnly && retainedSurface && recordingActive && stopped && automaticRecording && compactDetails && expandable && selectionEnabled && selectionRetained && correctionResumed && uncheckedStopsAll && multiRowCopy && multiRowRetained && recycledSelectionRetained && highlightRestored && multiRowCorrectionResumed;
-            report = $"PASS={passed}; waitsForFilename={waitsForName}; cancelDoesNotRecord={cancelDoesNotRecord}; namedRecordingStarts={automaticRecording}; detailsInitiallyHidden={compactDetails}; detailsOverlayBelowWithoutMovement={expandable}; multiRowCopy={multiRowCopy}; multiRowRetained={multiRowRetained}; recycledSelectionRetained={recycledSelectionRetained}; highlightRestored={highlightRestored}; multiRowCorrectionResumed={multiRowCorrectionResumed}; selectionEnabled={selectionEnabled}; selectionRetainedDuringCorrection={selectionRetained}; correctionResumed={correctionResumed}; uncheckStopsAll={uncheckedStopsAll}; stableTextContainer={stable}; recordingClockOnly={clockOnly}; viewportBefore={viewport:F1}; viewportAfter={CaptionList.ActualHeight:F1}; staticPathChanges={pathChanges}; retainedSurface={retainedSurface}; nativeEraseRequests={backdrop.EraseRequestCount - eraseRequests}; repeatedSurfaceClears={backdrop.SurfaceClearCount - clears}; recordingActive={recordingActive}; stopped={stopped}";
+            report = $"PASS={passed}; declinedPreservesTextAndRecognition={declinedPreserves}; waitsForFilename={waitsForName}; cancelDoesNotRecord={cancelDoesNotRecord}; namedRecordingStarts={automaticRecording}; detailsInitiallyHidden={compactDetails}; detailsOverlayBelowWithoutMovement={expandable}; multiRowCopy={multiRowCopy}; multiRowRetained={multiRowRetained}; recycledSelectionRetained={recycledSelectionRetained}; highlightRestored={highlightRestored}; multiRowCorrectionResumed={multiRowCorrectionResumed}; selectionEnabled={selectionEnabled}; selectionRetainedDuringCorrection={selectionRetained}; correctionResumed={correctionResumed}; uncheckStopsAll={uncheckedStopsAll}; stableTextContainer={stable}; recordingClockOnly={clockOnly}; viewportBefore={viewport:F1}; viewportAfter={CaptionList.ActualHeight:F1}; staticPathChanges={pathChanges}; retainedSurface={retainedSurface}; nativeEraseRequests={backdrop.EraseRequestCount - eraseRequests}; repeatedSurfaceClears={backdrop.SurfaceClearCount - clears}; recordingActive={recordingActive}; stopped={stopped}";
         }
         catch (Exception ex) { report = ex.ToString(); }
         finally
         {
             recordingFilePickerForVerification = null;
+            confirmNewRecordingForVerification = null;
             captionsForVerification = null;
             if (pathCallback != 0) RecordingText.UnregisterPropertyChangedCallback(TextBlock.TextProperty, pathCallback);
             await StopAllAsync(); captionStop?.Dispose(); captionStop = null;

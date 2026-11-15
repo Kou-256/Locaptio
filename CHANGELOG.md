@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.46 — Recording confirmation and single-pass Windows caption controls
+
+- Setupの完了ページ以外のウィザード画像を非表示にしました。
+- マイク設定を変更した後の確認用メニュー再表示を廃止。必要な変更を1回だけ実行し、メニューを閉じて操作前のウィンドウへフォーカスを戻します。
+- Windows字幕の起動・言語・マイクの操作中は本体に「ライブキャプション操作中」と表示します。
+- 新規録音時に既存テキストがある場合はクリア前に確認し、確認または保存画面をキャンセルした場合は履歴と動作中の認識を維持します。
+- 録音開始・入力変更時にWindows字幕が未起動ならウィンドウを起動します。
+- Only the final Setup page shows wizard artwork. Microphone changes use one menu pass and restore focus. The main window indicates Windows caption operations. Starting a new recording requires confirmation before clearing existing text; cancellation preserves history and recognition. Windows captions are launched when required.
+
 ## 1.0.45 — Stable Windows input switching and speech environment repair
 
 - インストール進行中のページだけ右上のアイコンを非表示にしました。

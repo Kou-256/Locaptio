@@ -97,6 +97,7 @@ try
                     {
                         languageHandled = true;
                         Send(new { type = "status", text = "Windows字幕の言語を本体のモードに合わせています…" });
+                        Send(new { type = "operation", active = true });
                         var operation = Task.Run(() => CaptionLanguagePolicy.Synchronize(new CaptionLanguageUi(windowHandle), requestedLanguage!));
                         // UI Automation providers can hang even on a read. Bound
                         // the operation independently of the audible-stall watchdog.
@@ -107,6 +108,7 @@ try
                             Environment.Exit(1);
                         }
                         var result = operation.GetAwaiter().GetResult();
+                        Send(new { type = "operation", active = false });
                         if (!result.Success) languageRecovery.Failed(); else languageRecovery.Verified();
                         Send(new { type = result.Success ? "language-ready" : "language-error", text = result.Message });
                         window = AutomationElement.FromHandle(windowHandle);
@@ -118,6 +120,7 @@ try
             {
                 if (microphoneAppliedWindow != windowHandle || appliedMicrophone != desired)
                 {
+                    Send(new { type = "operation", active = true });
                     var operation = Task.Run(() => CaptionMicrophonePolicy.Synchronize(new CaptionMicrophoneUi(windowHandle), desired));
                     try
                     {
@@ -129,6 +132,7 @@ try
                         Send(new { type = "microphone-error", request = pendingMicrophoneRequest, text = "Windows字幕のマイク設定を" + (desired ? "ON" : "OFF") + "にできませんでした。" + ex.GetBaseException().Message });
                         Environment.Exit(1);
                     }
+                    Send(new { type = "operation", active = false });
                     captionText = null;
                 }
                 Send(new { type = "microphone-ready", request = pendingMicrophoneRequest, enabled = desired });
@@ -173,6 +177,14 @@ catch (Exception ex) { Send(new { type = "error", text = ex.Message }); Environm
 
 internal static class NativeWindow
 {
+    [DllImport("user32.dll")] internal static extern nint GetForegroundWindow();
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool SetForegroundWindow(nint window);
+    internal static bool SameProcess(nint first, nint second)
+    {
+        if (first == 0 || second == 0) return false;
+        GetWindowThreadProcessId(first, out uint a); GetWindowThreadProcessId(second, out uint b);
+        return a != 0 && a == b;
+    }
     [StructLayout(LayoutKind.Sequential)]
     private struct GuiThreadInfo
     {

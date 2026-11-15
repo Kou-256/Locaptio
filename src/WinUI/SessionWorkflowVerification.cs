@@ -21,6 +21,7 @@ public sealed partial class MainWindow
         settings.CorrectTranscriptWithAi = settings.UseLocalLlm = settings.SpeakerDiarization = false;
         settings.AutoSwitchWindowsCaptionLanguage = true;
         settings.BackgroundOpacity = 1; RefreshAudioInputs(); ApplySettings();
+        confirmNewRecordingForVerification = () => Task.FromResult(true);
         var probe = new Microsoft.UI.Xaml.Controls.Button { Content = "録音＋確認音声（検証用）", HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Left, FontSize = 12 };
         Microsoft.UI.Xaml.Controls.Grid.SetRow(probe, 5); Root.Children.Add(probe);
         probe.Click += async (_, _) =>
@@ -45,6 +46,11 @@ public sealed partial class MainWindow
             catch (Exception ex) { StatusText.Text = ex.Message; }
             finally { recordingFilePickerForVerification = null; probe.IsEnabled = true; }
         };
+        if (Environment.GetCommandLineArgs().Contains("--verify-windows-controls-view"))
+        {
+            confirmNewRecordingForVerification = null; probe.Visibility = Visibility.Collapsed;
+            UpdateCaption(new(1, 1, "確認用のテキストです。新規録音をキャンセルしてもこの文章を保持します。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+        }
         Title = "Locaptio — Windows入力の確認"; AppWindow.Show(); Activate();
     }
     private sealed class NotificationOnlyHandler : System.Net.Http.HttpMessageHandler
@@ -160,6 +166,7 @@ public sealed partial class MainWindow
             settings.CaptionMode = "japanese"; settings.AudioInputKind = "application"; settings.AudioDeviceId = ""; settings.AudioProcessId = Environment.ProcessId;
             using (var process = Process.GetCurrentProcess()) settings.AudioProcessStarted = process.StartTime.ToUniversalTime().Ticks;
             settings.RecordingSaveDirectory = Path.Combine(root, "artifacts", "session-workflow-" + Guid.NewGuid().ToString("N")); settings.RecordingFormat = "wav";
+            confirmNewRecordingForVerification = () => Task.FromResult(true);
             captionsForVerification = async (token, offset) => { UpdateCaption(new(offset + 1, 1, "保持する会話 " + offset, null, true, Stopwatch.GetTimestamp(), 0, 0, "ja")); await Task.Delay(Timeout.Infinite, token); };
             recordingFilePickerForVerification = () => Task.FromResult<string?>(Path.Combine(settings.RecordingSaveDirectory, "会議.wav"));
             RecordToggle.IsChecked = true; await Wait(() => recordingStop is not null && captionStop is not null && !dialogOpen);
@@ -198,7 +205,7 @@ public sealed partial class MainWindow
         catch (Exception ex) { report = "PASS=False; " + ex; }
         finally
         {
-            overlay?.Close(); await StopAllAsync(); updateApprovalForVerification = null; captionsForVerification = null; recordingFilePickerForVerification = null;
+            overlay?.Close(); await StopAllAsync(); confirmNewRecordingForVerification = null; updateApprovalForVerification = null; captionsForVerification = null; recordingFilePickerForVerification = null;
             settings.CaptionMode = mode; settings.AudioInputKind = original.Kind; settings.AudioDeviceId = original.DeviceId; settings.AudioProcessId = original.ProcessId; settings.AudioProcessStarted = original.ProcessStarted;
             settings.RecordingSaveDirectory = directory; settings.RecordingFormat = format;
             await File.WriteAllTextAsync(Path.Combine(root, "artifacts", "session-workflow-verification.txt"), report);
