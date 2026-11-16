@@ -39,7 +39,7 @@ public sealed partial class MainWindow
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(150);
             var navigation = settingsNavigation!;
             var scroll = navigation.Scroll;
-            string[] names = ["本体の表示", "字幕の見た目", "音声認識・Windows連携", "AI文字補正", "話者識別・色分け", "翻訳・ローカルLLM", "保存先・録音", "アプリの更新", "診断"];
+            string[] names = ["本体の表示", "字幕の見た目", "音声認識・Windows連携", "AI文字補正", "用語辞書", "話者識別・色分け", "翻訳・ローカルLLM", "保存先・録音", "アプリの更新", "診断"];
             var sections = ((StackPanel)scroll.Content).Children.OfType<StackPanel>().ToArray();
             bool categorized = navigation.Categories.SequenceEqual(names) && navigation.Selected == names[0]
                 && sections.Count(p => p.Visibility == Visibility.Visible) == 1;
@@ -48,7 +48,7 @@ public sealed partial class MainWindow
             bool modelControls = speech.Children.OfType<DownwardSelector>().Count() >= 4 && navigation.Selected == names[2];
             bool aiGroup = navigation.Page(names[3]).Children.Contains(settingsCorrectionToggle!);
             bool gutter = ((StackPanel)scroll.Content).Padding.Right >= 32 && speech.ActualWidth < scroll.ActualWidth;
-            bool svgIcons = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Assets", "Settings"), "*.svg").Length == 9;
+            bool svgIcons = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Assets", "Settings"), "*.svg").Length == 10;
             for (int i = 0; i < names.Length; i++)
             {
                 navigation.Select(names[i]); await Task.Delay(20);

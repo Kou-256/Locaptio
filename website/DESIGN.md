@@ -39,3 +39,5 @@ Download metadata stays in `release.json` and is changed only after the correspo
 Owner copy preference (2026-11-12): use explicit feature descriptions, not poetic slogans. The hero names Japanese transcription and English-to-Japanese translation; section headings name their functions.
 
 Owner refinement (2026-11-12): remove design-reference links from the public footer; retain attribution in repository documentation. Use a gentler easing curve with 700ms entry, 420ms interaction reveals and 240ms button feedback.
+
+Owner request (2026-11-16): make the site understandable for first-time visitors with images, illustrations and SVG icons. Added a three-step "how it works" diagram and an illustrated card for each v1.0.48 tool (`illustrations.mjs`, `whats-new.mjs`). Illustrations are inline SVG drawn in the same stroke family as the icons and colored only through `.il-*` classes, so they share the single teal accent; each has an accessible label and each card names where the control is in the app.

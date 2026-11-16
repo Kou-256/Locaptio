@@ -21,10 +21,14 @@ public static class PlaybackHighlight
         double ratio = Math.Clamp((seconds - phrase.Seconds) / Math.Max(.2, end - phrase.Seconds), 0, .999999);
         if (mode == "character") return Character(text, 0, text.Length, ratio);
         // Japanese boundaries are heuristic without model-provided word times.
-        var matches = Regex.Matches(text, @"[\p{IsHiragana}]+|[\p{IsKatakana}ー]+|[\p{IsCJKUnifiedIdeographs}]+|[\p{L}\p{N}]+|[^\s]", RegexOptions.CultureInvariant);
+        var matches = Tokens(text);
         if (matches.Count == 0) return (0, 0);
-        var match = matches[Math.Min(matches.Count - 1, (int)(ratio * matches.Count))]; return (match.Index, match.Length);
+        return matches[Math.Min(matches.Count - 1, (int)(ratio * matches.Count))];
     }
+    /// <summary>Highlight units: runs of one script for Japanese, whole words otherwise.</summary>
+    public static List<(int Index, int Length)> Tokens(string text)
+        // A Latin word directly followed by Japanese ("Locaptioの会議") is its own unit, not one long run.
+        => Regex.Matches(text, @"[\p{IsHiragana}]+|[\p{IsKatakana}ー]+|[\p{IsCJKUnifiedIdeographs}]+|[\p{L}\p{N}-[\p{IsHiragana}\p{IsKatakana}\p{IsCJKUnifiedIdeographs}]]+|[^\s]", RegexOptions.CultureInvariant).Select(m => (m.Index, m.Length)).ToList();
     private static (int, int) Character(string text, int start, int length, double ratio)
     {
         int[] indexes = StringInfo.ParseCombiningCharacters(text.Substring(start, length));

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.48 — Editing, autosave, term dictionary, subtitles and AI summaries
+
+- 作業の自動保存と異常終了後の復元（中断した録音のWAVヘッダー修復・MP3/M4Aの途中WAVの回収を含む）。
+- 発話の直接編集、Ctrl+Z／Ctrl+Y、認識時の原文との比較・原文へ戻す。手動編集は後続の認識・補正結果より優先。
+- 保存済み録音の再文字起こしと時刻をそろえた比較、版の保存（最大10件）と切り替え。
+- 専門用語辞書：誤表記の置き換え、Whisperの認識ヒント、AI補正、LLM翻訳の訳語に共通利用。
+- 既存録音への単語時刻の後付け（文章は変更せず、ブックマークと要約の根拠も一緒に移動）。
+- SRT・VTT字幕出力、録音中のブックマーク（Ctrl+B）、ローカルLLMによる要点・決定事項・TODOの抽出と根拠の発話へのリンク。
+- ツールバー・メニュー・初期画面・状態表示を整理。
+- Autosave/recovery, editing with undo, re-transcription with comparison and versions, a shared term dictionary, word-time alignment for existing recordings, SRT/VTT export, bookmarks, cited local-AI summaries and a reorganized toolbar.
+
 ## 1.0.47 — Timed replay highlights, drag-and-drop and save prompts
 
 - 再生時のハイライトを発話全体／単語ごと／1文字ずつから選択可能に。新しいWhisperファイル取り込みでは単語時刻を保存。文字ごとの時刻、既存録音・Windows字幕・補正文の細かい時刻は推定です。

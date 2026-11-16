@@ -7,6 +7,18 @@ Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese t
 
 > **Experimental personal project.** The application UI is currently mostly Japanese; this guide explains its controls in English. Accuracy and latency depend on the audio, model and hardware.
 
+## v1.0.48: editing, autosave, term dictionary, subtitles and AI summaries
+
+- **Autosave and recovery**: every five seconds the transcript, edits, bookmarks and the recording path are saved on your PC. After an unexpected exit, review and restore the session at the next launch. An interrupted recording is repaired so it plays (MP3/M4A recover their WAV checkpoint). Snapshots are removed on normal exit, Clear and after a recording is saved. Configurable in Settings.
+- **Edit with undo**: right-click → Edit this utterance (F2). The recognized text from before AI correction, the dictionary or edits is shown and can be restored. Ctrl+Z / Ctrl+Y undo and redo. Edits are never overwritten by late recognition, correction or translation results.
+- **Re-transcribe a recording** with another Whisper model, language or AI correction, compared with the current result aligned by time. Results you do not adopt are kept as versions (up to 10).
+- **Term dictionary** (Settings → 用語辞書): correct spellings, misheard spellings and translations, shared by replacement, the Whisper hint, AI correction and LLM translation.
+- **Improve sync** adds per-utterance and word times to an existing recording without changing its text.
+- **SRT/VTT export** of source, translation or both; long utterances are split into two-line cues.
+- **Bookmarks** with the ★ button or Ctrl+B; labels are configurable and kept in recordings and text exports.
+- **Local AI summary** of key points, decisions and TODOs, each citing the time of its source utterances. Optional automatic summary after recording.
+- **UI**: icon toolbar with a highlighted Start button, recording toggle and an Export & AI menu; Edit and Recording/AI menus; a getting-started panel and a one-line status bar.
+
 ## v1.0.47: replay, import and model preparation
 
 - Choose **phrase, word or character replay highlighting** in Settings → 保存先・録音. New Whisper file imports store word times; character progress and old, Windows or AI-corrected transcripts use estimates.

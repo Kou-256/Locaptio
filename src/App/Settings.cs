@@ -73,6 +73,12 @@ public sealed class Settings
     public string SpeechModel { get; set; } = "large-v3-turbo";
     public string SpeechPrompt { get; set; } = "";
     public string TranslationGlossary { get; set; } = "";
+    // One entry per line: "表記 | 誤表記, 誤表記 | 訳語". Parsed by Locaptio.Core.TermDictionary.
+    public string TermDictionary { get; set; } = "";
+    public string BookmarkLabels { get; set; } = "重要、後で確認、質問、TODO";
+    public bool AutosaveSession { get; set; } = true;
+    public bool SummarizeAfterRecording { get; set; }
+    public string RetranscribeModel { get; set; } = "";
     public bool UseLocalLlm { get; set; } = true;
     public string LlmModelPath { get; set; } = "";
     public int WinUiWidth { get; set; }

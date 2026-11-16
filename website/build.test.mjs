@@ -32,3 +32,19 @@ test('task examples and every feature category are readable without opening a fe
     for(const match of html.matchAll(/href="#(detail-[^"]+)"/g)) assert.ok(html.includes(`id="${match[1]}"`));
   }
 });
+
+test('first-visit flow and every new tool have an illustration, icon and in-app location', async()=>{
+  const { whatsNew } = await import('./whats-new.mjs');
+  for(const [lang,file] of [['ja','dist/index.html'],['en','dist/en/index.html']]){
+    const html=await readFile(new URL(file,import.meta.url),'utf8');
+    const cards=[...html.matchAll(/<article class="new-card" id="(new-[a-z]+)">([\s\S]*?)<\/article>/g)];
+    assert.equal(cards.length,8);
+    for(const [,id,card] of cards){
+      assert.match(card,/<svg class="illustration"[^>]*role="img" aria-label="[^"]+"/);
+      assert.match(card,/class="new-where"/);
+      assert.ok(html.includes(`href="#${id}"`));
+    }
+    assert.equal((html.match(/<ol class="flow-steps">[\s\S]*?<\/ol>/)[0].match(/<li>/g)||[]).length,3);
+    assert.ok(html.includes(whatsNew[lang].flowLabel) && html.includes('href="#new"'));
+  }
+});

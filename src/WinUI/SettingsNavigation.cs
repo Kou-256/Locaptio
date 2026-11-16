@@ -30,12 +30,14 @@ internal sealed class SettingsNavigation
         style.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(8)));
         Menu.ItemContainerStyle = style;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Menu, "設定カテゴリ");
-        string[] icons = ["display", "captions", "speech", "correction", "speakers", "translation", "save", "update", "diagnostics"];
+        // Matched by title so a page can be inserted without shifting every later icon.
+        var icons = new Dictionary<string, string> { ["本体の表示"] = "display", ["字幕の見た目"] = "captions", ["音声認識・Windows連携"] = "speech", ["AI文字補正"] = "correction", ["用語辞書"] = "dictionary",
+            ["話者識別・色分け"] = "speakers", ["翻訳・ローカルLLM"] = "translation", ["保存先・録音"] = "save", ["アプリの更新"] = "update", ["診断"] = "diagnostics" };
         for (int i = 0; i < pages.Length; i++)
         {
             var row = new Grid { ColumnSpacing = 10 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); row.ColumnDefinitions.Add(new ColumnDefinition());
-            var icon = new Image { Width = 20, Height = 20, Source = new SvgImageSource(new Uri($"ms-appx:///Assets/Settings/{icons[i]}.svg")) };
+            var icon = new Image { Width = 20, Height = 20, Source = new SvgImageSource(new Uri($"ms-appx:///Assets/Settings/{icons.GetValueOrDefault((string)pages[i].Tag, "diagnostics")}.svg")) };
             var badge = new Border { Width = 28, Height = 28, CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 60, 103, 214)), Child = icon };
             row.Children.Add(badge);
             var label = new TextBlock { Text = (string)pages[i].Tag, FontSize = 14, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };

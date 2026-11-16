@@ -4,20 +4,41 @@
   <MenuBar x:Name="HeaderMenu" RequestedTheme="Light" Background="#F5F7FA" Margin="-12,-12,-12,0" Padding="6,0" MinHeight="32" AutomationProperties.Name="メニューバー">
    <MenuBar.Resources><Style TargetType="MenuBarItem"><Setter Property="FontSize" Value="14"/><Setter Property="Padding" Value="10,4"/><Setter Property="MinHeight" Value="30"/></Style></MenuBar.Resources>
    <MenuBarItem Title="ファイル(F)">
-    <MenuFlyoutItem Text="テキストを保存…" Click="SaveClick"/>
-    <MenuFlyoutItem Text="全文をコピー" Click="CopyTranscriptClick"/>
-    <MenuFlyoutItem Text="録音と文字起こしを開く…" Click="OpenRecordingClick"/>
-    <MenuFlyoutItem Text="音声ファイルから文字起こし…" Click="ImportAudioClick"/>
+    <MenuFlyoutItem Text="テキストを保存…" Click="SaveClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74E;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="字幕ファイル（SRT・VTT）を書き出す…" Click="ExportSubtitlesClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7F0;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="全文をコピー" Click="CopyTranscriptClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutSeparator/>
+    <MenuFlyoutItem Text="録音と文字起こしを開く…" Click="OpenRecordingClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="音声ファイルから文字起こし…" Click="ImportAudioClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8E5;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem x:Name="RecoverMenuItem" Text="前回の未保存セッションを復元…" Click="RecoverSessionClick" IsEnabled="False"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <MenuFlyoutSeparator/>
     <MenuFlyoutItem Text="終了" Click="CloseClick"/>
    </MenuBarItem>
+   <MenuBarItem Title="編集(E)">
+    <MenuFlyoutItem x:Name="UndoMenuItem" Text="修正を元に戻す" Click="UndoEditClick" IsEnabled="False" KeyboardAcceleratorTextOverride="Ctrl+Z"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem x:Name="RedoMenuItem" Text="修正をやり直す" Click="RedoEditClick" IsEnabled="False" KeyboardAcceleratorTextOverride="Ctrl+Y"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A6;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutSeparator/>
+    <MenuFlyoutItem Text="選択した発話を編集…" Click="EditSelectedClick" KeyboardAcceleratorTextOverride="F2"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE70F;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="変更された発話・補正前の原文と比較…" Click="ShowChangesClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F1;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutSeparator/>
+    <MenuFlyoutItem Text="ブックマークを付ける" Click="BookmarkMenuClick" KeyboardAcceleratorTextOverride="Ctrl+B"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE734;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="用語辞書を編集…" Click="TermDictionaryClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE82D;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+   </MenuBarItem>
    <MenuBarItem Title="聞き取り(T)">
-    <MenuFlyoutItem Text="開始" Click="StartClick"/>
-    <MenuFlyoutItem Text="停止" Click="StopClick"/>
-    <MenuFlyoutItem Text="字幕をクリア" Click="ClearClick"/>
+    <MenuFlyoutItem Text="開始" Click="StartClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="停止" Click="StopClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71A;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="字幕をクリア" Click="ClearClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+   </MenuBarItem>
+   <MenuBarItem Title="録音・AI(R)">
+    <MenuFlyoutItem Text="録音一覧・再生…" Click="OpenRecordingClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="別のモデルで再文字起こし…" Click="RetranscribeClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="音声と文章の同期を改善（単語時刻を付ける）…" Click="ImproveTimingClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutItem Text="文字起こしの版を比較・切り替え…" Click="VersionsClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <MenuFlyoutSeparator/>
+    <MenuFlyoutItem Text="AIで要約（要点・決定事項・TODO）" Click="SummaryClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
    </MenuBarItem>
    <MenuBarItem Title="設定(S)">
-    <MenuFlyoutItem Text="設定を開く…" Click="SettingsClick"/>
+    <MenuFlyoutItem Text="設定を開く…" Click="SettingsClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
    </MenuBarItem>
    <MenuBarItem Title="ヘルプ(H)">
     <MenuFlyoutItem Text="モデルの説明" Click="ModelHelpClick"/>
@@ -29,19 +50,40 @@
   <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><local:DownwardSelector x:Name="ModeSelector" Width="260" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="字幕モード" ToolTipService.ToolTip="切り替え前にテキストの保存を確認します。キャンセルすると現在のモードを維持します。"></local:DownwardSelector><local:DownwardSelector x:Name="AudioSelector" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="500" SelectionChanged="AudioChanged" DropDownOpened="AudioMenuOpened" AutomationProperties.Name="音声入力" ToolTipService.ToolTip="Windows字幕連携ではPC内音声／PC内音声＋マイクを選択し、Windows側のマイク設定も自動で切り替えます。Whisperではマイク単独・指定アプリも選べます。入力を切り替えても会話履歴は保持します。録音中は同じ録音フォルダーの別ファイルに分割します。"/></Grid>
   <local:ToolbarPanel>
    <local:ToolbarPanel.Resources>
-    <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}"><Setter Property="MinHeight" Value="30"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
-    <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}"><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="30"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}"><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style x:Key="PrimaryToolbarButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}"><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="14,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}"><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}"><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="32"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style TargetType="FontIcon"><Setter Property="FontSize" Value="14"/></Style>
    </local:ToolbarPanel.Resources>
-   <Button x:Name="StartButton" Content="Start" Click="StartClick"/><Button x:Name="StopButton" Content="Stop" Click="StopClick" IsEnabled="False"/><Button Content="Clear" Click="ClearClick"/>
-   <Button x:Name="CaptionButton" Content="字幕" Click="CaptionClick" ToolTipService.ToolTip="キャプションだけのウィンドウを開閉します。移動は字幕の背景をドラッグしてください。"/>
-   <Button x:Name="SaveButton" Content="テキスト保存" Click="SaveClick" IsEnabled="False"/><CheckBox x:Name="RecordToggle" Content="新規録音" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="新規録音" ToolTipService.ToolTip="新しい録音を専用フォルダーに保存します。チェックを外すと録音・文字起こしを停止します。保存済みデータは録音一覧から開いてください。"/>
-   <Button Content="録音一覧・再生" Click="OpenRecordingClick" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"/>
-   <Button Content="音声ファイル読込" Click="ImportAudioClick" ToolTipService.ToolTip="MP3・M4A・WAVをローカルで文字起こし。ドラッグ＆ドロップにも対応。原本は変更しません。"/>
-   <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回Startから。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
-   <Button Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;" FontSize="14"/></Button>
+   <Button x:Name="StartButton" Style="{StaticResource PrimaryToolbarButton}" Click="StartClick" AutomationProperties.Name="開始" ToolTipService.ToolTip="選んだ音声の文字起こしを開始します。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE768;"/><TextBlock Text="開始"/></StackPanel></Button>
+   <Button x:Name="StopButton" Click="StopClick" IsEnabled="False" AutomationProperties.Name="停止" ToolTipService.ToolTip="文字起こしと録音を停止します。表示中の文章は残ります。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE71A;"/><TextBlock Text="停止"/></StackPanel></Button>
+   <Button x:Name="CaptionButton" Click="CaptionClick" AutomationProperties.Name="字幕ウィンドウ" ToolTipService.ToolTip="キャプションだけのウィンドウを開閉します。移動は字幕の背景をドラッグしてください。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE7F0;"/><TextBlock x:Name="CaptionButtonText" Text="字幕"/></StackPanel></Button>
+   <ToggleButton x:Name="RecordToggle" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="新規録音" ToolTipService.ToolTip="新しい録音を専用フォルダーに保存します。もう一度押すと録音・文字起こしを停止します。保存済みデータは録音一覧から開いてください。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE7C8;" Foreground="#FF7A7A"/><TextBlock x:Name="RecordToggleText" Text="新規録音"/></StackPanel></ToggleButton>
+   <SplitButton x:Name="BookmarkButton" Click="BookmarkClick" MinHeight="32" Padding="10,4" FontSize="14" AutomationProperties.Name="ブックマークを付ける" ToolTipService.ToolTip="いまの時刻・発話に印を付けます（Ctrl+B）。▼で「後で確認」などの種類を選べます。録音中は聞き直し位置として保存します。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE734;" Foreground="#F5B942"/><TextBlock x:Name="BookmarkButtonText" Text="重要"/></StackPanel></SplitButton>
+   <Button x:Name="SaveButton" Click="SaveClick" IsEnabled="False" AutomationProperties.Name="テキスト保存" ToolTipService.ToolTip="表示中の文字起こしをテキストファイルに保存します。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE74E;"/><TextBlock Text="テキスト保存"/></StackPanel></Button>
+   <DropDownButton x:Name="MoreButton" MinHeight="32" Padding="10,4" FontSize="14" AutomationProperties.Name="書き出し・AI" ToolTipService.ToolTip="字幕ファイルの書き出し、AI要約、修正の取り消しなど">
+    <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xEDE1;"/><TextBlock Text="書き出し・AI"/></StackPanel>
+    <DropDownButton.Flyout>
+     <MenuFlyout Placement="Bottom">
+      <MenuFlyoutItem Text="字幕ファイル（SRT・VTT）を書き出す…" Click="ExportSubtitlesClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7F0;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+      <MenuFlyoutItem Text="全文をコピー" Click="CopyTranscriptClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+      <MenuFlyoutSeparator/>
+      <MenuFlyoutItem Text="AIで要約（要点・決定事項・TODO）" Click="SummaryClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+      <MenuFlyoutItem Text="変更された発話・補正前の原文と比較…" Click="ShowChangesClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F1;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+      <MenuFlyoutItem Text="用語辞書を編集…" Click="TermDictionaryClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE82D;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+      <MenuFlyoutSeparator/>
+      <MenuFlyoutItem Text="表示中の文章をクリア" Click="ClearClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+     </MenuFlyout>
+    </DropDownButton.Flyout>
+   </DropDownButton>
+   <Button Click="OpenRecordingClick" AutomationProperties.Name="録音一覧・再生" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8B7;"/><TextBlock Text="録音一覧"/></StackPanel></Button>
+   <Button Click="ImportAudioClick" AutomationProperties.Name="音声ファイル読込" ToolTipService.ToolTip="MP3・M4A・WAVをローカルで文字起こし。ドラッグ＆ドロップにも対応。原本は変更しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8E5;"/><TextBlock Text="ファイル読込"/></StackPanel></Button>
+   <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回の開始から。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
+   <Button Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;"/></Button>
   </local:ToolbarPanel></StackPanel>
   <StackPanel Grid.Row="2" Spacing="4">
-  <TextBlock x:Name="SessionTitle" Text="文字起こし（録音なし）／新規録音はチェック、保存済みデータは録音一覧から" FontSize="11" TextWrapping="Wrap"/>
+  <TextBlock x:Name="SessionTitle" Text="文字起こし（録音なし）／音声も残すときは「新規録音」、保存済みデータは「録音一覧」から" FontSize="11" TextWrapping="Wrap"/>
   <Grid x:Name="RecordingIndicator" Visibility="Collapsed" ColumnSpacing="8">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
    <TextBlock Text="● 録音中" Foreground="#FF8F8F"/>
@@ -54,8 +96,22 @@
     <Slider x:Name="PlaybackPosition" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="PlaybackSeekChanged" AutomationProperties.Name="録音の再生位置"/>
     <TextBlock x:Name="PlaybackTime" Grid.Column="2" VerticalAlignment="Center" FontSize="12" FontFamily="Consolas"/>
    </Grid>
+   <local:ToolbarPanel x:Name="RecordingTools">
+    <local:ToolbarPanel.Resources>
+     <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}"><Setter Property="Padding" Value="8,3"/><Setter Property="FontSize" Value="12"/><Setter Property="CornerRadius" Value="4"/></Style>
+     <Style TargetType="FontIcon"><Setter Property="FontSize" Value="12"/></Style>
+    </local:ToolbarPanel.Resources>
+    <Button Click="RetranscribeClick" ToolTipService.ToolTip="この録音を別のモデルや高精度設定で認識し直し、現在の結果と並べて比較します。元の結果は残ります。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE72C;"/><TextBlock Text="再文字起こし…"/></StackPanel></Button>
+    <Button Click="ImproveTimingClick" ToolTipService.ToolTip="音声をもう一度解析し、いまの文章に単語ごとの時刻を付けます。ハイライトとクリック再生のずれを減らします。文章は変えません。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE916;"/><TextBlock Text="同期を改善"/></StackPanel></Button>
+    <Button Click="VersionsClick" ToolTipService.ToolTip="以前の文字起こし結果と比較し、切り替えます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE81C;"/><TextBlock Text="版を比較・切替"/></StackPanel></Button>
+    <Button Click="SummaryClick" ToolTipService.ToolTip="ローカルAIで要点・決定事項・TODOを作ります。各項目から根拠の発話へ戻れます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE8FD;"/><TextBlock Text="AI要約"/></StackPanel></Button>
+    <Button Click="ExportSubtitlesClick" ToolTipService.ToolTip="動画編集や字幕表示に使えるSRT・VTTファイルを保存します。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE7F0;"/><TextBlock Text="SRT・VTT"/></StackPanel></Button>
+   </local:ToolbarPanel>
    <TextBlock x:Name="PlaybackHint" Text="文字をクリックすると、その発話の少し前から再生します。ドラッグで選択・コピーもできます。" FontSize="11" TextWrapping="Wrap"/>
   </StackPanel>
+  <ScrollViewer x:Name="BookmarkScroll" Visibility="Collapsed" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled" AutomationProperties.Name="ブックマーク一覧">
+   <StackPanel x:Name="BookmarkPanel" Orientation="Horizontal" Spacing="6" Padding="0,0,0,2"/>
+  </ScrollViewer>
   <StackPanel x:Name="RecordingSearchPanel" Visibility="Collapsed" Spacing="4">
    <TextBox x:Name="RecordingSearch" PlaceholderText="録音内の言葉を検索" TextChanged="RecordingSearchChanged" AutomationProperties.Name="録音内の検索語"/>
    <TextBlock x:Name="RecordingSearchCount" FontSize="11"/>
@@ -64,15 +120,44 @@
    </ListView>
   </StackPanel>
   </StackPanel>
-  <Grid x:Name="Header" Grid.Row="3" ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock x:Name="EnglishHeader" Text="English" Foreground="#C8C8C8"/><TextBlock x:Name="JapaneseHeader" Grid.Column="1" Text="日本語" Foreground="#C8C8C8"/></Grid>
+  <Grid x:Name="Header" Grid.Row="3" ColumnSpacing="20" Padding="10,0,26,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock x:Name="EnglishHeader" Text="English" Foreground="#C8C8C8"/><TextBlock x:Name="JapaneseHeader" Grid.Column="1" Text="日本語" Foreground="#C8C8C8"/></Grid>
   <ListView x:Name="CaptionList" Grid.Row="4" SelectionMode="None" IsItemClickEnabled="False" Padding="0" ContainerContentChanging="CaptionContainerChanging" Loaded="CaptionListLoaded" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
    <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel ItemsUpdatingScrollMode="KeepItemsInView"/></ItemsPanelTemplate></ListView.ItemsPanel>
    <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="MinHeight" Value="0"/><Setter Property="IsTabStop" Value="False"/></Style></ListView.ItemContainerStyle>
-   <ListView.ItemTemplate><DataTemplate><Grid ColumnSpacing="20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding English}" TextWrapping="Wrap" IsTextSelectionEnabled="False" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/><TextBlock Grid.Column="1" Text="{Binding Japanese}" TextWrapping="Wrap" IsTextSelectionEnabled="False" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/></Grid></DataTemplate></ListView.ItemTemplate>
+   <!-- Children 0 and 1 are the text columns used by selection and playback. Child 2 is the bookmark bar, child 3 the edited mark. -->
+   <ListView.ItemTemplate><DataTemplate><Grid ColumnSpacing="20" Padding="10,0,26,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="{Binding English}" TextWrapping="Wrap" IsTextSelectionEnabled="False" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/><TextBlock Grid.Column="1" Text="{Binding Japanese}" TextWrapping="Wrap" IsTextSelectionEnabled="False" SelectionChanged="CaptionSelectionChanged" Unloaded="CaptionTextUnloaded"/><Border Grid.ColumnSpan="2" HorizontalAlignment="Left" Width="4" Margin="-10,3,0,3" CornerRadius="2" Background="#F5B942" Visibility="Collapsed"/><FontIcon Grid.ColumnSpan="2" Glyph="&#xE70F;" FontSize="11" Foreground="#9AA0A6" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,5,-20,0" Visibility="Collapsed"/></Grid></DataTemplate></ListView.ItemTemplate>
   </ListView>
+  <StackPanel x:Name="EmptyState" Grid.Row="4" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" MaxWidth="620" IsHitTestVisible="False">
+   <FontIcon Glyph="&#xE720;" FontSize="34" Foreground="#9AA0A6"/>
+   <TextBlock Text="「開始」を押すと、PCで流れている音声を文字にします" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"/>
+   <Grid ColumnSpacing="14" RowSpacing="6" HorizontalAlignment="Center">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+    <FontIcon Glyph="&#xE8C1;" FontSize="15" Foreground="#9AA0A6"/><TextBlock Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="左上で「日本語の文字起こし」か「英語 → 日本語 翻訳」と、聞き取る音声を選びます。"/>
+    <FontIcon Grid.Row="1" Glyph="&#xE7C8;" FontSize="15" Foreground="#FF7A7A"/><TextBlock Grid.Row="1" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="音声も残すときは「新規録音」。あとで文章をクリックして聞き直せます。"/>
+    <FontIcon Grid.Row="2" Glyph="&#xE734;" FontSize="15" Foreground="#F5B942"/><TextBlock Grid.Row="2" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="大事なところは「重要」(Ctrl+B)で印を付け、誤認識は右クリックから直せます。"/>
+    <FontIcon Grid.Row="3" Glyph="&#xE8E5;" FontSize="15" Foreground="#9AA0A6"/><TextBlock Grid.Row="3" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="手元のMP3・M4A・WAVは、この画面にドロップすると文字起こしできます。"/>
+   </Grid>
+  </StackPanel>
   <Button x:Name="ResumeHistoryButton" Grid.Row="4" Content="最新へ" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,12" Click="ResumeHistoryClick" ToolTipService.ToolTip="最新の字幕へ移動し、自動スクロールを再開します。"/>
+  <Border x:Name="SummaryPane" Grid.Row="4" Visibility="Collapsed" HorizontalAlignment="Right" Width="340" Background="#2B2B2B" BorderBrush="#858585" BorderThickness="1" CornerRadius="8" Padding="12,10,8,10" AutomationProperties.Name="AI要約">
+   <Grid RowSpacing="8">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8FD;" FontSize="14"/><TextBlock Text="AI要約" FontSize="15" FontWeight="SemiBold"/></StackPanel>
+     <Button Grid.Column="1" Click="SummaryCloseClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を閉じる"><FontIcon Glyph="&#xE711;" FontSize="11"/></Button>
+    </Grid>
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0"><StackPanel x:Name="SummaryContent" Spacing="6"/></ScrollViewer>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+     <Button x:Name="SummaryRunButton" Content="作成" Click="SummaryRunClick" Padding="8,3" FontSize="12"/>
+     <Button x:Name="SummaryCopyButton" Content="コピー" Click="SummaryCopyClick" Padding="8,3" FontSize="12" IsEnabled="False"/>
+     <Button x:Name="SummarySaveButton" Content="Markdown保存…" Click="SummarySaveClick" Padding="8,3" FontSize="12" IsEnabled="False"/>
+    </StackPanel>
+   </Grid>
+  </Border>
   <StackPanel Grid.Row="5" Spacing="3">
    <TextBlock x:Name="WindowsOperationText" Text="ライブキャプション操作中" Visibility="Collapsed" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
+   <InfoBar x:Name="RecoveryNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="前回の未保存の文字起こしがあります"><InfoBar.ActionButton><Button Content="内容を確認して復元…" Click="RecoverSessionClick"/></InfoBar.ActionButton></InfoBar>
    <InfoBar x:Name="UpdateNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="アプリの更新"/>
    <InfoBar x:Name="WindowsCaptionWarning" Severity="Warning" IsOpen="False" IsClosable="False" Title="Windowsライブキャプションとの接続が切れました"/>
    <InfoBar x:Name="WindowsLanguageWarning" Severity="Warning" IsOpen="False" IsClosable="True" Title="Windows字幕の言語を確認してください"/>
@@ -81,7 +166,16 @@
     <TextBlock x:Name="PreparationText" FontSize="12" Foreground="#FFFFFF" TextWrapping="Wrap"/>
     <ProgressBar x:Name="PreparationBar" Minimum="0" Maximum="100" Height="5"/>
    </StackPanel>
-   <HyperlinkButton x:Name="StatusDetailsButton" Content="状態" FontSize="11" Padding="2,0" MinWidth="0" MinHeight="18" HorizontalAlignment="Right" Click="StatusDetailsClick" AutomationProperties.Name="状態・診断を表示・非表示" ToolTipService.ToolTip="クリックで状態・診断を表示／非表示"/>
+   <Grid x:Name="TaskPanel" Visibility="Collapsed" ColumnSpacing="8">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock x:Name="TaskText" FontSize="12" VerticalAlignment="Center"/>
+    <ProgressBar x:Name="TaskBar" Grid.Column="1" Minimum="0" Maximum="100" VerticalAlignment="Center"/>
+    <Button Grid.Column="2" Content="中止" Click="TaskCancelClick" Padding="8,2" FontSize="12"/>
+   </Grid>
+   <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock x:Name="StatusLine" FontSize="11" Foreground="#B4B4B4" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxLines="1" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+    <HyperlinkButton x:Name="StatusDetailsButton" Grid.Column="1" Content="状態" FontSize="11" Padding="2,0" MinWidth="0" MinHeight="18" HorizontalAlignment="Right" Click="StatusDetailsClick" AutomationProperties.Name="状態・診断を表示・非表示" ToolTipService.ToolTip="クリックで状態・診断を表示／非表示"/>
+   </Grid>
   </StackPanel>
   <Canvas x:Name="StatusOverlay" Grid.RowSpan="6" Canvas.ZIndex="10">
    <Border x:Name="StatusDetailsPanel" Visibility="Collapsed" Background="#F0363636" BorderBrush="#858585" BorderThickness="1" CornerRadius="8">
@@ -89,7 +183,7 @@
     <StackPanel Spacing="3">
      <TextBlock Text="状態・診断" FontSize="12" FontWeight="SemiBold"/>
      <TextBlock x:Name="SpeakerStatusText" FontSize="12" Foreground="#C8C8C8" TextWrapping="Wrap" Visibility="Collapsed"/>
-     <TextBlock x:Name="StatusText" Text="Startまたは録音チェックで開始します。" TextWrapping="Wrap" FontSize="12" Foreground="#C8C8C8"/><TextBlock x:Name="BackendText" FontSize="12" Foreground="#C8C8C8" TextWrapping="Wrap"/><TextBlock x:Name="MetricsText" FontSize="11" Foreground="#C8C8C8" TextWrapping="Wrap" Visibility="Collapsed"/>
+     <TextBlock x:Name="StatusText" Text="「開始」または「新規録音」で始めます。" TextWrapping="Wrap" FontSize="12" Foreground="#C8C8C8"/><TextBlock x:Name="BackendText" FontSize="12" Foreground="#C8C8C8" TextWrapping="Wrap"/><TextBlock x:Name="MetricsText" FontSize="11" Foreground="#C8C8C8" TextWrapping="Wrap" Visibility="Collapsed"/>
     </StackPanel>
     </ScrollViewer>
    </Border>

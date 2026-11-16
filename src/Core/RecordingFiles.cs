@@ -4,7 +4,9 @@ namespace Locaptio.Core;
 
 public static class RecordingFiles
 {
-    public static string[] Bundle(string audio) => new[] { Path.GetFullPath(audio), RecordingTranscript.Sidecar(Path.GetFullPath(audio)), Path.GetFullPath(audio) + ".txt" }.Where(File.Exists).ToArray();
+    public static string Versions(string audio) => audio + ".locaptio.versions.json";
+    public static string SummaryFile(string audio) => audio + ".summary.md";
+    public static string[] Bundle(string audio) => new[] { Path.GetFullPath(audio), RecordingTranscript.Sidecar(Path.GetFullPath(audio)), Path.GetFullPath(audio) + ".txt", Versions(Path.GetFullPath(audio)), SummaryFile(Path.GetFullPath(audio)) }.Where(File.Exists).ToArray();
     public static async Task ShareAsync(string audio, string zip, CancellationToken token = default)
     {
         if (!File.Exists(audio)) throw new FileNotFoundException("音声ファイルが見つかりません。", audio);

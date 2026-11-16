@@ -19,8 +19,10 @@ public sealed class ReadyLocalLlm(LocalLlmBackend backend, Task ready) : ITransl
     public async Task<InferenceResult> CorrectAsync(string source, string[] context, string language, CancellationToken token) { await ready.WaitAsync(token); return await backend.CorrectAsync(source, context, language, token); }
 }
 
-public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorrectionBackend, IDisposable
+public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorrectionBackend, ISummaryBackend, IDisposable
 {
+    /// <summary>Registered spellings from the user's term dictionary, sent with every correction.</summary>
+    public string CorrectionGlossary { get; set; } = "";
     private Process? process;
     private readonly SemaphoreSlim serial = new(1);
     private int id;
@@ -49,13 +51,15 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
     }
     public Task<InferenceResult> RefineAsync(string source, CancellationToken token) => RequestAsync(new { mode = "translate", text = source }, token);
     public Task<InferenceResult> RefineAsync(string source, string[] context, string glossary, CancellationToken token) => RequestAsync(new { mode = "translate", text = source, context, glossary }, token);
-    public Task<InferenceResult> CorrectAsync(string source, string[] context, string language, CancellationToken token) => RequestAsync(new { mode = "correct", text = source, context, language }, token);
-    private async Task<InferenceResult> RequestAsync(object request, CancellationToken token)
+    public Task<InferenceResult> CorrectAsync(string source, string[] context, string language, CancellationToken token) => RequestAsync(new { mode = "correct", text = source, context, language, glossary = CorrectionGlossary }, token);
+    // A summary reads far more text than one caption, so it gets a longer limit than live requests.
+    public Task<InferenceResult> SummarizeAsync(string numberedTranscript, CancellationToken token) => RequestAsync(new { mode = "summarize", text = numberedTranscript }, token, 240);
+    private async Task<InferenceResult> RequestAsync(object request, CancellationToken token, int seconds = 30)
     {
         await serial.WaitAsync(token);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token); timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token); timeout.CancelAfter(TimeSpan.FromSeconds(seconds));
             if (process is null || process.HasExited) await StartAsync(runtimeRoot, configuredModel, configuredCpu, timeout.Token);
             using var registration = timeout.Token.Register(Kill);
             var payload = JsonSerializer.SerializeToNode(request)!; payload["id"] = ++id;
@@ -65,7 +69,7 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
             if (response.RootElement.GetProperty("type").GetString() != "result") throw new InvalidOperationException(response.RootElement.GetProperty("message").GetString());
             return new(response.RootElement.GetProperty("text").GetString()!, response.RootElement.GetProperty("ms").GetDouble());
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new TimeoutException("ローカルAIの処理が30秒以内に完了しませんでした。認識結果・標準訳を保持します。"); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new TimeoutException($"ローカルAIの処理が{seconds}秒以内に完了しませんでした。" + (seconds == 30 ? "認識結果・標準訳を保持します。" : "文章は変更していません。")); }
         finally { serial.Release(); }
     }
     private async Task<JsonDocument> ReadAsync(CancellationToken token)
