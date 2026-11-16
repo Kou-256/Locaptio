@@ -82,6 +82,8 @@ public sealed partial class MainWindow
             try { await RecordingLibrary.SaveTextAsync(path, playbackDocument); }
             catch (Exception ex) { Status("音声・検索データは保存しましたが、テキストの保存に失敗しました: " + ex.Message); }
             reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path));
+            // Everything on screen is now in the recording's own files.
+            DiscardAutosave(); QueueSummaryAfterRecording();
             PlaybackPanel.Visibility = Visibility.Visible;
             EnsurePlaybackSpace();
             PlaybackHint.Text = "文字をクリックすると、その発話の少し前から再生します。ドラッグで選択・コピーもできます。"
@@ -318,6 +320,7 @@ public sealed partial class MainWindow
                 }
             // Rebind IDs to visible rows after resolving any reused session IDs.
             if (document is not null) playbackDocument = document with { Phrases = document.Phrases.Select((p, i) => p with { Id = history[i].Id }).ToArray() };
+            if (playbackDocument is not null) RestoreTranscriptTools(playbackDocument);
             RenderCaptions();
             SaveButton.IsEnabled = transcript.Count > 0; EnsurePlayback(); RefreshRecordingSearch();
             PlaybackHint.Text = document is null ? "文字起こしデータがないため、音声のみ再生します。" : "文字や検索結果をクリックすると、その発話から再生します。"

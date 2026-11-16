@@ -39,7 +39,9 @@ public static class RecordingLibrary
         text.AppendLine("録音日時: " + document.RecordedAt.ToString("yyyy-MM-dd HH:mm:ss zzz"));
         foreach (var phrase in document.Phrases)
         {
-            text.Append('[').Append(TimeSpan.FromSeconds(phrase.Seconds).ToString(@"hh\:mm\:ss")).Append("] ").AppendLine(phrase.Text);
+            text.Append('[').Append(TimeSpan.FromSeconds(phrase.Seconds).ToString(@"hh\:mm\:ss")).Append("] ");
+            foreach (var bookmark in document.Bookmarks?.Where(b => b.PhraseId == phrase.Id) ?? []) text.Append("［★").Append(bookmark.Label).Append("］");
+            text.AppendLine(phrase.Text);
             if (!string.IsNullOrWhiteSpace(phrase.Translation)) text.AppendLine(phrase.Translation);
             text.AppendLine();
         }

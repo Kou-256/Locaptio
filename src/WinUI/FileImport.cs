@@ -68,7 +68,7 @@ public sealed partial class MainWindow
         await Task.Yield();
         string? audio = null; bool copied = false; List<RecordingPhrase> phrases = new();
         var recordedAt = DateTimeOffset.Now; bool japanese = settings.CaptionMode == "japanese";
-        RecordingDocument Document() => new(1, Path.GetFileName(audio!), recordedAt, true, phrases.ToArray());
+        RecordingDocument Document() => new(1, Path.GetFileName(audio!), recordedAt, true, phrases.ToArray(), Model: settings.SpeechModel);
         try
         {
             SessionTitle.Text = "ファイル文字起こし：" + Path.GetFileName(source) + "（Stopで中止）";
@@ -76,12 +76,14 @@ public sealed partial class MainWindow
             using (var check = new NAudio.Wave.AudioFileReader(source)) { if (check.TotalTime <= TimeSpan.Zero) throw new InvalidDataException("音声が空です。"); }
             bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu";
             await SpeechPreparation.EnsureAsync(root, settings.SpeechModel, !japanese, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
-            using var worker = new PreparedInference(root, japanese, settings.SpeechModel, settings.SpeechPrompt, settings.InferenceDevice, cpu, false,
+            using var worker = new PreparedInference(root, japanese, settings.SpeechModel, Terms.SpeechPrompt(settings.SpeechPrompt), settings.InferenceDevice, cpu, false,
                 settings.CorrectTranscriptWithAi, settings.LlmModelPath, Status, progress: BeginPreparation());
             worker.Speech.RequestTimeout = TimeSpan.FromMinutes(5);
             if (worker.Translation is not null) worker.Translation.RequestTimeout = TimeSpan.FromMinutes(5);
             await worker.Ready.WaitAsync(token);
             ISpeechCorrectionBackend? correction = worker.Llm is not null && worker.LlmReady is not null ? new ReadyLocalLlm(worker.Llm, worker.LlmReady) : null;
+            if (worker.Llm is not null) worker.Llm.CorrectionGlossary = Terms.CorrectionHint();
+            var dictionary = Terms;
             audio = RecordingLibrary.CreateSessionPath(Path.Combine(RecordingRoot, Path.GetFileName(source)));
             await using (var input = File.OpenRead(source))
             await using (var output = new FileStream(audio, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
@@ -103,6 +105,7 @@ public sealed partial class MainWindow
                         if (!closing)
                         {
                             var caption = new CaptionUpdate(phrase.Id, 1, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, phrase.Language);
+                            edits.Restore(phrase.Id, phrase.Original, false);
                             UpdateHistory(caption); transcript.Update(caption); RenderCaptions(); SaveButton.IsEnabled = true;
                         }
                         shown.SetResult();
@@ -111,7 +114,7 @@ public sealed partial class MainWindow
                 })) throw new OperationCanceledException(token);
                 await shown.Task;
                 if (DateTime.UtcNow >= nextSave) { await RecordingTranscript.SaveAsync(audio, Document()); nextSave = DateTime.UtcNow.AddSeconds(5); }
-            }, value => ((IProgress<double>)progress).Report(value), token, worker.Translation, correction), token);
+            }, value => ((IProgress<double>)progress).Report(value), token, worker.Translation, correction, dictionary.Apply), token);
             StatusText.Text = "ファイルの文字起こしが完了しました。録音一覧から検索・再生できます。";
         }
         catch (OperationCanceledException) { StatusText.Text = "ファイル文字起こしを中止しました。認識済みの文章は保存します。"; }

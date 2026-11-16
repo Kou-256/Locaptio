@@ -1,11 +1,23 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.47/Locaptio-Setup-1.0.47-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.48/Locaptio-Setup-1.0.48-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバーレイ・録音アプリです。動画や会議の音声を読みながら、必要な文章と音声を保存できます。
 
 > **開発中の個人プロジェクトです。** 現在の画面表示は主に日本語です。英語の利用説明は [English README](README.en.md) を参照してください。精度と速度は音声・モデル・ハードウェアによって変わります。
+
+## v1.0.48：編集・自動保存・用語辞書・字幕出力・AI要約
+
+- **作業の自動保存・復元**：表示中の文章・修正・ブックマーク・録音ファイルの場所を5秒ごとにPC内へ保存します。アプリが異常終了した場合、次回起動時に内容を確認して復元できます。中断した録音は再生できる状態に直し（MP3/M4Aは途中のWAV）、文章と対応付けて開きます。正常終了・クリア・録音保存後は自動保存データを削除します。設定でOFFにできます。
+- **文字起こしの編集・元に戻す**：文章を右クリック →「この発話を編集」（F2）。AI補正・用語辞書・編集の前の「認識時の原文」を表示し、原文に戻せます。Ctrl+Z／Ctrl+Yで元に戻す・やり直し。編集後の文章は、遅れて届いた認識・補正・翻訳で上書きされません。「編集 → 変更された発話・補正前の原文と比較」で一覧できます。
+- **録音の再文字起こし**：録音を開き「再文字起こし」。別のWhisperモデル・言語・AI補正の有無を選び、現在の結果と時刻をそろえて比較します。採用しなかった結果も「版」として残り、「版を比較・切替」で戻せます（最大10件）。
+- **専門用語辞書**：「設定 → 用語辞書」で正しい表記・誤認識されやすい表記・訳語を登録。誤表記の置き換え（登録直後から）、Whisperの認識ヒント・AI補正・LLM翻訳の訳語（次回の開始から）に共通利用します。文章を選んで右クリックからも登録できます。
+- **音声と文章の同期精度向上**：録音を開き「同期を改善」。音声をWhisperで解析し、文章を変えずに各発話の開始・終了と単語時刻を付けます。Windows字幕連携の録音など時刻が推定の録音でも、ハイライトとクリック再生のずれを減らします。
+- **SRT・VTT字幕出力**：「書き出し・AI → 字幕ファイル（SRT・VTT）」。原文・日本語訳・2段を選べます。長い発話は分割し、1つの字幕は2行までです。
+- **ブックマーク**：ツールバーの「★ 重要」またはCtrl+Bで、いまの発話に印を付けます。▼で「後で確認」「質問」などを選択（設定で変更可）。録音・テキスト保存にも残ります。
+- **ローカルAIで要約・決定事項抽出**：「書き出し・AI → AIで要約」。要点・決定事項・TODOを作成し、各項目の時刻から根拠の発話へ移動・再生できます。録音停止時の自動作成も設定できます。録音を開いている場合は録音フォルダーに「.summary.md」も保存します。
+- **UI**：ツールバーをアイコン付きに整理（開始を強調、録音はトグル、書き出し・AIをまとめたメニュー）。メニューに「編集」「録音・AI」を追加。最初の画面に使い方の案内、画面下部に最新の状態を1行表示します。
 
 ## v1.0.47：再生・ファイル読み込み・モデル準備
 
@@ -68,9 +80,9 @@ Files are decoded in bounded chunks. **Stop** cancels processing and saves compl
 
 Setupは更新時もインストール先の選択画面を表示します。更新ファイルを自動取得する場合でも、**インストールの許可ポップアップ**で「インストールする」を選ぶまでSetupは実行しません。「後で」を選ぶと作業を続けられます。
 
-[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.47/Locaptio-Setup-1.0.47-x64.exe)
+[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.48/Locaptio-Setup-1.0.48-x64.exe)
 
-[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.47-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
+[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.48-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
 
 ### 録音の検索・聞き直し（v1.0.39）
 

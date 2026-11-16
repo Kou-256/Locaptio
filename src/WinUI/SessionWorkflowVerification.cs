@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Locaptio.Core;
 using Locaptio.Core.Audio;
 using Microsoft.UI.Windowing;
@@ -159,11 +159,13 @@ public sealed partial class MainWindow
     }
     private async Task VerifySessionWorkflowAsync()
     {
-        var original = SelectedAudio(); string mode = settings.CaptionMode, directory = settings.RecordingSaveDirectory, format = settings.RecordingFormat;
+        var original = SelectedAudio(); string mode = settings.CaptionMode, directory = settings.RecordingSaveDirectory, format = settings.RecordingFormat, engine = settings.SpeechEngine;
         CaptionWindow? overlay = null; bool passed = false; string report = "";
-        async Task Wait(Func<bool> condition) { for (int i = 0; i < 100 && !condition(); i++) await Task.Delay(50); if (!condition()) throw new Exception("Workflow wait timed out"); }
+        async Task Wait(Func<bool> condition) { for (int i = 0; i < 100 && !condition(); i++) await Task.Delay(50); if (!condition()) throw new Exception($"Workflow wait timed out: rows={history.Count}, inputChanging={inputChanging}, captions={captionStop is not null}, recording={recordingStop is not null}, dialog={dialogOpen}, reviewing={reviewingRecording}, status={StatusText.Text}"); }
         try
         {
+            // Application and device inputs exist only for Whisper; Windows captions would normalize them to PC audio.
+            settings.SpeechEngine = "whisper";
             settings.CaptionMode = "japanese"; settings.AudioInputKind = "application"; settings.AudioDeviceId = ""; settings.AudioProcessId = Environment.ProcessId;
             using (var process = Process.GetCurrentProcess()) settings.AudioProcessStarted = process.StartTime.ToUniversalTime().Ticks;
             settings.RecordingSaveDirectory = Path.Combine(root, "artifacts", "session-workflow-" + Guid.NewGuid().ToString("N")); settings.RecordingFormat = "wav";
@@ -209,7 +211,7 @@ public sealed partial class MainWindow
         {
             overlay?.Close(); await StopAllAsync(); confirmReplacementForVerification = null; confirmNewRecordingForVerification = null; updateApprovalForVerification = null; captionsForVerification = null; recordingFilePickerForVerification = null;
             settings.CaptionMode = mode; settings.AudioInputKind = original.Kind; settings.AudioDeviceId = original.DeviceId; settings.AudioProcessId = original.ProcessId; settings.AudioProcessStarted = original.ProcessStarted;
-            settings.RecordingSaveDirectory = directory; settings.RecordingFormat = format;
+            settings.RecordingSaveDirectory = directory; settings.RecordingFormat = format; settings.SpeechEngine = engine;
             await File.WriteAllTextAsync(Path.Combine(root, "artifacts", "session-workflow-verification.txt"), report);
             Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync();
         }

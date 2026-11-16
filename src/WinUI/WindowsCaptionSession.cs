@@ -7,7 +7,7 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false) : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "") : IDisposable
 {
     private Process? worker;
     private readonly LocalBackend translation = new();
@@ -77,6 +77,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         async Task InitializeLlmAsync()
         {
             llm.PreparationChanged += p => PreparationChanged?.Invoke(p with { Component = "文脈AI" });
+            llm.CorrectionGlossary = correctionGlossary;
             await llm.StartAsync(root, llmPath, cpu || device == "cpu", linked.Token);
             Status?.Invoke("文脈AI（補正・翻訳）の準備完了: " + llm.Backend);
         }

@@ -9,6 +9,8 @@ if (args.Contains("--setup-encoding")) { await SetupEncodingChecks.RunAsync(); r
 if (args.Contains("--caption-microphone")) { CaptionMicrophoneChecks.Run(); return; }
 if (args.Contains("--file-import")) { await FileImportChecks.RunAsync(args.Contains("--real-models")); return; }
 if (args.Contains("--recording-playback")) { await RecordingPlaybackChecks.RunAsync(); return; }
+if (args.Contains("--transcript-tools")) { await TranscriptToolsChecks.RunAsync(); return; }
+if (args.Contains("--real-tools")) { await RealToolsChecks.RunAsync(); return; }
 
 if (args.Contains("--update-live"))
 {
