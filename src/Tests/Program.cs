@@ -11,6 +11,8 @@ if (args.Contains("--file-import")) { await FileImportChecks.RunAsync(args.Conta
 if (args.Contains("--recording-playback")) { await RecordingPlaybackChecks.RunAsync(); return; }
 if (args.Contains("--transcript-tools")) { await TranscriptToolsChecks.RunAsync(); return; }
 if (args.Contains("--real-tools")) { await RealToolsChecks.RunAsync(); return; }
+if (args.Contains("--timing")) { TimingChecks.Tracker(); TimingChecks.Synthetic(); return; }
+if (args.Contains("--timing-real")) { TimingChecks.Real(); return; }
 
 if (args.Contains("--update-live"))
 {

@@ -79,6 +79,7 @@ public sealed partial class MainWindow
         if (recordingTranscript?.AudioPath == Path.GetFullPath(path) && File.Exists(path))
         {
             playbackDocument = recordingTranscript.Snapshot(); playbackPath = path;
+            playbackDocument = await AlignToRecordedSpeechAsync(path, playbackDocument);
             try { await RecordingLibrary.SaveTextAsync(path, playbackDocument); }
             catch (Exception ex) { Status("音声・検索データは保存しましたが、テキストの保存に失敗しました: " + ex.Message); }
             reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path));
@@ -92,11 +93,29 @@ public sealed partial class MainWindow
             RefreshRecordingSearch();
         }
     }
+    /// <summary>
+    /// Moves each utterance start to where speech begins in the saved audio. Caption times are when
+    /// text appeared (Windows) or when the voice detector fired (Whisper), both later than the speech.
+    /// </summary>
+    private async Task<RecordingDocument> AlignToRecordedSpeechAsync(string path, RecordingDocument document)
+    {
+        if (document.Phrases.Length == 0) return document;
+        try
+        {
+            var result = await Task.Run(() => SpeechOnsets.Align(document, SpeechOnsets.Find(SpeechOnsets.Envelope(path))));
+            if (result.Snapped == 0 && result.Delay == 0) return document;
+            await RecordingTranscript.SaveAsync(path, result.Document);
+            Status($"録音の音声に合わせて発話の開始位置を補正しました（{result.Snapped} / {result.Total} 件" + (Math.Abs(result.Delay) >= .05 ? $"、字幕の表示の遅れ 約{result.Delay + (document.ApproximateTiming ? 1 : 0):F1}秒" : "") + "）。");
+            return result.Document;
+        }
+        catch (Exception ex) { Status("録音の発話位置を補正できませんでした。推定の時刻のまま保存しています: " + ex.Message); return document; }
+    }
     private void ClosePlayback()
     {
         playbackTimer.Stop(); playbackOutput?.Stop(); playbackOutput?.Dispose(); playbackOutput = null;
         playbackReader?.Dispose(); playbackReader = null;
         SetPlaybackHighlight(null);
+        if (PlaybackCaptions) { captionWindow!.Update([]); playbackCaptionIndex = -2; }
     }
     private bool EnsurePlayback()
     {
@@ -140,6 +159,7 @@ public sealed partial class MainWindow
         PlaybackTime.Text = FormatMediaTime(playbackReader.CurrentTime.TotalSeconds) + " / " + FormatMediaTime(playbackReader.TotalTime.TotalSeconds);
         PlaybackButton.Content = playbackOutput?.PlaybackState == PlaybackState.Playing ? "一時停止" : "再生";
         playbackSeconds = playbackReader.CurrentTime.TotalSeconds;
+        UpdatePlaybackCaptions();
         SetPlaybackHighlight(playbackDocument is not null && playbackReader.CurrentTime < playbackReader.TotalTime
             ? RecordingTranscript.At(playbackDocument, playbackReader.CurrentTime.TotalSeconds) : null);
     }

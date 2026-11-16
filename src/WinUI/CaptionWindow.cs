@@ -95,9 +95,20 @@ public sealed class CaptionWindow : Window
             regionGeometry = "";
         }
     }
+    /// <summary>
+    /// Replaying a recording: the window follows the playback position and stays visible while it
+    /// shows an utterance, even during a long one or while paused, instead of hiding when recognition goes quiet.
+    /// </summary>
+    public bool Playback { get; set; }
     public void Update(IEnumerable<CaptionUpdate> updates)
     {
         var next = updates.TakeLast(settings.CaptionRows).ToArray();
+        if (Playback && next.Length > 0 && !next.SequenceEqual(captions))
+        {
+            captions = next; ApplyAppearance(); lastRecognition = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!moving) { AppWindow.Show(false); UpdateWindowShape(); }
+            return;
+        }
         if (next.SequenceEqual(captions)) { HideIfIdle(); return; }
         // Delayed translations and AI corrections do not revive expired subtitles.
         bool recognition = next.Any(c => !c.SourceCorrected && (c.Japanese is null || captions.Any(old => old.Id == c.Id && old.English != c.English)) && !string.IsNullOrWhiteSpace(c.English) && !captions.Any(old => old.Id == c.Id && old.Revision >= c.Revision));
@@ -107,6 +118,7 @@ public sealed class CaptionWindow : Window
     }
     public void HideIfIdle()
     {
+        if (Playback && captions.Length > 0) return;
         if (!moving && (captions.Length == 0 || lastRecognition == 0 || System.Diagnostics.Stopwatch.GetElapsedTime(lastRecognition).TotalSeconds >= settings.CaptionHideSeconds)) AppWindow.Hide();
     }
     public static SolidColorBrush SpeakerBrush(Settings settings, int speakerId)
@@ -306,6 +318,7 @@ public sealed class CaptionWindow : Window
         }
         finally { DeleteObject(region); }
     }
+    internal IReadOnlyList<CaptionUpdate> Shown => captions;
     internal string ShapeDiagnostic() => $"size={AppWindow.Size}; root={root.ActualWidth}x{root.ActualHeight}; scroll={scroll.ActualWidth}x{scroll.ActualHeight}; geometry={regionGeometry}";
     internal static uint ParseColor(string hex, uint fallback) => uint.TryParse(hex.Trim().TrimStart('#'), System.Globalization.NumberStyles.HexNumber, null, out uint rgb) && hex.Trim().TrimStart('#').Length == 6 ? rgb : fallback;
     internal static uint OrdinaryColor(Settings value, bool japanese) => value.CaptionPalette == "custom" ? ParseColor(value.CaptionTextColor, 0xFFFFFF)

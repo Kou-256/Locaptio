@@ -76,6 +76,7 @@ public sealed class Settings
     // One entry per line: "表記 | 誤表記, 誤表記 | 訳語". Parsed by Locaptio.Core.TermDictionary.
     public string TermDictionary { get; set; } = "";
     public string BookmarkLabels { get; set; } = "重要、後で確認、質問、TODO";
+    public Dictionary<string, string> BookmarkColors { get; set; } = new() { ["重要"] = "#F5B942", ["後で確認"] = "#60A5FA", ["質問"] = "#C084FC", ["TODO"] = "#34D399" };
     public bool AutosaveSession { get; set; } = true;
     public bool SummarizeAfterRecording { get; set; }
     public string RetranscribeModel { get; set; } = "";

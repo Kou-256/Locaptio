@@ -83,7 +83,7 @@ public sealed partial class MainWindow : Window
         if (Environment.GetCommandLineArgs().Contains("--verify-correction")) settings.CorrectTranscriptWithAi = true;
         if (Environment.GetCommandLineArgs().Contains("--verify-npu")) { settings.InferenceDevice = "npu"; settings.CpuOnly = false; }
         if (Environment.GetCommandLineArgs().Contains("--verify-cuda")) { settings.InferenceDevice = "cuda"; settings.CpuOnly = false; settings.CaptionMode = "translate"; settings.UseLocalLlm = false; }
-        InitializeComponent(); CaptionList.ItemsSource = history; InitializeTranscriptSelection(); InitializeRecordingPlayback(); InitializeStatusDetails(); InitializeTranscriptTools(); followTimer.Tick += FollowHistory; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        InitializeComponent(); CaptionList.ItemsSource = history; InitializeTranscriptSelection(); InitializeRecordingPlayback(); InitializeStatusDetails(); InitializeTranscriptTools(); InitializeCommandStates(); followTimer.Tick += FollowHistory; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
         ExtendsContentIntoTitleBar = false; SystemBackdrop = new TransparentWindowBackdrop(retainSurface: true);
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
@@ -147,7 +147,7 @@ public sealed partial class MainWindow : Window
     private async Task ShutdownAsync()
     {
         if (closing) return;
-        closing = true; ClosePlayback(); updateStop.Cancel(); timer.Stop(); followTimer.Stop(); autosaveTimer.Stop(); captionWindow?.Close(); modelHelpWindow?.Close(); settingsWindow?.Close();
+        closing = true; ClosePlayback(); updateStop.Cancel(); timer.Stop(); toolLlm?.Dispose(); toolLlm = null; followTimer.Stop(); autosaveTimer.Stop(); captionWindow?.Close(); modelHelpWindow?.Close(); settingsWindow?.Close();
         AppWindow.Hide();
         await Task.Yield(); // Complete the native Closing callback before destroying the window.
         try
@@ -227,6 +227,7 @@ public sealed partial class MainWindow : Window
             PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;
         }
         ClosePlayback();
+        if (captionWindow is not null) captionWindow.Playback = false;
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
         WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
         RenderCaptions();
@@ -337,6 +338,7 @@ public sealed partial class MainWindow : Window
         {
             prepared?.Dispose();
             var reportProgress = BeginPreparation();
+            preparedModel = (japanese, model, speechPrompt);
             prepared = new(root, japanese, model, speechPrompt, settings.InferenceDevice, cpu, settings.FastTranscription, settings.CorrectTranscriptWithAi || !japanese && settings.UseLocalLlm, settings.LlmModelPath, Status, realtime: settings.RealtimeCaptions, previewCpu: !settings.RealtimePreviewOnGpu, previewModel: settings.RealtimePreviewModel, progress: reportProgress);
             preparedKey = key;
         }
@@ -650,7 +652,7 @@ public sealed partial class MainWindow : Window
         foreach (var row in RealizedCaptionRows)
             if (row.DataContext is CaptionHistoryEntry entry) StyleHistoryRow(row, entry.Caption);
         Header.Visibility = Visibility.Visible;
-        captionWindow?.Update(captions.Values);
+        if (PlaybackCaptions) UpdatePlaybackCaptions(true); else captionWindow?.Update(captions.Values);
     }
     private void ClearCaptions()
     {
@@ -664,9 +666,12 @@ public sealed partial class MainWindow : Window
     {
         if (closing) return;
         if (captionWindow is not null) { captionWindow.Close(); return; }
-        captionWindow = new CaptionWindow(settings);
+        // Replaying a saved recording: captions follow playback, and the main window stays open for its controls.
+        bool replay = reviewingRecording && playbackDocument is not null && captionStop is null && recordingStop is null;
+        captionWindow = new CaptionWindow(settings) { Playback = replay };
         captionWindow.Closed += (_, _) => { captionWindow = null; if (!closing) { CaptionButtonText.Text = "字幕"; RenderCaptions(); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); } };
-        CaptionButtonText.Text = "字幕を閉じる"; captionWindow.Activate(); RenderCaptions(); captionWindow.HideIfIdle();
+        CaptionButtonText.Text = "字幕を閉じる"; captionWindow.Activate(); playbackCaptionIndex = -2; RenderCaptions(); captionWindow.HideIfIdle();
+        if (replay) { Status("録音の再生位置に合わせて字幕を表示します。「再生」を押すか、文章をクリックしてください。"); return; }
         ((OverlappedPresenter)AppWindow.Presenter).Minimize();
         if (captionStop is null && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify"))) _ = StartAsync();
     }
@@ -1149,8 +1154,7 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = "Whisperで新しく読み込む音声は単語時刻を使用します。文字ごとの時刻や、単語時刻のない録音・Windows字幕・AIで修正した文・訳文は推定です。日本語の単語区切りはモデルにより異なります。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             Toggle("未保存の文字起こしを自動保存し、異常終了しても次回起動時に復元できるようにする", settings.AutosaveSession, v => settings.AutosaveSession = v);
             content.Children.Add(new TextBlock { Text = "5秒ごとに、表示中の文章・修正・ブックマーク・録音ファイルの場所をPC内に保存します。音声そのものは複製しません。正常に終了したとき、文章をクリアしたとき、録音を保存し終えたときに自動保存データは削除します。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
-            var bookmarkLabels = new TextBox { Header = "ブックマークの種類（、区切り・先頭がワンクリックとCtrl+B）", Text = settings.BookmarkLabels, MaxLength = 120 };
-            bookmarkLabels.TextChanged += (_, _) => { settings.BookmarkLabels = bookmarkLabels.Text; settings.Save(); RefreshBookmarkLabels(); }; content.Children.Add(bookmarkLabels);
+            AddBookmarkTypeSettings(content);
             Toggle("録音を停止したら、ローカルAIで要点・決定事項・TODOを自動作成", settings.SummarizeAfterRecording, v => settings.SummarizeAfterRecording = v);
             content.Children.Add(new TextBlock { Text = "要約は「書き出し・AI → AIで要約」からいつでも作成できます。ローカルLLM（初回のみ数GBを取得）を使い、文章は外部へ送信しません。要約は短い文章の抜き出しで、誤りを含むことがあります。各項目の時刻から根拠の発話を確認してください。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             Folder("テキストの保存先", settings.TextSaveDirectory, v => settings.TextSaveDirectory = v); Folder("録音の保存先", settings.RecordingSaveDirectory, v => settings.RecordingSaveDirectory = v); Folder("モデル・推論環境", settings.RuntimeDirectory, v => settings.RuntimeDirectory = v, true);

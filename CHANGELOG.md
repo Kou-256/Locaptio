@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.49 — Recording timing, clearer controls and replay captions
+
+- 録音した音声と文字のずれを改善。Windows字幕連携では、文字が画面に出た時刻を発話の開始として記録しており、Windows側の表示の遅れ（約0.5〜2秒、PCの負荷で変動）が固定の1秒補正では吸収しきれていませんでした。録音停止時に録音の音声から発話の始まりを検出し、遅れを推定して各発話の開始位置を合わせます。長い発話を分割した後半も、分割した時刻ではなくその文字が表示された時刻から始まるようにしました。「同期を改善」でも同じ補正を先に行います。
+- 押せないボタン・メニューを状況に合わせて無効化し、薄く表示。クリアボタンをツールバーに戻しました。
+- ブックマークの種類ごとに色を設定可能（設定 → 保存先・録音）。一覧・行の印・ボタンに反映します。
+- 保存済み録音の再生中も「字幕」ウィンドウを使え、再生位置の発話を表示します。
+- AI要約・再文字起こし・同期の改善で、読み込み済みのモデルを破棄せず再利用。要約用のLLMは10分間保持します。自動保存は長いセッションほど間隔を延ばします（最大30秒）。
+- 異常終了時の原因を %LOCALAPPDATA%\Locaptio\logs\crash.txt に記録します。
+- Recording timing now follows the recorded speech: caption delays are estimated from the audio and each utterance starts at its speech onset; split rows keep the time their text appeared. Unavailable commands are disabled and dimmed, Clear is back on the toolbar, bookmark types have configurable colors, the caption window follows replayed recordings, loaded models are reused for recording tools, and autosave backs off for long sessions.
+
 ## 1.0.48 — Editing, autosave, term dictionary, subtitles and AI summaries
 
 - 作業の自動保存と異常終了後の復元（中断した録音のWAVヘッダー修復・MP3/M4Aの途中WAVの回収を含む）。
