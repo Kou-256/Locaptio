@@ -93,3 +93,23 @@ strong{font-weight:700;color:var(--color-text-primary)}
 @media(max-width:1100px){.new-grid{grid-template-columns:1fr}.flow-steps{gap:24px}}
 @media(max-width:760px){.flow-art{padding:16px;margin-top:24px}.flow-steps{grid-template-columns:1fr;gap:20px}.new-card{grid-template-columns:1fr;padding:20px;gap:16px}.new-art{max-width:360px}.new-index a{font-size:12px;padding:6px 12px}}
 @media(prefers-reduced-motion:no-preference){.new-card{transition:border-color .24s cubic-bezier(.25,.1,.25,1)}.new-card:target{border-color:var(--color-accent)}}
+/* Real screenshots (screens.mjs). Dark app screens sit in a quiet frame on the light page. */
+.shot{margin:0;min-width:0}
+.shot-frame{position:relative;border-radius:12px;overflow:hidden;background:#2b2b2b;border:1px solid #c9d6d2;box-shadow:0 1px 2px rgba(24,55,59,.06),0 12px 32px -12px rgba(24,55,59,.28)}
+.shot-frame img{width:100%;height:auto;display:block}
+.shot-label{position:absolute;right:10px;bottom:10px;z-index:1;padding:2px 10px;border-radius:999px;background:rgba(255,255,255,.92);color:var(--color-accent);font-size:11px;font-weight:600;line-height:1.7}
+.shot figcaption{font-size:13px;line-height:1.7;color:var(--color-text-secondary);margin-top:10px}
+.use-case{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:48px;align-items:start}
+.use-case:nth-child(even) .use-case-shot{order:-1}
+.use-case-content{grid-template-columns:1fr;gap:20px}
+.use-case-shot{position:sticky;top:24px}
+.new-card{grid-template-columns:1fr;gap:20px;padding:20px}
+.new-shot .shot-frame{aspect-ratio:16/10;background:#303030}
+.new-shot .shot-frame img{height:100%;object-fit:contain}
+.feature-group h3{display:flex;align-items:center;gap:12px}
+.feature-group h3 svg{color:var(--color-accent)}
+.feature-group-body{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:48px;align-items:start}
+.feature-group-body dl{grid-template-columns:1fr;gap:22px}
+.group-shot{margin-top:24px;position:sticky;top:24px}
+@media(max-width:1100px){.use-case,.feature-group-body{grid-template-columns:1fr;gap:28px}.use-case:nth-child(even) .use-case-shot{order:0}.use-case-shot,.group-shot{position:static;max-width:720px}.group-shot{margin-top:0}}
+@media(max-width:760px){.shot figcaption{font-size:12px}.new-card{padding:16px}}

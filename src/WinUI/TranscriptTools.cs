@@ -86,6 +86,7 @@ public sealed partial class MainWindow
         Root.Loaded += (_, _) => { if (!VerificationRun) FindInterruptedSession(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-transcript-tools")) await VerifyTranscriptToolsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-real-tools")) await VerifyRealToolsAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-site-screenshots")) await VerifySiteScreenshotsAsync(); };
     }
 
     private CaptionUpdate? FindCaption(long id)

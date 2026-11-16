@@ -9,7 +9,7 @@ test('both languages contain the correct release and direct download link', asyn
     assert.ok(html.includes(`href="${release.download}"`));
     assert.ok(html.includes(`v${release.version}`));
     assert.ok(html.includes(release.sha256));
-    for(const match of html.matchAll(/(?:src|href)="(\/[^"#]+\.(?:png|ico|css|js))"/g))await access(new URL('dist'+match[1],import.meta.url));
+    for(const match of html.matchAll(/(?:src|href)="(\/[^"#]+\.(?:png|webp|ico|css|js))"/g))await access(new URL('dist'+match[1],import.meta.url));
     assert.equal((html.match(/<h1 /g)||[]).length,1);
     assert.ok(!html.includes('undefined'));
   }
@@ -40,11 +40,21 @@ test('first-visit flow and every new tool have an illustration, icon and in-app 
     const cards=[...html.matchAll(/<article class="new-card" id="(new-[a-z]+)">([\s\S]*?)<\/article>/g)];
     assert.equal(cards.length,8);
     for(const [,id,card] of cards){
-      assert.match(card,/<svg class="illustration"[^>]*role="img" aria-label="[^"]+"/);
+      assert.match(card,/<img src="\/assets\/screens\/[a-z-]+\.webp" width="\d+" height="\d+" loading="lazy" decoding="async" alt="[^"]{10,}">/);
       assert.match(card,/class="new-where"/);
       assert.ok(html.includes(`href="#${id}"`));
     }
     assert.equal((html.match(/<ol class="flow-steps">[\s\S]*?<\/ol>/)[0].match(/<li>/g)||[]).length,3);
     assert.ok(html.includes(whatsNew[lang].flowLabel) && html.includes('href="#new"'));
+  }
+});
+
+test('every explanation section shows a real screenshot with alt text and a caption', async()=>{
+  for(const file of ['dist/index.html','dist/en/index.html']){
+    const html=await readFile(new URL(file,import.meta.url),'utf8');
+    const figures=[...html.matchAll(/<figure class="shot ([a-z-]+)"><div class="shot-frame"><span class="shot-label">[^<]+<\/span><img src="(\/assets\/screens\/[a-z-]+\.webp)"[^>]* alt="([^"]{10,})"><\/div><figcaption>([^<]{10,})<\/figcaption><\/figure>/g)];
+    const count=kind=>figures.filter(f=>f[1]===kind).length;
+    assert.deepEqual([count('use-case-shot'),count('group-shot'),count('new-shot')],[6,4,8]);
+    for(const [, , src] of figures) await access(new URL('dist'+src,import.meta.url));
   }
 });
