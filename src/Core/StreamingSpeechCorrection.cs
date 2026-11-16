@@ -83,7 +83,7 @@ public sealed class StreamingSpeechCorrection(ISpeechCorrectionBackend backend, 
                         if (!enabled || generation != job.Generation || !rows.TryGetValue(job.Native.Id, out var row) || row.Native != job.Native) continue;
                         if (string.IsNullOrWhiteSpace(result.Text) || result.Text == job.Native.English) { Status?.Invoke("AI確認済み：修正不要。文字起こしを継続します。"); continue; }
                         row.ContextText = result.Text; row.Corrected = true;
-                        Caption?.Invoke(job.Native with { Revision = ++row.OutputRevision, English = result.Text, Japanese = null, SourceCorrected = true, TranslationRefined = false });
+                        Caption?.Invoke(job.Native with { Revision = ++row.OutputRevision, English = result.Text, Japanese = null, SourceCorrected = true, AiCorrected = true, TranslationRefined = false });
                         Status?.Invoke("AI文脈補正を反映しました。");
                     }
                 }

@@ -9,6 +9,7 @@
 - 既存録音への単語時刻の後付け（文章は変更せず、ブックマークと要約の根拠も一緒に移動）。
 - SRT・VTT字幕出力、録音中のブックマーク（Ctrl+B）、ローカルLLMによる要点・決定事項・TODOの抽出と根拠の発話へのリンク。
 - ツールバー・メニュー・初期画面・状態表示を整理。
+- 公開前の検証で見つけた不具合を修正：高精度更新を「AI補正」と区別し、補正前の原文を正しく保持／録音ファイルにもAI補正・辞書適用前の原文を保存／入力切替で録音が分かれたときの字幕・ブックマークの時刻の混在／要約の根拠番号の範囲指定（[4-6]）／復元した編集を原文に戻したときの編集マーク。
 - Autosave/recovery, editing with undo, re-transcription with comparison and versions, a shared term dictionary, word-time alignment for existing recordings, SRT/VTT export, bookmarks, cited local-AI summaries and a reorganized toolbar.
 
 ## 1.0.47 — Timed replay highlights, drag-and-drop and save prompts

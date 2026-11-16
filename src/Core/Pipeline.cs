@@ -6,7 +6,7 @@ using Locaptio.Core.Audio;
 
 namespace Locaptio.Core;
 
-public sealed record CaptionUpdate(long Id, int Revision, string English, string? Japanese, bool Final, long Started, double SttMs, double TranslationMs, string SourceLanguage = "en", bool TranslationRefined = false, bool SourceCorrected = false, long AudioThrough = 0, int SpeakerId = 0, double SpeakerConfidence = 0);
+public sealed record CaptionUpdate(long Id, int Revision, string English, string? Japanese, bool Final, long Started, double SttMs, double TranslationMs, string SourceLanguage = "en", bool TranslationRefined = false, bool SourceCorrected = false, long AudioThrough = 0, int SpeakerId = 0, double SpeakerConfidence = 0, bool AiCorrected = false);
 internal sealed record SpeechJob(long Id, int Revision, float[] Samples, bool Final, long Started, long AudioThrough);
 internal sealed record TranslationJob(CaptionUpdate Caption);
 
@@ -240,7 +240,7 @@ public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBacke
                     var previous = context.Where(c => c.Key < job.Caption.Id).OrderBy(c => c.Key).Select(c => c.Value).TakeLast(8).ToArray();
                     var result = await corrector.CorrectAsync(job.Caption.English, previous.Length > 0 ? previous : job.Context, japaneseOnly ? "ja" : "en", token);
                     if (string.IsNullOrWhiteSpace(result.Text) || result.Text == job.Caption.English) { Status?.Invoke("AI確認済み：修正不要。文字起こしを継続します。"); continue; }
-                    var corrected = job.Caption with { Revision = job.Caption.Revision + 1, English = result.Text, Japanese = null, SourceCorrected = true, TranslationRefined = false };
+                    var corrected = job.Caption with { Revision = job.Caption.Revision + 1, English = result.Text, Japanese = null, SourceCorrected = true, AiCorrected = true, TranslationRefined = false };
                     revisions[corrected.Id] = corrected.Revision;
                     if (context.ContainsKey(corrected.Id)) context[corrected.Id] = corrected.English;
                     Status?.Invoke("AI文脈補正を反映しました。");

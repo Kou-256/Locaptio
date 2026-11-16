@@ -52,12 +52,16 @@ internal static class TranscriptToolsChecks
         var buffer = new TranscriptBuffer();
         void Publish(CaptionUpdate update) { edits.Observe(update); buffer.Update(update); if (!rows.TryGetValue(update.Id, out var old) || old.Revision <= update.Revision) rows[update.Id] = update; }
         Publish(new(1, 1, "議時録を保存", null, true, 10, 0, 0, "ja"));
-        Publish(new(1, 2, "議事録を保存", null, true, 10, 0, 0, "ja", SourceCorrected: true));
+        // A high-accuracy pass replaces the realtime draft as the recognized text; AI correction does not.
+        Publish(new(1, 1, "議時録を保尊", null, false, 10, 0, 0, "ja"));
+        Publish(new(1, 2, "議時録を保存", null, true, 10, 0, 0, "ja", SourceCorrected: true));
+        Check(edits.Original(1) == "議時録を保存", "Accurate pass not treated as recognition");
+        Publish(new(1, 3, "議事録を保存", null, true, 10, 0, 0, "ja", SourceCorrected: true, AiCorrected: true));
         Check(edits.Original(1) == "議時録を保存" && edits.Differs(rows[1]) && !edits.IsEdited(1), "Pre-correction text lost");
         var edited = edits.Apply(rows[1], " 議事録を保存します ", null)!; Publish(edited);
         Check(edited.Revision > TranscriptEditHistory.ManualRevision && edited.English == "議事録を保存します" && edits.IsEdited(1) && edits.CanUndo, "Edit not applied");
         // A late AI correction or translation for the same row must not replace the manual edit.
-        Publish(new(1, 3, "AIの遅い補正", null, true, 10, 0, 0, "ja", SourceCorrected: true));
+        Publish(new(1, 4, "AIの遅い補正", null, true, 10, 0, 0, "ja", SourceCorrected: true, AiCorrected: true));
         Check(rows[1].English == "議事録を保存します" && buffer.Export(false).Contains("議事録を保存します") && edits.Original(1) == "議時録を保存", "Late correction overwrote an edit");
         Check(edits.Apply(rows[1], "議事録を保存します", null) is null && edits.Apply(rows[1], "  ", null) is null, "No-op or empty edit accepted");
         Publish(edits.Apply(rows[1], "議事録を共有します", "Share the minutes")!);
@@ -73,6 +77,12 @@ internal static class TranscriptToolsChecks
         Check(edits.Undo(id => rows.GetValueOrDefault(id)) is null && !edits.CanUndo, "Undo resurrected a cleared row");
         edits.Restore(7, "原文", true);
         Check(edits.IsEdited(7) && edits.Original(7) == "原文", "Saved edit state not restored");
+        // Reverting a restored edit to the recognized text clears the edit mark; undo brings it back.
+        rows[7] = new(7, TranscriptEditHistory.ManualRevision + 1, "編集済み", null, true, 70, 0, 0, "ja");
+        Publish(edits.Apply(rows[7], "原文", null)!);
+        Check(!edits.IsEdited(7), "Revert kept the edit mark");
+        Publish(edits.Undo(id => rows.GetValueOrDefault(id))!);
+        Check(edits.IsEdited(7) && rows[7].English == "編集済み", "Undo of revert lost the edit mark");
         edits.Clear(); Check(!edits.IsEdited(7) && edits.Original(7) is null, "Clear retained edits");
     }
 
@@ -151,6 +161,8 @@ internal static class TranscriptToolsChecks
         var rows = Enumerable.Range(1, 40).Select(i => ((long)(100 + i), i == 3 ? "来週までに資料を送ります" : "発話その" + i + new string('あ', 80))).ToArray();
         var chunks = TranscriptSummary.Chunks(rows, 1800);
         Check(chunks.Count > 1 && chunks.All(c => c.Length <= 1800) && chunks[0].StartsWith("[1] 発話その1") && chunks[^1].TrimEnd().Split('\n')[^1].StartsWith("[40] "), "Chunking failed");
+        var ranged = TranscriptSummary.Parse("## 決定事項\n- 来月にリリース [4-6][9~8]\n- 広すぎる範囲 [1-90]", rows.Select(r => r.Item1).ToArray());
+        Check(ranged[0].RowIds.SequenceEqual([104L, 105L, 106L, 109L, 108L]) && ranged[1].RowIds.SequenceEqual([101L]), "Citation ranges failed: " + string.Join(",", ranged.SelectMany(r => r.RowIds)));
         string reply = "以下が要約です。\n## 要点\n- **資料**を来週送る。 [3]\n- 根拠のない項目\n・全角の番号 ［１，２］\n## 決定事項\n- なし\n### TODO（担当）\n1. 田中さんが資料を送付 [3][99][3]\n- 特になし\n無関係な行 [5]";
         var items = TranscriptSummary.Parse(reply, rows.Select(r => r.Item1).ToArray());
         Check(items.Length == 4 && items[0] is { Section: "要点", Text: "資料を来週送る" } && items[0].RowIds.SequenceEqual([103L]) && items[1].RowIds.Length == 0

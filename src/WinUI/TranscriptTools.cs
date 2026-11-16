@@ -99,8 +99,14 @@ public sealed partial class MainWindow
     private double RowSeconds(CaptionUpdate caption)
     {
         if (playbackDocument?.Phrases.FirstOrDefault(p => p.Id == caption.Id && p.Started == caption.Started) is { } phrase) return phrase.Seconds;
-        return recordingStop is not null && recordingTranscript is not null && caption.Started >= recordingTranscript.Started ? recordingTranscript.Offset(caption.Started) : SessionSeconds(caption.Started);
+        return UsesRecordingClock ? recordingTranscript!.Offset(caption.Started) : SessionSeconds(caption.Started);
     }
+    /// <summary>
+    /// A live document uses the recording's media time only when every row on screen was spoken
+    /// during the current recording. After an input change splits the recording, earlier rows stay
+    /// on screen, so the whole document falls back to session time instead of mixing two clocks.
+    /// </summary>
+    private bool UsesRecordingClock => recordingStop is not null && recordingTranscript is not null && (history.Count == 0 || history[0].Caption.Started >= recordingTranscript.Started);
     private string RowTime(long id) => FindCaption(id) is { } caption ? FormatMediaTime(RowSeconds(caption)) : "";
 
     /// <summary>The transcript on screen as a timed document: the open recording, or the live session.</summary>
@@ -121,7 +127,7 @@ public sealed partial class MainWindow
         if (recordingStop is not null && recordingTranscript is not null)
         {
             recordingTranscript.Observe(update);
-            recordingTranscript.Annotate(update.Id, update.Started, edits.Original(update.Id), edits.IsEdited(update.Id)); indexDirty = true;
+            recordingTranscript.Annotate(update.Id, update.Started, edits.Original(update.Id) is { } original && original != update.English ? original : null, edits.IsEdited(update.Id)); indexDirty = true;
         }
         transcript.Update(update); UpdateHistory(update);
         if (captions.ContainsKey(update.Id)) { captions[update.Id] = update; captionWindow?.Update(captions.Values); }
@@ -396,8 +402,12 @@ public sealed partial class MainWindow
         if (caption is not null && bookmarks.Any(b => b.PhraseId == caption.Id && b.Label == label)) { Status($"この発話には「{label}」が付いています。"); return; }
         RecordingBookmark bookmark;
         if (recordingStop is not null && recordingTranscript is not null)
+        {
             // Without a chosen row, a live bookmark records the moment the button was pressed.
+            // The recording file always gets its own media time; the screen uses the document's clock.
             bookmark = recordingTranscript.AddBookmark(label, rowId != 0 && caption is not null ? Math.Max(caption.Started, recordingTranscript.Started) : now, caption?.Id ?? 0, caption?.English);
+            if (!UsesRecordingClock) bookmark = bookmark with { Seconds = rowId != 0 && caption is not null ? RowSeconds(caption) : SessionSeconds(now) };
+        }
         else bookmark = new(reviewingRecording || rowId != 0 ? RowSeconds(caption!) : SessionSeconds(now), label, caption!.Id, caption.English);
         if (recordingStop is not null) indexDirty = true;
         bookmarks.Add(bookmark); BookmarksChanged();
@@ -407,7 +417,7 @@ public sealed partial class MainWindow
     private void RemoveBookmark(RecordingBookmark bookmark)
     {
         if (!bookmarks.Remove(bookmark)) return;
-        if (recordingStop is not null && recordingTranscript?.RemoveBookmark(bookmark) == true) indexDirty = true;
+        if (recordingStop is not null && recordingTranscript?.RemoveBookmark(bookmark.Label, bookmark.PhraseId) == true) indexDirty = true;
         BookmarksChanged(); Status("ブックマークを外しました。");
     }
     private void BookmarksChanged()

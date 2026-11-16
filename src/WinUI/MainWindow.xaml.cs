@@ -433,7 +433,11 @@ public sealed partial class MainWindow : Window
                 update = update with { SpeakerId = history[index].Caption.SpeakerId, SpeakerConfidence = history[index].Caption.SpeakerConfidence };
         }
         if (Environment.GetCommandLineArgs().Contains("--verify-windows-translation")) translationVerificationUpdates.Add((update, Stopwatch.GetTimestamp()));
-        if (recordingStop is not null && recordingTranscript?.Observe(update) == true) indexDirty = true;
+        if (recordingStop is not null && recordingTranscript?.Observe(update) == true)
+        {
+            recordingTranscript.Annotate(update.Id, update.Started, edits.Original(update.Id) is { } original && original != update.English ? original : null, edits.IsEdited(update.Id));
+            indexDirty = true;
+        }
         transcript.Update(update); SaveButton.IsEnabled = transcript.Count > 0 && !saving; sessionDirty = true;
         if (captions.TryGetValue(update.Id, out var old) && update.Revision < old.Revision) return;
         UpdateHistory(update);

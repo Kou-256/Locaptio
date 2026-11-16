@@ -51,11 +51,11 @@ public sealed partial class MainWindow
             captionStop = new(); long start = Stopwatch.GetTimestamp();
             string[] lines = ["今日はロカプションの新しい機能を確認します。", "誤認識を直接修正できるようになりました。", "議時録は五秒ごとに自動保存されます。", "用語辞書は橋爪さんが更新します。", "来週までに字幕ファイルを共有しましょう。", "以上で本日の確認を終わります。"];
             for (int i = 0; i < lines.Length; i++) UpdateCaption(new(i + 1, 1, lines[i], null, true, start + i * 4 * Stopwatch.Frequency / 10, 0, 0, "ja"));
-            UpdateCaption(new(2, 2, "誤認識を直接修正できるようになりました！", null, true, start + 4 * Stopwatch.Frequency / 10, 0, 0, "ja", SourceCorrected: true));
+            UpdateCaption(new(2, 2, "誤認識を直接修正できるようになりました！", null, true, start + 4 * Stopwatch.Frequency / 10, 0, 0, "ja", SourceCorrected: true, AiCorrected: true));
             Check(history.Count == 6 && history[0].English.StartsWith("今日はLocaptioの") && history[2].English.StartsWith("議事録は") && edits.Original(1) == lines[0] && edits.Differs(history[1].Caption), "dictionary replacement and pre-correction text");
             Check(EmptyState.Visibility == Visibility.Collapsed, "empty state hidden");
             var edited = edits.Apply(history[3].Caption, "用語辞書は橋爪さんが毎週更新します。", null)!; ApplyManualUpdate(edited);
-            UpdateCaption(new(4, 3, "遅れて届いた古い認識", null, true, start + 12 * Stopwatch.Frequency / 10, 0, 0, "ja", SourceCorrected: true));
+            UpdateCaption(new(4, 3, "遅れて届いた古い認識", null, true, start + 12 * Stopwatch.Frequency / 10, 0, 0, "ja", SourceCorrected: true, AiCorrected: true));
             Check(history[3].English == "用語辞書は橋爪さんが毎週更新します。" && transcript.Export(false).Contains("毎週更新") && edits.IsEdited(4) && UndoMenuItem.IsEnabled, "manual edit survives later revisions");
             UndoEdit(); Check(history[3].English == lines[3] && RedoMenuItem.IsEnabled && !edits.IsEdited(4), "undo");
             RedoEdit(); Check(history[3].English.Contains("毎週") && edits.IsEdited(4), "redo");

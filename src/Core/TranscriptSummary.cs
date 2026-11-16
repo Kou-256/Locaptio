@@ -56,7 +56,7 @@ public static class TranscriptSummary
             { section = named; continue; }
             if (line.StartsWith('#')) { section = Section(line) ?? section; continue; }
             if (section is null || !bullet) continue;
-            var references = Regex.Matches(body, @"\[\s*(\d+(?:\s*[,、~\-]\s*\d+)*)\s*\]").SelectMany(m => Regex.Matches(m.Groups[1].Value, @"\d+").Select(n => int.TryParse(n.Value, out int number) ? number : 0))
+            var references = Regex.Matches(body, @"\[\s*(\d+(?:\s*[,、~\-]\s*\d+)*)\s*\]").SelectMany(m => Numbers(m.Groups[1].Value))
                 .Where(n => n >= 1 && n <= ids.Count).Distinct().Select(n => ids[n - 1]).ToArray();
             string text = Regex.Replace(body, @"\s*\[\s*\d+(?:\s*[,、~\-]\s*\d+)*\s*\]", "").Replace("**", "").Trim(' ', '　', '。', ':');
             // Small models copy the format's field label ("担当者：") and sometimes misspell it.
@@ -66,6 +66,16 @@ public static class TranscriptSummary
             items.Add(new(section, text, references));
         }
         return items.ToArray();
+    }
+    private static IEnumerable<int> Numbers(string list)
+    {
+        foreach (Match part in Regex.Matches(list, @"(\d+)(?:\s*[~\-]\s*(\d+))?"))
+        {
+            int first = int.Parse(part.Groups[1].Value), last = part.Groups[2].Success ? int.Parse(part.Groups[2].Value) : first;
+            // A reversed or implausibly long range keeps only the numbers actually written.
+            if (last < first || last - first > 50) { yield return first; yield return last; continue; }
+            for (int number = first; number <= last; number++) yield return number;
+        }
     }
     public static SummaryItem[] Merge(IEnumerable<SummaryItem[]> parts)
     {

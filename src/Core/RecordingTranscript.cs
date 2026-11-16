@@ -25,6 +25,13 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
         var bookmark = new RecordingBookmark(Offset(timestamp), label, phraseId, text); bookmarks.Add(bookmark); return bookmark;
     }
     public bool RemoveBookmark(RecordingBookmark bookmark) => bookmarks.Remove(bookmark);
+    /// <summary>Removes the bookmark with this label on this utterance; the screen may show it on another clock.</summary>
+    public bool RemoveBookmark(string label, long phraseId)
+    {
+        int index = bookmarks.FindLastIndex(b => b.Label == label && b.PhraseId == phraseId);
+        if (index < 0) return false;
+        bookmarks.RemoveAt(index); return true;
+    }
     public void Annotate(long id, long started, string? original, bool edited)
     {
         if (phrases.TryGetValue((id, started), out var phrase)) phrases[(id, started)] = phrase with { Original = original, Edited = edited };
