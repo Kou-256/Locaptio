@@ -20,38 +20,53 @@ public sealed partial class MainWindow
         return false;
     }
 
-    /// <summary>Recognizes a whole audio file again. Returns nothing when cancelled or failed; the status line says why.</summary>
+    /// <summary>
+    /// Recognizes a whole audio file again. Returns nothing when cancelled or failed; the status line says why.
+    /// Models already loaded for live captions are reused when they match, and are never unloaded here,
+    /// so the next Start does not have to load them again.
+    /// </summary>
     private async Task<List<RecordingPhrase>?> RecognizeRecordingAsync(string label, string audio, string model, bool japanese, bool translate, bool correct)
     {
         List<RecordingPhrase>? result = null;
-        ClosePlayback(); prepared?.Dispose(); prepared = null; preparedKey = "";
+        ClosePlayback();
         await RunExclusiveAsync(label, async token =>
         {
             bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu";
-            string device = cpu ? "cpu" : settings.InferenceDevice, language = japanese ? "ja" : "en";
+            string language = japanese ? "ja" : "en", prompt = Terms.SpeechPrompt(settings.SpeechPrompt);
             var report = BeginPreparation();
-            await SpeechPreparation.EnsureAsync(root, model, translate, device, report, token);
-            using var speech = new LocalBackend { RequestTimeout = TimeSpan.FromMinutes(5) };
-            using var translation = translate ? new LocalBackend { RequestTimeout = TimeSpan.FromMinutes(5) } : null;
-            using var llm = correct ? new LocalLlmBackend { CorrectionGlossary = Terms.CorrectionHint() } : null;
-            speech.Status += Status; speech.PreparationChanged += p => report(p with { Component = "音声認識" });
-            var ready = new List<Task> { speech.StartAsync(root, "speech", cpu, token, false, language, model, Terms.SpeechPrompt(settings.SpeechPrompt), device) };
-            if (translation is not null)
+            var live = prepared is { IsUsable: true } ready && ready.AccuracyReady.IsCompletedSuccessfully && preparedModel == (japanese, model, prompt)
+                && (!translate || ready.Translation is not null && ready.Ready.IsCompletedSuccessfully) && (!correct || ready.LlmReady is { IsCompletedSuccessfully: true }) ? ready : null;
+            PreparedInference? own = null;
+            try
             {
-                translation.Status += Status; translation.PreparationChanged += p => report(p with { Component = "翻訳モデル" });
-                ready.Add(translation.StartAsync(root, "translation", cpu, token, false, device: device == "cuda" ? "cuda" : "auto"));
+                if (live is null)
+                {
+                    await SpeechPreparation.EnsureAsync(root, model, translate, cpu ? "cpu" : settings.InferenceDevice, report, token);
+                    own = new PreparedInference(root, japanese, model, prompt, settings.InferenceDevice, cpu, false, correct, settings.LlmModelPath, Status, progress: report);
+                    await Task.WhenAll(own.Ready, own.AccuracyReady).WaitAsync(token);
+                    if (own.LlmReady is { } llmReady) await llmReady.WaitAsync(token);
+                }
+                var models = live ?? own!;
+                // Whole-file chunks take longer than live captions; recognition context must not carry over.
+                var timeouts = (models.Speech.RequestTimeout, models.Translation?.RequestTimeout);
+                models.Speech.RequestTimeout = TimeSpan.FromMinutes(5); if (models.Translation is not null) models.Translation.RequestTimeout = TimeSpan.FromMinutes(5);
+                models.Speech.ResetSpeechContext();
+                if (correct && models.Llm is not null) models.Llm.CorrectionGlossary = Terms.CorrectionHint();
+                try
+                {
+                    var phrases = new List<RecordingPhrase>(); var dictionary = Terms;
+                    var progress = new Progress<double>(percent => ReportTask(token, $"{label}：{percent:F0}%", percent));
+                    await Task.Run(() => FileTranscription.RunAsync(audio, models.Speech, language, phrase => { phrases.Add(phrase); return Task.CompletedTask; },
+                        value => ((IProgress<double>)progress).Report(value), token, translate ? models.Translation : null, correct ? models.Llm : null, dictionary.Apply), token);
+                    result = phrases;
+                }
+                finally
+                {
+                    models.Speech.RequestTimeout = timeouts.Item1; if (models.Translation is not null) models.Translation.RequestTimeout = timeouts.Item2 ?? TimeSpan.FromSeconds(30);
+                    models.Speech.ResetSpeechContext();
+                }
             }
-            if (llm is not null)
-            {
-                llm.PreparationChanged += p => report(p with { Component = "文脈AI" });
-                ready.Add(llm.StartAsync(root, settings.LlmModelPath, cpu, token));
-            }
-            await Task.WhenAll(ready);
-            var phrases = new List<RecordingPhrase>(); var dictionary = Terms;
-            var progress = new Progress<double>(percent => ReportTask(token, $"{label}：{percent:F0}%", percent));
-            await Task.Run(() => FileTranscription.RunAsync(audio, speech, language, phrase => { phrases.Add(phrase); return Task.CompletedTask; },
-                value => ((IProgress<double>)progress).Report(value), token, translation, llm, dictionary.Apply), token);
-            result = phrases;
+            finally { own?.Dispose(); }
         });
         return result;
     }
@@ -212,17 +227,34 @@ public sealed partial class MainWindow
             if (!VerificationRun && await dialog.ShowAsync() != ContentDialogResult.Primary || closing) return;
         }
         finally { dialogOpen = false; }
+        // Fast first step without a model: start each utterance where speech begins in the audio.
+        // It also helps utterances that recognition later cannot match word by word.
+        var onsets = await Task.Run(() => SpeechOnsets.Align(current, SpeechOnsets.Find(SpeechOnsets.Envelope(audio))));
         var reference = await RecognizeRecordingAsync("同期の解析", audio, model, japanese, false, false);
-        if (reference is null || closing) { if (!closing) EnsurePlayback(); return; }
+        if (reference is null || closing)
+        {
+            if (closing) return;
+            if (onsets.Snapped > 0)
+            {
+                // Recognition was cancelled or failed; still keep the audio-based start times.
+                await TranscriptComparison.SaveVersionAsync(audio, "同期の改善前", current);
+                await reviewWrite; await RecordingTranscript.SaveAsync(audio, onsets.Document); await RecordingLibrary.SaveTextAsync(audio, onsets.Document);
+                await LoadRecordingAsync(audio);
+                Status($"音声に合わせて {onsets.Snapped} / {onsets.Total} 件の発話の開始位置を補正しました。単語ごとの時刻は付けていません。");
+            }
+            else EnsurePlayback();
+            return;
+        }
         try
         {
             // Windows caption times are estimates and can be several seconds late; search a wider window for them.
-            var result = await Task.Run(() => TimingAlignment.Apply(current, reference, current.ApproximateTiming ? 8 : 4));
-            if (result.Aligned == 0) { EnsurePlayback(); Status("音声の解析結果と一致する発話が見つからなかったため、時刻は変更していません。言語や認識モデルを確認してください。"); ShowStatusDetails(pin: true); return; }
+            var result = await Task.Run(() => TimingAlignment.Apply(onsets.Document, reference, onsets.Document.ApproximateTiming ? 8 : 4));
+            if (result.Aligned == 0 && onsets.Snapped > 0) result = new(onsets.Document, 0, result.Total);
+            if (result.Aligned == 0 && onsets.Snapped == 0) { EnsurePlayback(); Status("音声の解析結果と一致する発話が見つからなかったため、時刻は変更していません。言語や認識モデルを確認してください。"); ShowStatusDetails(pin: true); return; }
             await TranscriptComparison.SaveVersionAsync(audio, "同期の改善前", current);
             await reviewWrite; await RecordingTranscript.SaveAsync(audio, result.Document); await RecordingLibrary.SaveTextAsync(audio, result.Document);
             await LoadRecordingAsync(audio);
-            Status($"{result.Aligned} / {result.Total} 件の発話に単語時刻を付けました。" + (result.Aligned < result.Total ? "一致しなかった発話は近くの発話に合わせて移動しています。" : "") + " 設定の「再生ハイライトの単位」で単語ごとの表示を選べます。");
+            Status((onsets.Snapped > 0 ? $"音声に合わせて {onsets.Snapped} 件の開始位置を補正し、" : "") + $"{result.Aligned} / {result.Total} 件の発話に単語時刻を付けました。" + (result.Aligned < result.Total ? "一致しなかった発話は近くの発話に合わせて移動しています。" : "") + " 設定の「再生ハイライトの単位」で単語ごとの表示を選べます。");
         }
         catch (Exception ex) { Status("同期の結果を保存できません: " + ex.Message); ShowStatusDetails(pin: true); }
     }

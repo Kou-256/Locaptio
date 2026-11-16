@@ -10,6 +10,37 @@ namespace Locaptio.WinUI;
 public sealed partial class MainWindow
 {
     private SummaryItem[] summaryItems = [];
+    // A local LLM kept for summaries between uses and released after ten idle minutes.
+    private LocalLlmBackend? toolLlm;
+    private string toolLlmKey = "";
+    private long toolLlmUsed;
+    private DispatcherTimer? toolLlmTimer;
+    /// <summary>The LLM already loaded for live AI correction/translation, or one kept for summaries.</summary>
+    private async Task<LocalLlmBackend> SummaryLlmAsync(CancellationToken token)
+    {
+        if (prepared is { Llm: { } live, LlmReady.IsCompletedSuccessfully: true }) return live;
+        bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu";
+        string key = root + "|" + settings.LlmModelPath + "|" + cpu;
+        if (toolLlm is not null && toolLlmKey == key) return toolLlm;
+        toolLlm?.Dispose(); toolLlm = null;
+        var llm = new LocalLlmBackend(); var report = BeginPreparation();
+        llm.PreparationChanged += p => report(p with { Component = "文脈AI" });
+        try { await llm.StartAsync(root, settings.LlmModelPath, cpu, token); }
+        catch { llm.Dispose(); throw; }
+        toolLlm = llm; toolLlmKey = key; toolLlmUsed = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (toolLlmTimer is null)
+        {
+            toolLlmTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+            toolLlmTimer.Tick += (_, _) =>
+            {
+                // Several GB of memory: do not hold it while the user does other work.
+                if (toolLlm is null || captionStop is not null || System.Diagnostics.Stopwatch.GetElapsedTime(toolLlmUsed).TotalMinutes < 10) return;
+                toolLlm.Dispose(); toolLlm = null;
+            };
+            toolLlmTimer.Start();
+        }
+        return llm;
+    }
     private ISummaryBackend? summaryBackendForVerification;
 
     private void SummaryClick(object sender, RoutedEventArgs e)
@@ -105,15 +136,14 @@ public sealed partial class MainWindow
         SummaryItem[]? created = null;
         try
         {
-            ClosePlayback(); prepared?.Dispose(); prepared = null; preparedKey = "";
+            ClosePlayback();
             await RunExclusiveAsync("AI要約", async token =>
             {
                 void Progress(int done, int total) => DispatcherQueue.TryEnqueue(() => ReportTask(token, $"AI要約：{done} / {total}", total == 0 ? 100 : done * 100.0 / total));
                 if (summaryBackendForVerification is not null) { created = await TranscriptSummary.RunAsync(summaryBackendForVerification, rows, Progress, token); return; }
-                using var llm = new LocalLlmBackend(); var report = BeginPreparation();
-                llm.PreparationChanged += p => report(p with { Component = "文脈AI" });
-                await llm.StartAsync(root, settings.LlmModelPath, settings.CpuOnly || settings.InferenceDevice == "cpu", token);
+                var llm = await SummaryLlmAsync(token);
                 created = await Task.Run(() => TranscriptSummary.RunAsync(llm, rows, Progress, token), token);
+                toolLlmUsed = System.Diagnostics.Stopwatch.GetTimestamp();
             });
         }
         finally { SummaryRunButton.IsEnabled = true; }

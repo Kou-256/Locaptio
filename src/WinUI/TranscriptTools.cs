@@ -12,6 +12,7 @@ namespace Locaptio.WinUI;
 public sealed partial class MainWindow
 {
     private readonly TranscriptEditHistory edits = new();
+    private (bool Japanese, string Model, string Prompt)? preparedModel;
     private TermDictionary terms = TermDictionary.Empty;
     private string? termsSource;
     // In memory a bookmark's PhraseId is the visible row's ID; Seconds is the media time of a
@@ -78,7 +79,7 @@ public sealed partial class MainWindow
             mark.Items.Clear();
             foreach (string label in BookmarkLabels)
             {
-                var item = new MenuFlyoutItem { Text = label };
+                var item = new MenuFlyoutItem { Text = label, Icon = BookmarkIcon(label) };
                 item.Click += (_, _) => AddBookmark(label, contextRowId);
                 mark.Items.Add(item);
             }
@@ -378,11 +379,11 @@ public sealed partial class MainWindow
     private void RefreshBookmarkLabels()
     {
         string[] labels = BookmarkLabels;
-        BookmarkButtonText.Text = labels[0];
+        BookmarkButtonText.Text = labels[0]; BookmarkButtonIcon.Foreground = BookmarkBrush(labels[0]);
         var flyout = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
         foreach (string label in labels)
         {
-            var item = new MenuFlyoutItem { Text = label, Icon = new FontIcon { Glyph = "" } };
+            var item = new MenuFlyoutItem { Text = label, Icon = BookmarkIcon(label) };
             item.Click += (_, _) => AddBookmark(label);
             flyout.Items.Add(item);
         }
@@ -435,10 +436,10 @@ public sealed partial class MainWindow
         foreach (var bookmark in bookmarks.OrderBy(b => b.Seconds))
         {
             var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
-            content.Children.Add(new FontIcon { Glyph = "", FontSize = 11, Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 245, 185, 66)) });
+            content.Children.Add(BookmarkIcon(bookmark.Label, 11));
             content.Children.Add(new TextBlock { Text = bookmark.Label, FontSize = 12 });
             content.Children.Add(new TextBlock { Text = FormatMediaTime(bookmark.Seconds), FontSize = 12, FontFamily = new FontFamily("Consolas"), Opacity = .75 });
-            var chip = new Button { Content = content, Padding = new Thickness(8, 2, 8, 2), CornerRadius = new CornerRadius(12) };
+            var chip = new Button { Content = content, Padding = new Thickness(8, 2, 8, 2), CornerRadius = new CornerRadius(12), BorderBrush = BookmarkBrush(bookmark.Label) };
             ToolTipService.SetToolTip(chip, (string.IsNullOrWhiteSpace(bookmark.Text) ? "" : bookmark.Text + "\n") + "クリックで移動" + (reviewingRecording ? "・再生" : "") + "／右クリックで削除");
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(chip, $"ブックマーク {bookmark.Label} {FormatMediaTime(bookmark.Seconds)}");
             chip.Click += (_, _) =>
@@ -459,6 +460,7 @@ public sealed partial class MainWindow
         if (row.Children.Count < 4) return;
         var labels = bookmarks.Where(b => b.PhraseId == caption.Id).Select(b => b.Label).ToArray();
         row.Children[2].Visibility = labels.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (labels.Length > 0) ((Border)row.Children[2]).Background = BookmarkBrush(labels[0]);
         ToolTipService.SetToolTip(row.Children[2], labels.Length > 0 ? "ブックマーク: " + string.Join("・", labels) : null);
         bool edited = edits.IsEdited(caption.Id);
         row.Children[3].Visibility = edited ? Visibility.Visible : Visibility.Collapsed;
@@ -505,6 +507,8 @@ public sealed partial class MainWindow
             edits.Original(row.Id) is { } original && original != row.English ? original : null, edits.IsEdited(row.Id))).ToArray();
         var snapshot = new AutosaveSnapshot(1, DateTimeOffset.Now, settings.CaptionMode, recordingStop is not null ? recordingPath : null, rows, bookmarks.Count == 0 ? null : bookmarks.ToArray());
         string path = autosavePath;
+        // Up to 1,000 rows every 5 s; a multi-hour session (20,000 rows, a few MB) every 30 s at most.
+        autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Clamp(5 + rows.Length / 800.0, 5, 30));
         autosaveWrite = Task.Run(async () =>
         {
             try { await SessionAutosave.SaveAsync(path, snapshot); autosaveFailed = false; }
@@ -672,6 +676,7 @@ public sealed partial class MainWindow
         var stop = new CancellationTokenSource(); captionStop = stop;
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); captionTask = completion.Task;
         StartButton.IsEnabled = RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = false; StopButton.IsEnabled = true;
+        exclusiveTask = true; UpdateCommandStates();
         ShowTask(label, null);
         try { await body(stop.Token); return true; }
         catch (OperationCanceledException) { Status(label + "を中止しました。文章は変更していません。"); return false; }
@@ -680,7 +685,7 @@ public sealed partial class MainWindow
         {
             TaskPanel.Visibility = Visibility.Collapsed; preparationEpoch++; preparationVisible = false; PreparationPanel.Visibility = Visibility.Collapsed;
             if (ReferenceEquals(captionStop, stop)) captionStop = null;
-            stop.Dispose(); completion.TrySetResult();
+            stop.Dispose(); completion.TrySetResult(); exclusiveTask = false; UpdateCommandStates();
             StartButton.IsEnabled = !closing; StopButton.IsEnabled = false;
             RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = !closing;
         }

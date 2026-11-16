@@ -3,6 +3,8 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Windowing;
 
 namespace Locaptio.WinUI;
 
@@ -69,7 +71,19 @@ public sealed partial class MainWindow
             bool marks = CaptionList.ContainerFromIndex(2) is ListViewItem marked && marked.ContentTemplateRoot is Grid markedRow && markedRow.Children[2].Visibility == Visibility.Visible
                 && CaptionList.ContainerFromIndex(3) is ListViewItem changed && changed.ContentTemplateRoot is Grid changedRow && changedRow.Children[3].Visibility == Visibility.Visible && changedRow.Children[2].Visibility == Visibility.Collapsed;
             Check(marks, "row marks for bookmark and edit");
+            // Each bookmark type has its own color on the row bar, the chip and the toolbar button.
+            bool colors = CaptionList.ContainerFromIndex(2) is ListViewItem colored && colored.ContentTemplateRoot is Grid coloredRow
+                && ((Border)coloredRow.Children[2]).Background is SolidColorBrush bar && bar.Color == BookmarkBrush("後で確認").Color && BookmarkBrush("後で確認").Color != BookmarkBrush("重要").Color
+                && BookmarkPanel.Children.OfType<Button>().Any(chip => chip.BorderBrush is SolidColorBrush border && border.Color == BookmarkBrush("後で確認").Color)
+                && BookmarkButtonIcon.Foreground is SolidColorBrush icon && icon.Color == BookmarkBrush("重要").Color;
+            Check(colors, "bookmark colors per type");
             captionStop.Dispose(); captionStop = null;
+            // Commands follow what can be done now; disabled controls are visibly dimmed.
+            UpdateCommandStates();
+            Check(ClearButton.IsEnabled && BookmarkButton.IsEnabled && SummaryToolButton.IsEnabled && !RetranscribeButton.IsEnabled && !SyncButton.IsEnabled && RetranscribeButton.Opacity < .5 && ClearButton.Opacity == 1, $"command states while text is shown (clear={ClearButton.IsEnabled}/{ClearButton.Opacity}, bookmark={BookmarkButton.IsEnabled}, summary={SummaryToolButton.IsEnabled}, retranscribe={RetranscribeButton.IsEnabled}/{RetranscribeButton.Opacity}, dialog={dialogOpen}, busy={exclusiveTask}, review={reviewingRecording})");
+            exclusiveTask = true; UpdateCommandStates();
+            Check(!BookmarkButton.IsEnabled && BookmarkButton.Opacity < .5 && !ClearButton.IsEnabled && !LibraryButton.IsEnabled, $"commands disabled during exclusive work (bookmark={BookmarkButton.IsEnabled}/{BookmarkButton.Opacity}, clear={ClearButton.IsEnabled}, library={LibraryButton.IsEnabled})");
+            exclusiveTask = false; UpdateCommandStates();
 
             // Subtitles from a session that was not recorded: times count from the first utterance.
             var live = SessionDocument();
@@ -98,7 +112,20 @@ public sealed partial class MainWindow
             using (var writer = new NAudio.Wave.WaveFileWriter(audio, new NAudio.Wave.WaveFormat(16000, 16, 1))) writer.Write(new byte[32000 * 30], 0, 32000 * 30);
             var phrases = lines.Select((text, i) => new RecordingPhrase(100 + i, 100 + i, 2 + i * 4, Terms.Apply(text), null, 1, "ja", 5 + i * 4, Original: Terms.Apply(text) == text ? null : text)).ToArray();
             await RecordingTranscript.SaveAsync(audio, new(1, "会議.wav", DateTimeOffset.Now, false, phrases, [new(10.5, "質問", 102)], null, "small"));
-            await LoadRecordingAsync(audio); ClosePlayback();
+            await LoadRecordingAsync(audio);
+            // The caption window follows a replayed recording instead of starting live captions.
+            CaptionClick(CaptionButton, new RoutedEventArgs()); await Task.Delay(300);
+            bool replayStarted = captionWindow is { Playback: true } && captionStop is null && ((OverlappedPresenter)AppWindow.Presenter).State != OverlappedPresenterState.Minimized;
+            if (playbackReader is not null) { playbackReader.CurrentTime = TimeSpan.FromSeconds(phrases[2].Seconds + 1); UpdatePlaybackPosition(); }
+            await Task.Delay(200);
+            bool replayCaption = captionWindow?.Shown.LastOrDefault()?.English == phrases[2].Text && captionWindow.Shown.Count <= Math.Max(1, settings.CaptionRows);
+            if (playbackReader is not null) { playbackReader.CurrentTime = TimeSpan.FromSeconds(phrases[4].Seconds + .5); UpdatePlaybackPosition(); }
+            bool replayFollows = captionWindow?.Shown.LastOrDefault()?.English == phrases[4].Text;
+            captionWindow?.Close(); await Task.Delay(200);
+            Check(replayStarted && replayCaption && replayFollows && captionWindow is null, $"caption window during replay (started={replayStarted}, caption={replayCaption}, follows={replayFollows})");
+            UpdateCommandStates();
+            Check(RetranscribeButton.IsEnabled && SyncButton.IsEnabled && VersionsButton.IsEnabled && SearchButton.IsEnabled, "recording tools enabled while reviewing");
+            ClosePlayback();
             Check(reviewingRecording && history.Count == 6 && bookmarks.Single() is { Label: "質問", PhraseId: 3 } && edits.Original(1) == lines[0] && PlaybackPanel.Visibility == Visibility.Visible && SessionAutosave.TryLoad(autosavePath) is null, "open recording with bookmark and original text");
             ApplyManualUpdate(edits.Apply(history[4].Caption, "来週の金曜までに字幕ファイルを共有しましょう。", null)!);
             AddBookmark("重要", 5); await reviewWrite;

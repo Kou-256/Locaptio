@@ -11,6 +11,29 @@ public sealed class WindowsCaptionTracker(bool japanese)
     private int lastFinalRevision;
     private string lastFinalPrefix = "", windowText = "", completeText = "";
     private int revision;
+    // When each part of the active row first appeared. A row split later starts when its own
+    // first words appeared, not when the split happened, so long utterances keep their timing.
+    private readonly List<(int Length, long Time)> growth = new();
+    private void Grow(long now)
+    {
+        while (growth.Count > 0 && growth[^1].Length > current.Length) growth.RemoveAt(growth.Count - 1);
+        if (growth.Count == 0 || current.Length > growth[^1].Length) growth.Add((current.Length, now));
+    }
+    private long AppearedAt(int index, long fallback)
+    {
+        foreach (var (length, time) in growth) if (length > index) return time;
+        return fallback;
+    }
+    /// <summary>Starts the remainder of the row at <paramref name="cut"/> as a new row.</summary>
+    private void Rebase(int cut, long now)
+    {
+        // current already holds the remainder; skip its leading spaces to find the first word.
+        int skip = 0;
+        while (skip < current.Length && char.IsWhiteSpace(current[skip])) skip++;
+        started = AppearedAt(cut + skip, now);
+        var remaining = growth.Where(g => g.Length > cut).Select(g => (g.Length - cut, g.Time)).ToList();
+        growth.Clear(); growth.AddRange(remaining);
+    }
     public void ResetBaseline(string text) { initialized = true; active = false; anchor = snapshot = windowText = completeText = text; current = ""; lastFinalText = ""; }
     public IEnumerable<CaptionUpdate> Observe(string text, long now)
     {
@@ -31,7 +54,7 @@ public sealed class WindowsCaptionTracker(bool japanese)
             // A Windows hypothesis can revise words that were just finalized.
             // Reopen that row instead of appending the corrected words twice.
             if (active && id != lastFinalId) yield return new(id, ++revision, "", "", true, started, 0, 0, "en");
-            id = lastFinalId; revision = lastFinalRevision; started = lastFinalStarted; anchor = lastFinalPrefix; active = true; lastFinalText = "";
+            id = lastFinalId; revision = lastFinalRevision; started = lastFinalStarted; anchor = lastFinalPrefix; active = true; lastFinalText = ""; growth.Clear();
         }
         if (text.StartsWith(anchor, StringComparison.Ordinal)) current = text[anchor.Length..];
         else
@@ -69,8 +92,8 @@ public sealed class WindowsCaptionTracker(bool japanese)
             anchor += current[..leading]; current = current[leading..];
         }
         if (string.IsNullOrWhiteSpace(current)) yield break;
-        if (!active) { id = ++sequence; revision = 0; started = now; active = true; }
-        changed = now;
+        if (!active) { id = ++sequence; revision = 0; started = now; active = true; growth.Clear(); }
+        changed = now; Grow(now);
         if (!japanese)
         {
             while (System.Text.RegularExpressions.Regex.Matches(current, @"(?<!\d)[.!?](?=\s|$)").Cast<System.Text.RegularExpressions.Match>().FirstOrDefault(m=>m.Index>=14) is { } sentence)
@@ -79,7 +102,7 @@ public sealed class WindowsCaptionTracker(bool japanese)
                 var final = Make(true, now); RememberFinal(); yield return final;
                 anchor += prefix; current = tail;
                 if (string.IsNullOrWhiteSpace(current)) { anchor = text; current = ""; active = false; yield break; }
-                id = ++sequence; revision = 0; started = now;
+                id = ++sequence; revision = 0; Rebase(cut, now);
             }
         }
         // Bound each row while keeping all recognized text in the transcript.
@@ -89,7 +112,7 @@ public sealed class WindowsCaptionTracker(bool japanese)
             if (cut < 30) cut = 159;
             string tail = current[(cut + 1)..], prefix = current[..(cut + 1)]; current = prefix;
             var final = Make(true, now); RememberFinal(); yield return final; anchor += prefix; current = tail;
-            id = ++sequence; revision = 0; started = now;
+            id = ++sequence; revision = 0; Rebase(cut + 1, now);
         }
         yield return Make(false, now);
     }
