@@ -35,6 +35,7 @@
     <MenuFlyoutItem x:Name="SyncMenuItem" Text="音声と文章の同期を改善（単語時刻を付ける）…" Click="ImproveTimingClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <MenuFlyoutItem x:Name="VersionsMenuItem" Text="文字起こしの版を比較・切り替え…" Click="VersionsClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <MenuFlyoutSeparator/>
+    <MenuFlyoutItem x:Name="BurnSubtitlesMenuItem" Text="字幕付き動画を書き出す…" Click="BurnSubtitlesClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE714;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <MenuFlyoutItem x:Name="SummaryMenuItem" Text="AIで要約（要点・決定事項・TODO）" Click="SummaryClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
    </MenuBarItem>
    <MenuBarItem Title="設定(S)">
@@ -61,6 +62,7 @@
    <Button x:Name="ClearButton" Click="ClearClick" IsEnabled="False" AutomationProperties.Name="クリア" ToolTipService.ToolTip="表示中の文章を消します。消す前に保存するか確認します。保存済みの録音やファイルは削除しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE74D;"/><TextBlock Text="クリア"/></StackPanel></Button>
    <Button x:Name="CaptionButton" Click="CaptionClick" AutomationProperties.Name="字幕ウィンドウ" ToolTipService.ToolTip="キャプションだけのウィンドウを開閉します。移動は字幕の背景をドラッグしてください。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE7F0;"/><TextBlock x:Name="CaptionButtonText" Text="字幕"/></StackPanel></Button>
    <ToggleButton x:Name="RecordToggle" Checked="RecordChanged" Unchecked="RecordChanged" AutomationProperties.Name="新規録音" ToolTipService.ToolTip="新しい録音を専用フォルダーに保存します。もう一度押すと録音・文字起こしを停止します。保存済みデータは録音一覧から開いてください。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE7C8;" Foreground="#FF7A7A"/><TextBlock x:Name="RecordToggleText" Text="新規録音"/></StackPanel></ToggleButton>
+   <ToggleButton x:Name="VideoToggle" Click="VideoToggleClick" AutomationProperties.Name="新規録画" ToolTipService.ToolTip="画面全体または選んだウィンドウを、音声と一緒にMP4で録画します。録画しながら文字起こしもでき、あとから字幕付き動画を書き出せます。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE714;" Foreground="#FF7A7A"/><TextBlock x:Name="VideoToggleText" Text="新規録画"/></StackPanel></ToggleButton>
    <SplitButton x:Name="BookmarkButton" Click="BookmarkClick" MinHeight="32" Padding="10,4" FontSize="14" AutomationProperties.Name="ブックマークを付ける" ToolTipService.ToolTip="いまの時刻・発話に印を付けます（Ctrl+B）。▼で「後で確認」などの種類を選べます。録音中は聞き直し位置として保存します。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon x:Name="BookmarkButtonIcon" Glyph="&#xE735;" Foreground="#F5B942"/><TextBlock x:Name="BookmarkButtonText" Text="重要"/></StackPanel></SplitButton>
    <Button x:Name="SaveButton" Click="SaveClick" IsEnabled="False" AutomationProperties.Name="テキスト保存" ToolTipService.ToolTip="表示中の文字起こしをテキストファイルに保存します。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE74E;"/><TextBlock Text="テキスト保存"/></StackPanel></Button>
    <DropDownButton x:Name="MoreButton" MinHeight="32" Padding="10,4" FontSize="14" AutomationProperties.Name="書き出し・AI" ToolTipService.ToolTip="字幕ファイルの書き出し、AI要約、修正の取り消しなど">
@@ -77,19 +79,33 @@
     </DropDownButton.Flyout>
    </DropDownButton>
    <Button x:Name="LibraryButton" Click="OpenRecordingClick" AutomationProperties.Name="録音一覧・再生" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8B7;"/><TextBlock Text="録音一覧"/></StackPanel></Button>
-   <Button x:Name="ImportButton" Click="ImportAudioClick" AutomationProperties.Name="音声ファイル読込" ToolTipService.ToolTip="MP3・M4A・WAVをローカルで文字起こし。ドラッグ＆ドロップにも対応。原本は変更しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8E5;"/><TextBlock Text="ファイル読込"/></StackPanel></Button>
+   <Button x:Name="ImportButton" Click="ImportAudioClick" AutomationProperties.Name="音声ファイル読込" ToolTipService.ToolTip="MP3・M4A・WAVの音声やMP4・MOVなどの動画をローカルで文字起こし。ドラッグ＆ドロップにも対応。原本は変更しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8E5;"/><TextBlock Text="ファイル読込"/></StackPanel></Button>
    <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回の開始から。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
    <Button x:Name="SearchButton" Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;"/></Button>
   </local:ToolbarPanel></StackPanel>
   <StackPanel Grid.Row="2" Spacing="4">
   <TextBlock x:Name="SessionTitle" Text="文字起こし（録音なし）／音声も残すときは「新規録音」、保存済みデータは「録音一覧」から" FontSize="11" TextWrapping="Wrap"/>
   <Grid x:Name="RecordingIndicator" Visibility="Collapsed" ColumnSpacing="8">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-   <TextBlock Text="● 録音中" Foreground="#FF8F8F"/>
-   <TextBlock x:Name="RecordingClock" Grid.Column="1" FontFamily="Consolas" Foreground="#FF8F8F"/>
-   <TextBlock x:Name="RecordingText" Grid.Column="2" Foreground="#FF8F8F" TextTrimming="CharacterEllipsis"/>
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <Border x:Name="LivePreviewFrame" Visibility="Collapsed" Width="160" Height="90" CornerRadius="4" Background="Black" BorderBrush="#FF8F8F" BorderThickness="1" ToolTipService.ToolTip="録画中の映像（プレビュー）">
+    <Image x:Name="LivePreview" Stretch="Uniform"/>
+   </Border>
+   <TextBlock x:Name="RecordingLabel" Grid.Column="1" Text="● 録音中" Foreground="#FF8F8F" VerticalAlignment="Center"/>
+   <TextBlock x:Name="RecordingClock" Grid.Column="2" FontFamily="Consolas" Foreground="#FF8F8F" VerticalAlignment="Center"/>
+   <TextBlock x:Name="RecordingText" Grid.Column="3" Foreground="#FF8F8F" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+   <StackPanel x:Name="VideoControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" Visibility="Collapsed" VerticalAlignment="Center">
+    <Button x:Name="VideoPauseButton" Click="VideoPauseClick" Padding="8,3" FontSize="12" AutomationProperties.Name="録画を一時停止" ToolTipService.ToolTip="録画を一時停止・再開します。一時停止中の映像と発話は動画に入りません。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon x:Name="VideoPauseIcon" Glyph="&#xE769;" FontSize="12"/><TextBlock x:Name="VideoPauseText" Text="一時停止"/></StackPanel></Button>
+    <Button x:Name="ScreenshotButton" Click="ScreenshotClick" Padding="8,3" FontSize="12" AutomationProperties.Name="スクリーンショット" ToolTipService.ToolTip="録画中の画面を画像（PNG）で録画フォルダーに保存し、その時刻にブックマークを付けます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE722;" FontSize="12"/><TextBlock Text="スクリーンショット"/></StackPanel></Button>
+   </StackPanel>
   </Grid>
   <StackPanel x:Name="PlaybackPanel" Visibility="Collapsed" Spacing="4">
+   <Grid x:Name="VideoPanel" Visibility="Collapsed" Height="300" Background="Black" CornerRadius="6" Tapped="VideoTapped" AutomationProperties.Name="録画した動画">
+    <MediaPlayerElement x:Name="VideoPlayer" AreTransportControlsEnabled="False" Stretch="Uniform"/>
+    <Image x:Name="VideoStill" Visibility="Collapsed" Stretch="Uniform" IsHitTestVisible="False"/>
+    <Border x:Name="VideoCaption" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="12,0,12,14" Padding="14,6" CornerRadius="6" Background="#C8202020" MaxWidth="980" IsHitTestVisible="False">
+     <TextBlock x:Name="VideoCaptionText" Foreground="White" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center"/>
+    </Border>
+   </Grid>
    <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <Button x:Name="PlaybackButton" Content="再生" Click="PlaybackClick" Padding="8,3" FontSize="12"/>
     <Slider x:Name="PlaybackPosition" Grid.Column="1" Minimum="0" Maximum="1" ValueChanged="PlaybackSeekChanged" AutomationProperties.Name="録音の再生位置"/>
@@ -104,6 +120,7 @@
     <Button x:Name="SyncButton" Click="ImproveTimingClick" ToolTipService.ToolTip="音声をもう一度解析し、いまの文章に単語ごとの時刻を付けます。ハイライトとクリック再生のずれを減らします。文章は変えません。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE916;"/><TextBlock Text="同期を改善"/></StackPanel></Button>
     <Button x:Name="VersionsButton" Click="VersionsClick" ToolTipService.ToolTip="以前の文字起こし結果と比較し、切り替えます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE81C;"/><TextBlock Text="版を比較・切替"/></StackPanel></Button>
     <Button x:Name="SummaryToolButton" Click="SummaryClick" ToolTipService.ToolTip="ローカルAIで要点・決定事項・TODOを作ります。各項目から根拠の発話へ戻れます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE8FD;"/><TextBlock Text="AI要約"/></StackPanel></Button>
+    <Button x:Name="BurnSubtitlesButton" Click="BurnSubtitlesClick" Visibility="Collapsed" ToolTipService.ToolTip="字幕を映像に焼き込んだ新しいMP4を書き出します。元の動画は変更しません。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE7F0;"/><TextBlock Text="字幕付き動画を書き出す…"/></StackPanel></Button>
     <Button x:Name="SubtitlesToolButton" Click="ExportSubtitlesClick" ToolTipService.ToolTip="動画編集や字幕表示に使えるSRT・VTTファイルを保存します。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE7F0;"/><TextBlock Text="SRT・VTT"/></StackPanel></Button>
    </local:ToolbarPanel>
    <TextBlock x:Name="PlaybackHint" Text="文字をクリックすると、その発話の少し前から再生します。ドラッグで選択・コピーもできます。" FontSize="11" TextWrapping="Wrap"/>
@@ -135,7 +152,7 @@
     <FontIcon Glyph="&#xE8C1;" FontSize="15" Foreground="#9AA0A6"/><TextBlock Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="左上で「日本語の文字起こし」か「英語 → 日本語 翻訳」と、聞き取る音声を選びます。"/>
     <FontIcon Grid.Row="1" Glyph="&#xE7C8;" FontSize="15" Foreground="#FF7A7A"/><TextBlock Grid.Row="1" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="音声も残すときは「新規録音」。あとで文章をクリックして聞き直せます。"/>
     <FontIcon Grid.Row="2" Glyph="&#xE734;" FontSize="15" Foreground="#F5B942"/><TextBlock Grid.Row="2" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="大事なところは「重要」(Ctrl+B)で印を付け、誤認識は右クリックから直せます。"/>
-    <FontIcon Grid.Row="3" Glyph="&#xE8E5;" FontSize="15" Foreground="#9AA0A6"/><TextBlock Grid.Row="3" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="手元のMP3・M4A・WAVは、この画面にドロップすると文字起こしできます。"/>
+    <FontIcon Grid.Row="3" Glyph="&#xE8E5;" FontSize="15" Foreground="#9AA0A6"/><TextBlock Grid.Row="3" Grid.Column="1" FontSize="13" TextWrapping="Wrap" Text="手元の音声（MP3・M4A・WAV）や動画（MP4・MOVなど）は、この画面にドロップすると文字起こしできます。"/>
    </Grid>
   </StackPanel>
   <Button x:Name="ResumeHistoryButton" Grid.Row="4" Content="最新へ" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,12" Click="ResumeHistoryClick" ToolTipService.ToolTip="最新の字幕へ移動し、自動スクロールを再開します。"/>
@@ -176,6 +193,9 @@
     <HyperlinkButton x:Name="StatusDetailsButton" Grid.Column="1" Content="状態" FontSize="11" Padding="2,0" MinWidth="0" MinHeight="18" HorizontalAlignment="Right" Click="StatusDetailsClick" AutomationProperties.Name="状態・診断を表示・非表示" ToolTipService.ToolTip="クリックで状態・診断を表示／非表示"/>
    </Grid>
   </StackPanel>
+  <Border x:Name="CountdownOverlay" Grid.RowSpan="6" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Width="180" Height="180" CornerRadius="90" Background="#E0202020" BorderBrush="#FF7A7A" BorderThickness="3" Canvas.ZIndex="20" IsHitTestVisible="False">
+   <StackPanel VerticalAlignment="Center" Spacing="2"><TextBlock x:Name="CountdownText" Text="3" FontSize="72" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="White"/><TextBlock Text="録画を開始します" FontSize="12" HorizontalAlignment="Center" Foreground="#E0E0E0"/></StackPanel>
+  </Border>
   <Canvas x:Name="StatusOverlay" Grid.RowSpan="6" Canvas.ZIndex="10">
    <Border x:Name="StatusDetailsPanel" Visibility="Collapsed" Background="#F0363636" BorderBrush="#858585" BorderThickness="1" CornerRadius="8">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="220" Padding="10,8,22,8">

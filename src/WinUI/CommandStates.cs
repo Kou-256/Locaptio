@@ -21,7 +21,7 @@ public sealed partial class MainWindow
             control.Opacity = control.IsEnabled ? 1 : .4;
             control.IsEnabledChanged += (_, _) => control.Opacity = control.IsEnabled ? 1 : .4;
         }
-        foreach (var panel in new Panel[] { MainToolbar, RecordingTools })
+        foreach (var panel in new Panel[] { MainToolbar, RecordingTools, VideoControls })
             foreach (var control in panel.Children.OfType<Control>()) Dim(control);
         commandTimer.Tick += (_, _) => UpdateCommandStates(); commandTimer.Start();
         Closed += (_, _) => commandTimer.Stop();
@@ -49,6 +49,14 @@ public sealed partial class MainWindow
         Set(!busy, LibraryButton, ImportButton, MoreButton);
         Set(!busy && (recording || playbackDocument is not null), SearchButton);
         Set(!exclusiveTask, CaptionButton);
+        // Audio and video recording exclude each other; each button stops its own recording.
+        Set(!busy && (recordingStop is null || VideoRecording), VideoToggle);
+        if (VideoRecording) Set(false, RecordToggle);
+        bool video = review && PlaybackClock.IsVideo(playbackPath);
+        var burn = video ? Visibility.Visible : Visibility.Collapsed;
+        // The custom toolbar panel lays out again only when told; otherwise a newly shown button gets no space.
+        if (BurnSubtitlesButton.Visibility != burn) { BurnSubtitlesButton.Visibility = burn; RecordingTools.InvalidateMeasure(); RecordingTools.InvalidateArrange(); }
+        Set(!busy && video, BurnSubtitlesButton, BurnSubtitlesMenuItem);
     }
 
     // ---- Bookmark colors ------------------------------------------------------------------

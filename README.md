@@ -1,11 +1,19 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.49/Locaptio-Setup-1.0.49-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.50/Locaptio-Setup-1.0.50-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバーレイ・録音アプリです。動画や会議の音声を読みながら、必要な文章と音声を保存できます。
 
 > **開発中の個人プロジェクトです。** 現在の画面表示は主に日本語です。英語の利用説明は [English README](README.en.md) を参照してください。精度と速度は音声・モデル・ハードウェアによって変わります。
+
+## v1.0.50：画面録画・動画の見直し・字幕付き動画の書き出し
+
+- **新規録画**：画面全体か特定のウィンドウを、PC音声・マイクと一緒にMP4で録画します。対象は縮小画像の一覧とプレビューで選べます。録画しながら文字起こしもできます。
+- **録画中の操作**：一時停止・再開、スクリーンショット、ブックマーク、カウントダウン、カーソル・クリック表示、フレームレートと画質。Locaptioの本体を録画に映さない設定もあります（字幕ウィンドウは映ります）。
+- **動画の見直し**：動画の上に字幕を重ねて再生し、文章をクリックするとその場面へ移動します。
+- **字幕付き動画を書き出す**：字幕を焼き込んだMP4と、同じ名前のSRTを保存します。元の動画は変更しません。
+- **動画ファイルの読み込み**：MP4・MOV・M4V・WMV・AVI・MKVを文字起こしできます。
 
 ## v1.0.49：録音と文字のずれの改善・ボタン表示・再生中の字幕
 
@@ -88,9 +96,9 @@ Files are decoded in bounded chunks. **Stop** cancels processing and saves compl
 
 Setupは更新時もインストール先の選択画面を表示します。更新ファイルを自動取得する場合でも、**インストールの許可ポップアップ**で「インストールする」を選ぶまでSetupは実行しません。「後で」を選ぶと作業を続けられます。
 
-[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.49/Locaptio-Setup-1.0.49-x64.exe)
+[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.50/Locaptio-Setup-1.0.50-x64.exe)
 
-[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.49-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
+[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.50-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
 
 ### 録音の検索・聞き直し（v1.0.39）
 

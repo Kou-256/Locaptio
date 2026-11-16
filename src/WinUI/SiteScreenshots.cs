@@ -28,6 +28,7 @@ public sealed partial class MainWindow
     [DllImport("gdi32.dll")] private static extern int GetDIBits(nint dc, nint bitmap, uint start, uint lines, byte[] bits, ref BitmapHeader header, uint usage);
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(nint item);
     [DllImport("gdi32.dll")] private static extern bool DeleteDC(nint dc);
+    [DllImport("kernel32.dll")] private static extern uint SetThreadExecutionState(uint flags);
 
     private static async Task CaptureScreenAsync(nint window, string path)
     {
@@ -85,7 +86,11 @@ public sealed partial class MainWindow
         async Task Shot(string name, int settle = 500)
         {
             await Task.Delay(settle); Activate(); SetForegroundWindow(hwnd); await Task.Delay(250);
-            await CaptureScreenAsync(hwnd, Path.Combine(shots, name + ".png")); captured.Add(name);
+            string file = Path.Combine(shots, name + ".png");
+            try { await CaptureScreenAsync(hwnd, file); } catch (Exception) { }
+            // A locked or sleeping display copies as black: draw the window and its open popups instead.
+            if (!File.Exists(file) || IsBlack(file)) await CaptureComposedAsync(file);
+            captured.Add(name);
         }
         async Task DialogShot(string name, Func<Task> open)
         {
@@ -123,6 +128,8 @@ public sealed partial class MainWindow
         try
         {
             Title = "Locaptio";
+            // Screen copies are black while the display sleeps; keep it on for this run.
+            SetThreadExecutionState(0x80000000 | 0x00000002); await Task.Delay(1500);
             confirmReplacementForVerification = _ => Task.FromResult(true);
             settings.BackgroundOpacity = 1; settings.TextOpacity = 1; settings.FontSize = 20; settings.English = settings.Japanese = true; settings.CaptionLineGap = 6;
             settings.SpeechEngine = "windows-live"; settings.CorrectTranscriptWithAi = true; settings.BookmarkLabels = "重要、後で確認、質問、TODO";
@@ -221,6 +228,8 @@ public sealed partial class MainWindow
             settings.RecordingSaveDirectory = work;
             await DialogShot("library", () => OpenRecordingLibraryAsync());
             ClosePlayback();
+            // Screen recording: target picker, a recording in progress, video replay and subtitled export.
+            await CaptureVideoScreensAsync(work, (name, settle) => Shot(name, settle), DialogShot, Reset, (rows, language) => Feed(rows, language));
 
             // Settings pages.
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(500);
@@ -234,6 +243,7 @@ public sealed partial class MainWindow
         catch (Exception ex) { failures.Add("exception: " + ex); }
         finally
         {
+            SetThreadExecutionState(0x80000000);
             confirmReplacementForVerification = null;
             if (System.Text.Json.JsonSerializer.Deserialize<Locaptio.App.Settings>(saved) is { } original)
                 foreach (var property in typeof(Locaptio.App.Settings).GetProperties().Where(p => p.CanWrite)) property.SetValue(settings, property.GetValue(original));

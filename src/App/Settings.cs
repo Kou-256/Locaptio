@@ -79,6 +79,18 @@ public sealed class Settings
     public Dictionary<string, string> BookmarkColors { get; set; } = new() { ["重要"] = "#F5B942", ["後で確認"] = "#60A5FA", ["質問"] = "#C084FC", ["TODO"] = "#34D399" };
     public bool AutosaveSession { get; set; } = true;
     public bool SummarizeAfterRecording { get; set; }
+    // Screen/window video recording.
+    public int VideoFramerate { get; set; } = 30;
+    public string VideoQuality { get; set; } = "standard";
+    public bool VideoCursor { get; set; } = true;
+    public bool VideoClicks { get; set; } = true;
+    public bool VideoSystemAudio { get; set; } = true;
+    public bool VideoMicrophone { get; set; }
+    public bool VideoCountdown { get; set; } = true;
+    public bool VideoTranscribe { get; set; } = true;
+    public bool VideoHideLocaptio { get; set; } = true;
+    public string SubtitleBurnContent { get; set; } = "source";
+    public string SubtitleBurnSize { get; set; } = "medium";
     public string RetranscribeModel { get; set; } = "";
     public bool UseLocalLlm { get; set; } = true;
     public string LlmModelPath { get; set; } = "";
