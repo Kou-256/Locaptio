@@ -4,7 +4,7 @@ export const languages = {
     description:'Windows 11の日本語文字起こし・英日翻訳アプリ。字幕、PC音声とマイクの録音、AI補正、話者の色分け。無料・オープンソースで、認識はローカル処理。',
     nav:['機能','はじめ方','English'], switch:'/en', skip:'本文へ移動',
     eyebrow:'Windowsの文字起こし・英日翻訳', headline:['日本語の文字起こし','英語から日本語への翻訳'],
-    intro:'Windows 11向けの**日本語文字起こし・英日翻訳**アプリです。PC音声やマイク音声を取り込み、字幕表示、録音、テキスト保存ができます。',
+    intro:'PCで再生する動画や会議の音声を、**日本語の文字起こし・英日翻訳**で表示するWindows 11アプリです。字幕を重ねる、音声と文章を保存する、**録音を文字から検索して聞き直す**、手元の音声ファイルを文字にする操作ができます。',
     download:'Windows版をダウンロード', guide:'使い方を見る', meta:'Windows 11 24H2以降 / x64 / 無料・MIT License',
     release:'更新内容', version:'現在の配布版', preview:'字幕の表示イメージ。音声の取得・再生は行いません。',
     demoModes:['日本語の文字起こし','英語 → 日本語'], demoSource:'PC音声 ＋ マイク',
@@ -52,7 +52,7 @@ export const languages = {
   en: {
     title:'Locaptio — Japanese transcription and translation for Windows', description:'Local Japanese transcription and English-to-Japanese translation for Windows 11. Floating captions, system audio and mic recording, AI correction and speaker colors. Free and open source.',
     nav:['Features','Get started','日本語'], switch:'/', skip:'Skip to content', eyebrow:'Local captions for Windows', headline:['Japanese transcription','English → Japanese'],
-    intro:'A Windows 11 app for **Japanese transcription** and **English-to-Japanese translation**. Capture PC or microphone audio, display captions, record audio and export transcripts.', download:'Download for Windows', guide:'How to get started', meta:'Windows 11 24H2+ / x64 / Free / MIT License',
+    intro:'A Windows 11 app for **Japanese transcription and English-to-Japanese translation** of video and meeting audio. Show captions over other windows, save audio and text, **search and replay a recording from its transcript**, or transcribe existing audio files.', download:'Download for Windows', guide:'How to get started', meta:'Windows 11 24H2+ / x64 / Free / MIT License',
     release:'Release notes', version:'Current release', preview:'Caption appearance demo. No audio is captured or played.', demoModes:['Japanese transcription','English → Japanese'], demoSource:'System audio + mic',
     demoJa:'字幕の文字サイズと表示行数は、\n設定画面で変更できます。', demoEn:'You can change the caption size in Settings.', demoTranslation:'字幕の文字サイズは設定画面で変更できます。', demoNote:'Caption display preview',
     highlights:[['caption','Floating captions and display settings','Open a separate caption overlay alongside videos and meetings. Switch between Japanese transcription and English-to-Japanese translation.'],['record','Audio recording and text export','Capture system audio, microphone, or both. Save recordings as WAV, MP3 or M4A, and export transcripts as text.'],['local','Recognition stays on your PC','Run Whisper, translation models and an optional local LLM locally, or import recognition results from Windows Live Captions.']],

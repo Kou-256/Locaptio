@@ -19,3 +19,16 @@ test('release links are scoped to the public Locaptio repository',()=>{
   assert.equal(release.release, `${release.repository}/releases/tag/v${release.version}`);
   assert.match(release.sha256,/^[a-f0-9]{64}$/);
 });
+
+test('task examples and every feature category are readable without opening a feature tab', async()=>{
+  const { useCases } = await import('./use-cases.mjs');
+  for(const [lang,file] of [['ja','dist/index.html'],['en','dist/en/index.html']]){
+    const html=await readFile(new URL(file,import.meta.url),'utf8');
+    assert.equal((html.match(/<article class="use-case">/g)||[]).length,6);
+    assert.equal((html.match(/<section class="feature-group"/g)||[]).length,4);
+    for(const example of useCases[lang].items) assert.ok(html.includes(example.title));
+    assert.ok(html.includes('id="engines-title"'));
+    assert.ok(!html.includes('role="tabpanel" id="panel-'));
+    for(const match of html.matchAll(/href="#(detail-[^"]+)"/g)) assert.ok(html.includes(`id="${match[1]}"`));
+  }
+});
