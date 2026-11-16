@@ -11,6 +11,25 @@ internal static class TimingChecks
 {
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
 
+    /// <summary>Paused stretches of a video recording are removed from the transcript timeline.</summary>
+    public static void Pause()
+    {
+        long t0 = Stopwatch.GetTimestamp(), f = Stopwatch.Frequency;
+        var recording = new RecordingTranscript(Path.Combine(Path.GetTempPath(), "pause-check.mp4"), long.MaxValue, false);
+        Check(!recording.Observe(new(1, 1, "開始前の発話", null, true, t0, 0, 0, "ja")), "Speech before the first frame was kept");
+        recording.Started = t0;
+        recording.Observe(new(2, 1, "最初", null, true, t0 + 2 * f, 0, 0, "ja"));
+        recording.Pause(t0 + 5 * f);
+        Check(recording.Paused && !recording.Observe(new(3, 1, "一時停止中", null, true, t0 + 6 * f, 0, 0, "ja")), "Speech while paused was kept");
+        recording.Resume(t0 + 9 * f);
+        recording.Observe(new(4, 1, "再開後", null, true, t0 + 10 * f, 0, 0, "ja"));
+        recording.Pause(t0 + 12 * f); recording.Resume(t0 + 13 * f);
+        var phrases = recording.Snapshot().Phrases;
+        Check(phrases.Select(p => p.Seconds).SequenceEqual([2.0, 6.0]) && Math.Abs(recording.Offset(t0 + 15 * f) - 10) < 1e-9 && !recording.Paused,
+            "Paused time not removed: " + string.Join(", ", phrases.Select(p => p.Seconds)) + " offset=" + recording.Offset(t0 + 15 * f));
+        Console.WriteLine("PASS: video recording timeline excludes time before the first frame and paused stretches");
+    }
+
     public static void Tracker()
     {
         // A Japanese row longer than 180 characters is split. The remainder must start when its own

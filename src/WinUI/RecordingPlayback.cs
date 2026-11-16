@@ -13,8 +13,9 @@ public sealed partial class MainWindow
     private RecordingTranscript? recordingTranscript;
     private RecordingDocument? playbackDocument;
     private string playbackPath = "";
-    private WaveOutEvent? playbackOutput;
-    private AudioFileReader? playbackReader;
+    // One clock for audio or video; the two names are kept for the existing call sites.
+    private PlaybackClock? playbackReader;
+    private PlaybackClock? playbackOutput => playbackReader;
     private readonly DispatcherTimer playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private readonly DispatcherTimer recordingIndexTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer searchTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -36,12 +37,14 @@ public sealed partial class MainWindow
     private void EnsurePlaybackSpace()
     {
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        int height = Math.Min(area.Height, (int)(600 * GetDpiForWindow(hwnd) / 96.0));
+        // A video needs room above the transcript.
+        int height = Math.Min(area.Height, (int)((VideoPanel.Visibility == Visibility.Visible ? 900 : 600) * GetDpiForWindow(hwnd) / 96.0));
         if (AppWindow.Size.Height < height) AppWindow.Resize(new Windows.Graphics.SizeInt32(AppWindow.Size.Width, height));
     }
     private void InitializeRecordingPlayback()
     {
         playbackTimer.Tick += (_, _) => UpdatePlaybackPosition();
+        Root.SizeChanged += (_, _) => SizeVideoPanel();
         CaptionList.PointerWheelChanged += (_, _) => followPlayback = false;
         recordingIndexTimer.Tick += async (_, _) => { if (indexWrite.IsCompleted) await SaveRecordingIndexAsync(); };
         searchTimer.Tick += (_, _) => { searchTimer.Stop(); RefreshRecordingSearch(); };
@@ -82,7 +85,7 @@ public sealed partial class MainWindow
             playbackDocument = await AlignToRecordedSpeechAsync(path, playbackDocument);
             try { await RecordingLibrary.SaveTextAsync(path, playbackDocument); }
             catch (Exception ex) { Status("音声・検索データは保存しましたが、テキストの保存に失敗しました: " + ex.Message); }
-            reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path));
+            reviewingRecording = true; SessionTitle.Text = (PlaybackClock.IsVideo(path) ? "保存済み録画を再生：" : "保存済み録音を再生：") + Path.GetFileName(Path.GetDirectoryName(path));
             // Everything on screen is now in the recording's own files.
             DiscardAutosave(); QueueSummaryAfterRecording();
             PlaybackPanel.Visibility = Visibility.Visible;
@@ -112,8 +115,10 @@ public sealed partial class MainWindow
     }
     private void ClosePlayback()
     {
-        playbackTimer.Stop(); playbackOutput?.Stop(); playbackOutput?.Dispose(); playbackOutput = null;
+        playbackTimer.Stop();
+        if (playbackReader is VideoPlaybackClock) VideoPlayer.SetMediaPlayer(null);
         playbackReader?.Dispose(); playbackReader = null;
+        VideoCaption.Visibility = Visibility.Collapsed;
         SetPlaybackHighlight(null);
         if (PlaybackCaptions) { captionWindow!.Update([]); playbackCaptionIndex = -2; }
     }
@@ -124,7 +129,12 @@ public sealed partial class MainWindow
         if (!File.Exists(playbackPath)) { Status("再生する録音がありません。ファイルから録音を開いてください。"); return false; }
         try
         {
-            playbackReader = new AudioFileReader(playbackPath); playbackOutput = new WaveOutEvent(); playbackOutput.Init(playbackReader);
+            if (PlaybackClock.IsVideo(playbackPath))
+            {
+                var video = new VideoPlaybackClock(playbackPath); playbackReader = video;
+                VideoPlayer.SetMediaPlayer(video.Player); VideoPanel.Visibility = Visibility.Visible; SizeVideoPanel();
+            }
+            else { playbackReader = new AudioPlaybackClock(playbackPath); VideoPanel.Visibility = Visibility.Collapsed; }
             updatingPlayback = true; PlaybackPosition.Maximum = Math.Max(1, playbackReader.TotalTime.TotalSeconds); updatingPlayback = false;
             PlaybackPanel.Visibility = Visibility.Visible; playbackTimer.Start(); UpdatePlaybackPosition(); return true;
         }
@@ -155,14 +165,33 @@ public sealed partial class MainWindow
     private void UpdatePlaybackPosition()
     {
         if (playbackReader is null) return;
-        updatingPlayback = true; PlaybackPosition.Value = playbackReader.CurrentTime.TotalSeconds; updatingPlayback = false;
+        updatingPlayback = true;
+        if (Math.Abs(PlaybackPosition.Maximum - Math.Max(1, playbackReader.TotalTime.TotalSeconds)) > .01) PlaybackPosition.Maximum = Math.Max(1, playbackReader.TotalTime.TotalSeconds);
+        PlaybackPosition.Value = playbackReader.CurrentTime.TotalSeconds; updatingPlayback = false;
         PlaybackTime.Text = FormatMediaTime(playbackReader.CurrentTime.TotalSeconds) + " / " + FormatMediaTime(playbackReader.TotalTime.TotalSeconds);
         PlaybackButton.Content = playbackOutput?.PlaybackState == PlaybackState.Playing ? "一時停止" : "再生";
         playbackSeconds = playbackReader.CurrentTime.TotalSeconds;
-        UpdatePlaybackCaptions();
+        UpdatePlaybackCaptions(); UpdateVideoCaption();
         SetPlaybackHighlight(playbackDocument is not null && playbackReader.CurrentTime < playbackReader.TotalTime
             ? RecordingTranscript.At(playbackDocument, playbackReader.CurrentTime.TotalSeconds) : null);
     }
+    /// <summary>Video height follows the window, leaving room for the transcript below.</summary>
+    private void SizeVideoPanel()
+    {
+        if (VideoPanel.Visibility != Visibility.Visible) return;
+        VideoPanel.Height = Math.Clamp(Root.ActualHeight * .42, 160, 560);
+    }
+    /// <summary>The utterance at the playback position, shown on the video like a subtitle.</summary>
+    private void UpdateVideoCaption()
+    {
+        if (playbackReader is not VideoPlaybackClock || playbackDocument is null) { VideoCaption.Visibility = Visibility.Collapsed; return; }
+        var phrase = RecordingTranscript.At(playbackDocument, playbackSeconds);
+        bool shown = phrase is not null && (phrase.EndSeconds is not double end || playbackSeconds <= end + 1);
+        string text = !shown ? "" : FindCaption(phrase!.Id) is { } row ? row.English + (string.IsNullOrWhiteSpace(row.Japanese) ? "" : "\n" + row.Japanese) : phrase.Text;
+        if (VideoCaptionText.Text != text) VideoCaptionText.Text = text;
+        VideoCaption.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void VideoTapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => PlaybackClick(sender, e);
     private void SetPlaybackHighlight(RecordingPhrase? phrase)
     {
         bool changedPhrase = highlightedPlaybackPhrase != phrase;
@@ -270,7 +299,7 @@ public sealed partial class MainWindow
                 }
                 if (result != ContentDialogResult.Secondary) return;
                 var picker = new FileOpenPicker(AppWindow.Id) { Title = "保存済み録音を開く（隣の .locaptio.json も必要です）" };
-                foreach (var extension in new[] { ".wav", ".mp3", ".m4a" }) picker.FileTypeFilter.Add(extension);
+                foreach (var extension in PlaybackClock.AudioExtensions.Concat(PlaybackClock.VideoExtensions)) picker.FileTypeFilter.Add(extension);
                 var file = await picker.PickSingleFileAsync(); if (file is null) continue;
                 await LoadRecordingAsync(file.Path, true); return;
             }
@@ -331,7 +360,7 @@ public sealed partial class MainWindow
                 await StopAllAsync();
             }
             ClosePlayback(); ClearCaptions(); playbackPath = path; playbackDocument = document;
-            reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path)) + " / " + Path.GetFileName(path);
+            reviewingRecording = true; SessionTitle.Text = (PlaybackClock.IsVideo(path) ? "保存済み録画を再生：" : "保存済み録音を再生：") + Path.GetFileName(Path.GetDirectoryName(path)) + " / " + Path.GetFileName(path);
             if (document is not null)
                 foreach (var phrase in document.Phrases)
                 {

@@ -843,7 +843,8 @@ public sealed partial class MainWindow : Window
     {
         if (!initialized || refreshingAudio || inputChanging || closing || AudioSelector.SelectedItem is not AudioInputChoice choice || choice.Selection == SelectedAudio()) return;
         inputChanging = true; AudioSelector.IsEnabled = false; ModeSelector.IsEnabled = false; StartButton.IsEnabled = false; RecordToggle.IsEnabled = false;
-        bool restart = captionStop is not null, recording = recordingStop is not null;
+        // A video keeps recording its own audio; only an audio recording is split by an input change.
+        bool restart = captionStop is not null, recording = recordingStop is not null && videoChoice is null;
         string recordingFolder = Path.GetDirectoryName(recordingPath) ?? settings.RecordingSaveDirectory;
         try
         {
@@ -865,7 +866,7 @@ public sealed partial class MainWindow : Window
                 return;
             }
             prepared?.Dispose(); prepared = null;
-            await Task.WhenAll(StopAsync(), StopRecordingAsync());
+            await Task.WhenAll(StopAsync(), recording ? StopRecordingAsync() : Task.CompletedTask);
             settings.AudioInputKind = choice.Selection.Kind; settings.AudioDeviceId = choice.Selection.DeviceId;
             settings.AudioProcessId = choice.Selection.ProcessId; settings.AudioProcessStarted = choice.Selection.ProcessStarted;
             settings.Save();
@@ -898,7 +899,9 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateDiagnostics()
     {
-        if (recordingStop is not null) SetTextIfChanged(RecordingClock, $"{Stopwatch.GetElapsedTime(recordingStarted):hh\\:mm\\:ss}");
+        // A video recording's clock excludes paused time and starts when the first frame is written.
+        if (recordingStop is not null) SetTextIfChanged(RecordingClock, videoChoice is not null && recordingTranscript is not null
+            ? TimeSpan.FromSeconds(recordingTranscript.Offset(Stopwatch.GetTimestamp())).ToString(@"hh\:mm\:ss") : $"{Stopwatch.GetElapsedTime(recordingStarted):hh\\:mm\\:ss}");
         if (speech is not null)
         {
             string backend = $"Speech: {speech.Backend} · Model: {(speech.Model == "—" ? activeSpeechModel : speech.Model)}" + (translation is not null ? $" · Translate: {translation.Backend}" : " · 日本語文字起こし");

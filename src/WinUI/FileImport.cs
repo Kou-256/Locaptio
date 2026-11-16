@@ -15,7 +15,7 @@ public sealed partial class MainWindow
         if (!dialogOpen && !closing && e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems))
         {
             e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-            e.DragUIOverride.Caption = "音声ファイルを文字起こし（MP3 / M4A / WAV）";
+            e.DragUIOverride.Caption = "音声・動画ファイルを文字起こし（MP3 / M4A / WAV / MP4 / MOV など）";
         }
         e.Handled = true;
     }
@@ -26,8 +26,8 @@ public sealed partial class MainWindow
         try
         {
             var files = (await e.DataView.GetStorageItemsAsync()).OfType<Windows.Storage.StorageFile>().ToArray();
-            if (files.Length != 1 || !new[] { ".mp3", ".m4a", ".wav" }.Contains(Path.GetExtension(files[0].Path).ToLowerInvariant()))
-            { Status("MP3・M4A・WAVファイルを1つずつドロップしてください。"); ShowStatusDetails(pin: true); return; }
+            if (files.Length != 1 || !PlaybackClock.AudioExtensions.Concat(PlaybackClock.VideoExtensions).Contains(Path.GetExtension(files[0].Path).ToLowerInvariant()))
+            { Status("音声（MP3・M4A・WAV）か動画（MP4・MOV・M4V・WMV・AVI・MKV）のファイルを1つずつドロップしてください。"); ShowStatusDetails(pin: true); return; }
             await ImportAudioPathAsync(files[0].Path);
         }
         catch (Exception ex) { Status("ドロップしたファイルを読み込めません: " + ex.Message); ShowStatusDetails(pin: true); }
@@ -41,8 +41,8 @@ public sealed partial class MainWindow
         {
             if (source is null)
             {
-                var picker = new FileOpenPicker(AppWindow.Id) { Title = "音声ファイルから文字起こし（原本は変更しません）" };
-                foreach (string extension in new[] { ".mp3", ".m4a", ".wav" }) picker.FileTypeFilter.Add(extension);
+                var picker = new FileOpenPicker(AppWindow.Id) { Title = "音声・動画ファイルから文字起こし（原本は変更しません）" };
+                foreach (string extension in PlaybackClock.AudioExtensions.Concat(PlaybackClock.VideoExtensions)) picker.FileTypeFilter.Add(extension);
                 var selected = await picker.PickSingleFileAsync(); if (selected is null) return;
                 source = selected.Path;
             }

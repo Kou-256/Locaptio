@@ -88,6 +88,7 @@ public sealed partial class MainWindow
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-transcript-tools")) await VerifyTranscriptToolsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-real-tools")) await VerifyRealToolsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-site-screenshots")) await VerifySiteScreenshotsAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-video")) await VerifyVideoAsync(); };
     }
 
     private CaptionUpdate? FindCaption(long id)

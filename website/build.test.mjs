@@ -55,6 +55,11 @@ test('every explanation section shows a real screenshot with alt text and a capt
     const figures=[...html.matchAll(/<figure class="shot ([a-z-]+)"><div class="shot-frame"><span class="shot-label">[^<]+<\/span><img src="(\/assets\/screens\/[a-z-]+\.webp)"[^>]* alt="([^"]{10,})"><\/div><figcaption>([^<]{10,})<\/figcaption><\/figure>/g)];
     const count=kind=>figures.filter(f=>f[1]===kind).length;
     assert.deepEqual([count('use-case-shot'),count('group-shot'),count('new-shot')],[6,4,8]);
+    // Screen recording: four steps, each a real screenshot with descriptive alt text.
+    const steps=[...html.matchAll(/<li class="rec-step"><figure class="shot rec-shot"><div class="shot-frame"><span class="shot-label">[^<]+<\/span><img src="(\/assets\/screens\/[a-z-]+\.webp)"[^>]* alt="([^"]{10,})">/g)];
+    assert.equal(steps.length,4);
+    for(const [,src] of steps) await access(new URL('dist'+src,import.meta.url));
+    assert.ok(html.includes('href="#recording"') && html.includes('id="recording"'));
     for(const [, , src] of figures) await access(new URL('dist'+src,import.meta.url));
   }
 });

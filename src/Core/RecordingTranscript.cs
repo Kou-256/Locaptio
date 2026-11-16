@@ -17,9 +17,16 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
 {
     private readonly Dictionary<(long, long), RecordingPhrase> phrases = new();
     private readonly List<RecordingBookmark> bookmarks = new();
+    // Paused stretches of a video recording are not in the file, so they are not in its timeline.
+    private readonly List<(long Start, long End)> pauses = new();
     public bool Approximate => approximateTiming;
+    public bool Paused => pauses.Count > 0 && pauses[^1].End == long.MaxValue;
+    public void Pause(long timestamp) { if (!Paused) pauses.Add((timestamp, long.MaxValue)); }
+    public void Resume(long timestamp) { if (Paused) pauses[^1] = (pauses[^1].Start, Math.Max(pauses[^1].Start, timestamp)); }
+    private double PausedBefore(long timestamp) => pauses.Where(p => p.Start < timestamp).Sum(p => Stopwatch.GetElapsedTime(p.Start, Math.Min(p.End, timestamp)).TotalSeconds);
+    private bool InPause(long timestamp) => pauses.Any(p => timestamp >= p.Start && timestamp < p.End);
     /// <summary>Media offset of "now" on the same clock as the phrases.</summary>
-    public double Offset(long timestamp) => Math.Max(0, Stopwatch.GetElapsedTime(Started, timestamp).TotalSeconds);
+    public double Offset(long timestamp) => Math.Max(0, Stopwatch.GetElapsedTime(Started, timestamp).TotalSeconds - PausedBefore(timestamp));
     public RecordingBookmark AddBookmark(string label, long timestamp, long phraseId = 0, string? text = null)
     {
         var bookmark = new RecordingBookmark(Offset(timestamp), label, phraseId, text); bookmarks.Add(bookmark); return bookmark;
@@ -46,8 +53,10 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
         if (phrases.TryGetValue(key, out var previous) && previous.Revision > update.Revision) return false;
         // Captions already in progress when recording began have no reliable onset.
         if (update.Started < Started) return false;
+        // Speech while a video recording is paused is not in the file.
+        if (InPause(update.Started)) return false;
         if (string.IsNullOrWhiteSpace(update.English)) return phrases.Remove(key);
-        double seconds = Math.Max(0, Stopwatch.GetElapsedTime(Started, update.Started).TotalSeconds - (approximateTiming ? 1.0 : 0));
+        double seconds = Math.Max(0, Offset(update.Started) - (approximateTiming ? 1.0 : 0));
         var phrase = new RecordingPhrase(update.Id, update.Started, seconds, update.English, update.Japanese, update.Revision, update.SourceLanguage, Original: previous?.Original, Edited: previous?.Edited ?? false);
         if (previous == phrase) return false;
         phrases[key] = phrase; return true;

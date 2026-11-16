@@ -5,7 +5,8 @@ export const screenSizes = {
   'copy-menu': [1500, 660], 'dictionary': [1600, 779], 'edit': [1400, 880], 'file-import': [1600, 669],
   'library': [1350, 770], 'playback-search': [1600, 1027], 'recording': [1600, 782], 'recovery': [1534, 980],
   'settings-captions': [1600, 1013], 'settings-speech': [1600, 1013], 'subtitles': [1400, 690], 'summary': [1434, 1080],
-  'sync': [1600, 775], 'translate': [1600, 606]
+  'sync': [1600, 775], 'translate': [1600, 606],
+  'record-picker': [1600, 1219], 'video-recording': [1600, 543], 'video-review': [1600, 940], 'video-burn': [1230, 1040]
 };
 
 // Alt text describes what the image shows; the caption says what to notice in it.

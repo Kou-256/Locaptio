@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.50 — Screen recording, video review and subtitled video export
+
+- 画面録画：画面全体または特定のウィンドウを、PC音声・マイクと一緒にMP4で録画。対象は縮小画像付きの一覧から選び、選んだ対象をプレビューで確認できます。録画しながら文字起こしもできます。
+- 録画中：ライブプレビュー、一時停止・再開（一時停止中の映像と発話は動画・字幕に入りません）、スクリーンショット（PNG保存とブックマーク）、開始前のカウントダウン、カーソル・クリックの表示、フレームレート（15/30/60 fps）と画質、Locaptio本体を録画に映さない設定。
+- 動画の見直し：録画・動画は本体の上部に動画を表示し、再生位置の発話を映像に重ねて表示。文章クリックで頭出し、字幕ウィンドウとの連動、編集・辞書・同期の改善・AI要約に対応。
+- 字幕付き動画の書き出し：原文・日本語訳・2段、文字の大きさ・位置を選び、字幕を焼き込んだMP4を作成（元の動画は変更しません）。同じ名前のSRTも保存できます。
+- 動画ファイルの読み込み：MP4・MOV・M4V・WMV・AVI・MKVの音声を文字起こし。ドラッグ＆ドロップにも対応。
+- 追加したツールバーのボタンが表示されないことがあるレイアウトの問題を修正。
+- Screen/window recording to MP4 with thumbnails, live preview, pause, screenshots, countdown, cursor/click display and quality settings; video review with captions over the video; subtitled MP4 export with matching SRT; video file transcription.
+
 ## 1.0.49 — Recording timing, clearer controls and replay captions
 
 - 録音した音声と文字のずれを改善。Windows字幕連携では、文字が画面に出た時刻を発話の開始として記録しており、Windows側の表示の遅れ（約0.5〜2秒、PCの負荷で変動）が固定の1秒補正では吸収しきれていませんでした。録音停止時に録音の音声から発話の始まりを検出し、遅れを推定して各発話の開始位置を合わせます。長い発話を分割した後半も、分割した時刻ではなくその文字が表示された時刻から始まるようにしました。「同期を改善」でも同じ補正を先に行います。
