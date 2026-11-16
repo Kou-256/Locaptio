@@ -49,14 +49,16 @@ class WhisperBackend(ISpeechRecognitionBackend):
         self.context = []
         if language == 'ja' and not self.model.model.is_multilingual:
             raise RuntimeError('日本語には多言語モデルが必要です。scripts/setup-speech.ps1を実行してください。')
-    def recognize(self, samples, vad=True, final=True, prompt='', draft=False):
+    def recognize(self, samples, vad=True, final=True, prompt='', draft=False, word_timestamps=False):
         history = ' '.join(self.context)[-100 if draft else -500:]
         segments, _ = self.model.transcribe(samples, language=self.language, task='transcribe', beam_size=5 if final and not draft else 1,
                                             temperature=0, condition_on_previous_text=False,
                                             initial_prompt=(prompt[:200 if draft else 500] + '\n' + history).strip() or None,
                                             max_new_tokens=max(24, int(len(samples) / 16000 * 12) + 16) if draft else None,
                                             repetition_penalty=1.05 if draft else 1,
-                                            vad_filter=vad, vad_parameters={'min_silence_duration_ms': 500})
+                                            word_timestamps=word_timestamps, vad_filter=vad, vad_parameters={'min_silence_duration_ms': 500})
+        segments = list(segments)
+        self.words = [{'text': w.word, 'start': w.start, 'end': w.end} for s in segments for w in (s.words or [])] if word_timestamps else []
         text = ' '.join(s.text.strip() for s in segments).strip()
         if final and text:
             self.context = (self.context + [text])[-4:]
@@ -164,7 +166,7 @@ def main():
                         raise ValueError('Audio request exceeds 12 seconds')
                     if request.get('reset_context'):
                         backend.context = []
-                    return backend.recognize(samples, vad=request.get('final', True) and not args.draft, final=request.get('final', True), prompt=request.get('prompt', ''), draft=args.draft)
+                    return backend.recognize(samples, vad=request.get('final', True) and not args.draft, final=request.get('final', True), prompt=request.get('prompt', ''), draft=args.draft, word_timestamps=request.get('word_timestamps', False))
                 return backend.translate(request['text'])
             try:
                 text = infer()
@@ -176,7 +178,7 @@ def main():
                 backend = factory(path, device)
                 emit({'type': 'status', 'backend': 'CPU INT8', 'message': 'GPU推論失敗、CPUへ切替: ' + str(exc)})
                 text = infer()
-            emit({'type': 'result', 'id': request['id'], 'text': text, 'ms': (time.perf_counter() - started) * 1000})
+            emit({'type': 'result', 'id': request['id'], 'text': text, 'words': getattr(backend, 'words', []) if args.kind == 'speech' else [], 'ms': (time.perf_counter() - started) * 1000})
         except Exception as exc:
             emit({'type': 'error', 'id': request.get('id'), 'message': str(exc)})
     return 0

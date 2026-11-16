@@ -216,13 +216,15 @@ public sealed partial class MainWindow : Window
     }
     private async Task StartAsync(bool allowRecordingDialog = false)
     {
+        if (modelPreparationStop is not null) { Status("モデル準備が完了するか、中止してから開始してください。"); return; }
         if (captionStop is not null || closing || stoppingAll || dialogOpen && !allowRecordingDialog) return; root = FindRoot();
-        ClosePlayback();
         if (reviewingRecording && recordingStop is null)
         {
+            if (!await ConfirmTranscriptReplacementAsync("新しい文字起こしを開始します。")) return;
             ClearCaptions(); reviewingRecording = false; playbackDocument = null;
             PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;
         }
+        ClosePlayback();
         if (root.Length == 0 && (!UseWindowsCaptionEngine || settings.CaptionMode != "japanese")) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
         WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
         RenderCaptions();
@@ -656,10 +658,20 @@ public sealed partial class MainWindow : Window
         ((OverlappedPresenter)AppWindow.Presenter).Minimize();
         if (captionStop is null && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify"))) _ = StartAsync();
     }
-    private void ClearClick(object sender, RoutedEventArgs e) => ClearCaptions();
+    private async void ClearClick(object sender, RoutedEventArgs e)
+    {
+        if (dialogOpen || closing || !await ConfirmTranscriptReplacementAsync("表示中のテキストをクリアします。")) return;
+        ClearCaptions(); windowsSession?.ResetTranscript();
+    }
     private async void SaveClick(object sender, RoutedEventArgs e)
     {
-        if (saving || transcript.Count == 0 || dialogOpen) return; dialogOpen = true;
+        if (saving || transcript.Count == 0 || dialogOpen) return;
+        dialogOpen = true;
+        try { await SaveTranscriptFileAsync(); }
+        finally { dialogOpen = false; }
+    }
+    private async Task<bool> SaveTranscriptFileAsync()
+    {
         try
         {
             bool japanese = settings.CaptionMode == "japanese";
@@ -667,14 +679,36 @@ public sealed partial class MainWindow : Window
             if (!japanese)
             {
                 var choice = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "保存するテキスト", PrimaryButtonText = "英語と日本語", SecondaryButtonText = "英語のみ", CloseButtonText = "キャンセル", RequestedTheme = ElementTheme.Dark };
-                result = await choice.ShowAsync(); if (result == ContentDialogResult.None) return;
+                result = await choice.ShowAsync(); if (result == ContentDialogResult.None) return false;
             }
-            var file = await MakeSavePicker("文字起こしを保存", ".txt", settings.TextSaveDirectory).PickSaveFileAsync(); if (file is null || closing) return;
+            var file = await MakeSavePicker("文字起こしを保存", ".txt", settings.TextSaveDirectory).PickSaveFileAsync(); if (file is null || closing) return false;
             string text = ExportTranscriptForSave(result == ContentDialogResult.Primary); saving = true; SaveButton.IsEnabled = false;
             saveTask = File.WriteAllTextAsync(file.Path, text, new UTF8Encoding(true)); await saveTask; StatusText.Text = "テキストを保存しました: " + file.Path;
+            return true;
         }
-        catch (Exception ex) { StatusText.Text = "保存に失敗しました: " + ex.Message; }
-        finally { saving = false; dialogOpen = false; SaveButton.IsEnabled = transcript.Count > 0; }
+        catch (Exception ex) { StatusText.Text = "保存に失敗しました: " + ex.Message; return false; }
+        finally { saving = false; SaveButton.IsEnabled = transcript.Count > 0; }
+    }
+    private Func<string, Task<bool>>? confirmReplacementForVerification;
+    private async Task<bool> ConfirmTranscriptReplacementAsync(string reason)
+    {
+        if (confirmReplacementForVerification is not null) return await confirmReplacementForVerification(reason);
+        if (history.Count == 0) return true;
+        bool previousDialog = dialogOpen; dialogOpen = true;
+        try
+        {
+            var confirmation = new ContentDialog
+            {
+                XamlRoot = Root.XamlRoot, Title = "現在のテキストを保存しますか？",
+                Content = reason + " 表示中のテキストは置き換わります。保存済みのファイルは削除しません。",
+                PrimaryButtonText = "保存して続行", SecondaryButtonText = "保存せず続行", CloseButtonText = "キャンセル",
+                DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark
+            };
+            var result = await confirmation.ShowAsync();
+            if (result == ContentDialogResult.None || closing) return false;
+            return result == ContentDialogResult.Secondary || await SaveTranscriptFileAsync();
+        }
+        finally { dialogOpen = previousDialog; }
     }
     private string ExportTranscriptForSave(bool includeJapanese) => TranscriptExport.Format(
         transcript.Export(includeJapanese), transcript.Count, DateTimeOffset.Now, transcriptClock.Elapsed,
@@ -707,20 +741,13 @@ public sealed partial class MainWindow : Window
     {
         if (history.Count == 0) return true;
         if (confirmNewRecordingForVerification is not null) return await confirmNewRecordingForVerification();
-        var confirmation = new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot, Title = "新規録音を開始しますか？",
-            Content = "表示中のテキストをクリアして、新しい録音を開始します。必要なテキストは先に保存してください。保存済みの録音やテキストファイルは削除しません。",
-            PrimaryButtonText = "クリアして新規録音", CloseButtonText = "キャンセル",
-            DefaultButton = ContentDialogButton.Close, RequestedTheme = ElementTheme.Dark
-        };
-        return await confirmation.ShowAsync() == ContentDialogResult.Primary;
+        return await ConfirmTranscriptReplacementAsync("新規録音のため、表示中のテキストをクリアします。");
     }
     private async void RecordChanged(object sender, RoutedEventArgs e)
     {
         if (updatingRecordToggle || closing || !initialized) return;
         if (RecordToggle.IsChecked != true) { await StopAllAsync(); return; }
-        if (dialogOpen) { SetRecordingChecked(recordingStop is not null); return; }
+        if (dialogOpen || modelPreparationStop is not null) { SetRecordingChecked(recordingStop is not null); return; }
         dialogOpen = true;
         RecordToggle.IsEnabled = false; StartButton.IsEnabled = false; ModeSelector.IsEnabled = false; AudioSelector.IsEnabled = false;
         try
@@ -1042,6 +1069,7 @@ public sealed partial class MainWindow : Window
             var models = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "tiny（最軽量）", "base（速度優先）", "small（速度と精度のバランス）", "medium（精度優先・負荷大）", "large-v3-turbo（GPU向け高速モデル）" }, SelectedIndex = Array.IndexOf(modelIds, settings.SpeechModel) };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(models, "音声認識モデル");
             models.SelectionChanged += (_, _) => { if (models.SelectedIndex >= 0) { settings.SpeechModel = modelIds[models.SelectedIndex]; settings.Save(); } }; content.Children.Add(models);
+            AddModelDownloads(content, window);
             content.Children.Add(new TextBlock { Text = "専門用語・固有名詞（認識のヒント）" });
             var prompt = new TextBox { Text = settings.SpeechPrompt, MaxLength = 500, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, PlaceholderText = "例: WASAPI, DirectML, ニューラルネットワーク" };
             prompt.TextChanged += (_, _) => { settings.SpeechPrompt = prompt.Text; settings.Save(); }; content.Children.Add(prompt);
@@ -1098,6 +1126,11 @@ public sealed partial class MainWindow : Window
             var format = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "WAV（無圧縮）", "MP3", "M4A（AAC）" }, SelectedIndex = settings.RecordingFormat == "mp3" ? 1 : settings.RecordingFormat == "m4a" ? 2 : 0 };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(format, "録音ファイル形式");
             format.SelectionChanged += (_, _) => { settings.RecordingFormat = format.SelectedIndex == 1 ? "mp3" : format.SelectedIndex == 2 ? "m4a" : "wav"; settings.Save(); }; content.Children.Add(format);
+            content.Children.Add(new TextBlock { Text = "再生ハイライトの単位" });
+            var highlightMode = new DownwardSelector { OwnerWindow = window, ItemsSource = new[] { "発話全体", "単語ごと", "1文字ずつ" }, SelectedIndex = settings.PlaybackHighlightMode == "phrase" ? 0 : settings.PlaybackHighlightMode == "character" ? 2 : 1 };
+            highlightMode.SelectionChanged += (_, _) => { settings.PlaybackHighlightMode = highlightMode.SelectedIndex == 0 ? "phrase" : highlightMode.SelectedIndex == 2 ? "character" : "word"; settings.Save(); highlightedPlaybackPhrase = null; UpdatePlaybackPosition(); };
+            content.Children.Add(highlightMode);
+            content.Children.Add(new TextBlock { Text = "Whisperで新しく読み込む音声は単語時刻を使用します。文字ごとの時刻や、単語時刻のない録音・Windows字幕・AIで修正した文・訳文は推定です。日本語の単語区切りはモデルにより異なります。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             Folder("テキストの保存先", settings.TextSaveDirectory, v => settings.TextSaveDirectory = v); Folder("録音の保存先", settings.RecordingSaveDirectory, v => settings.RecordingSaveDirectory = v); Folder("モデル・推論環境", settings.RuntimeDirectory, v => settings.RuntimeDirectory = v, true);
             Toggle("テキストに保存日時を記載", settings.ExportSavedAt, v => settings.ExportSavedAt = v);
             Toggle("テキストにセッション時間を記載（準備・無音含む）", settings.ExportDuration, v => settings.ExportDuration = v);
@@ -1455,10 +1488,12 @@ public sealed partial class MainWindow : Window
     }
     private async void ModeChanged(object? sender, EventArgs e)
     {
-        if (!initialized || modeChanging || closing) return;
+        if (!initialized || modeChanging || closing || dialogOpen) return;
         modeChanging = true; ModeSelector.IsEnabled = false; StartButton.IsEnabled = false;
         try
         {
+            if (!await ConfirmTranscriptReplacementAsync("文字起こしモードを切り替えます。"))
+            { ModeSelector.SelectedIndex = settings.CaptionMode == "japanese" ? 1 : 0; return; }
             bool restart = captionStop is not null; await StopAsync();
             settings.CaptionMode = ModeSelector.SelectedIndex == 1 ? "japanese" : "translate";
             ClearCaptions(); ApplySettings(); BackendText.Text = "";

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Locaptio.Core;
 using Locaptio.Core.AI;
 
@@ -10,6 +10,14 @@ internal static class RecordingPlaybackChecks
         string directory = Path.Combine(Path.GetTempPath(), "Locaptio-recording-check-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
         try
         {
+            var timed = new RecordingPhrase(1, 1, 0, "Hello world", null, 1, "en", 2, [new(0, 5, 0, 1), new(6, 5, 1, 2)]);
+            Check(PlaybackHighlight.Range(timed, timed.Text, 1.2, 2, "word") == (6, 5), "Timed word highlight failed");
+            Check(PlaybackHighlight.Range(timed, timed.Text, .5, 2, "character") == (2, 1), "Character timing failed");
+            Check(PlaybackHighlight.Range(timed, timed.Text, 3, 2, "word") == (0, 0), "Silence after phrase highlighted");
+            var unicode = new RecordingPhrase(1, 1, 0, "A😀が", null, 1);
+            Check(PlaybackHighlight.Range(unicode, unicode.Text, 1.1, 3, "character") == (1, 2), "Emoji was split");
+            Check(PlaybackHighlight.Range(unicode, unicode.Text, 2.5, 3, "character") == (3, 2), "Combining character was split");
+            Check(PlaybackHighlight.Range(timed, timed.Text, 1.2, 2, "phrase") == (0, 11), "Phrase mode changed");
             long start = Stopwatch.GetTimestamp();
             var recording = new RecordingTranscript(Path.Combine(directory, "test.wav"), start, false);
             var first = new CaptionUpdate(1, 1, "テスト会議", "Meeting", true, start + 2 * Stopwatch.Frequency, 0, 0);

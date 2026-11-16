@@ -3,7 +3,8 @@ using System.Text.Json;
 
 namespace Locaptio.Core;
 
-public sealed record RecordingPhrase(long Id, long Started, double Seconds, string Text, string? Translation, int Revision, string Language = "ja");
+public sealed record RecordingWord(int StartIndex, int Length, double Start, double End);
+public sealed record RecordingPhrase(long Id, long Started, double Seconds, string Text, string? Translation, int Revision, string Language = "ja", double? EndSeconds = null, RecordingWord[]? Words = null);
 public sealed record RecordingDocument(int Version, string AudioFile, DateTimeOffset RecordedAt, bool ApproximateTiming, RecordingPhrase[] Phrases);
 
 /// <summary>Only text and media offsets are persisted. No audio is held in memory.</summary>
@@ -51,7 +52,8 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
         var info = new FileInfo(Sidecar(audio));
         if (info.Length > 64 * 1024 * 1024) throw new InvalidDataException("文字起こしデータが大きすぎます。");
         var document = JsonSerializer.Deserialize<RecordingDocument>(await File.ReadAllTextAsync(info.FullName)) ?? throw new InvalidDataException("録音の文字起こしを読み込めません。");
-        if (document.Version != 1 || document.Phrases is null || document.Phrases.Any(p => !double.IsFinite(p.Seconds) || p.Seconds < 0 || p.Text is null)) throw new InvalidDataException("録音の文字起こし形式に対応していません。");
+        if (document.Version != 1 || document.Phrases is null || document.Phrases.Any(p => p is null || !double.IsFinite(p.Seconds) || p.Seconds < 0 || p.Text is null || p.EndSeconds is double end && (!double.IsFinite(end) || end < p.Seconds)
+            || p.Words is not null && p.Words.Any(w => w is null || w.StartIndex < 0 || w.Length < 1 || w.StartIndex > p.Text.Length - w.Length || !double.IsFinite(w.Start) || !double.IsFinite(w.End) || w.Start < p.Seconds || w.End < w.Start))) throw new InvalidDataException("録音の文字起こし形式に対応していません。");
         // Never follow a path supplied by the sidecar; audio is selected by the user.
         return document with { Phrases = document.Phrases.OrderBy(p => p.Seconds).ThenBy(p => p.Id).ToArray() };
     }

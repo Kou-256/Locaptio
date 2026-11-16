@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using Locaptio.Core;
 using Locaptio.Core.AI;
 using Locaptio.Core.Audio;
@@ -67,6 +67,10 @@ internal static class FileImportChecks
                 await backend.StartAsync(Directory.GetCurrentDirectory(), "speech", true, CancellationToken.None, false, "ja", "small", device: "cpu");
                 await FileTranscription.RunAsync(Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "test-ja.wav"), backend, "ja", phrase => { recognized.Add(phrase); return Task.CompletedTask; }, _ => { }, CancellationToken.None);
                 Check(recognized.Count > 0 && string.Join("", recognized.Select(p => p.Text)).Contains("日本語"), "Real Japanese file transcription failed");
+                Check(recognized.Any(p => p.Words is { Length: > 0 }), "Real Whisper word timestamps missing");
+                await RecordingTranscript.SaveAsync(Path.Combine(directory, "timed.wav"), new(1, "timed.wav", DateTimeOffset.Now, false, recognized.ToArray()));
+                var timed = await RecordingTranscript.LoadAsync(Path.Combine(directory, "timed.wav"));
+                Check(timed.Phrases.Any(p => p.Words is { Length: > 0 }), "Word timestamps lost in roundtrip");
                 Console.WriteLine("PASS: actual local Whisper Japanese file recognition");
             }
             Console.WriteLine("PASS: WAV/MP3/M4A real codecs; bounded PCM, offsets, progress, cancellation; ZIP no-overwrite; bundle move and cancellation; automatic speech script, reuse, cancellation");

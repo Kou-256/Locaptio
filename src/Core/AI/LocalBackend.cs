@@ -4,12 +4,15 @@ using System.Text.Json;
 
 namespace Locaptio.Core.AI;
 
-public sealed record InferenceResult(string Text, double Milliseconds);
+public sealed record SpeechWord(string Text, double Start, double End);
+public sealed record InferenceResult(string Text, double Milliseconds, SpeechWord[]? Words = null);
+public interface ITimedSpeechRecognitionBackend : ISpeechRecognitionBackend { Task<InferenceResult> RecognizeTimedAsync(float[] samples, CancellationToken token); }
 public interface ISpeechRecognitionBackend { Task<InferenceResult> RecognizeAsync(float[] samples, CancellationToken token, bool final = true); }
 public interface ITranslationBackend { Task<InferenceResult> TranslateAsync(string text, CancellationToken token, bool final = true); }
 
-public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBackend, IDisposable
+public sealed class LocalBackend : ITimedSpeechRecognitionBackend, ITranslationBackend, IDisposable
 {
+    public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
     private Process? process;
     private Process? inferenceProcess;
     private int sequence;
@@ -116,6 +119,11 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
         Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
         return RequestAsync(new { id = Interlocked.Increment(ref sequence), audio = Convert.ToBase64String(bytes), final, prompt = speechPrompt, reset_context = Interlocked.Exchange(ref resetSpeechContext, 0) != 0 }, token);
     }
+    public Task<InferenceResult> RecognizeTimedAsync(float[] samples, CancellationToken token)
+    {
+        byte[] bytes = new byte[samples.Length * sizeof(float)]; Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
+        return RequestAsync(new { id = Interlocked.Increment(ref sequence), audio = Convert.ToBase64String(bytes), final = true, word_timestamps = true, prompt = speechPrompt, reset_context = false }, token);
+    }
     public Task<InferenceResult> TranslateAsync(string text, CancellationToken token, bool final = true) => RequestAsync(new { id = Interlocked.Increment(ref sequence), text }, token);
     private async Task<InferenceResult> RequestAsync(object request, CancellationToken token)
     {
@@ -136,9 +144,9 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
     private async Task<InferenceResult> SendWithTimeoutAsync(object request, CancellationToken token)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        timeout.CancelAfter(RequestTimeout);
         try { return await SendAsync(request, timeout.Token); }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new TimeoutException("ローカル推論が30秒以内に完了しませんでした。"); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new TimeoutException($"ローカル推論が{RequestTimeout.TotalSeconds:F0}秒以内に完了しませんでした。小さいモデルや別の推論デバイスを試してください。"); }
     }
     private async Task<InferenceResult> SendAsync(object request, CancellationToken token)
     {
@@ -150,7 +158,8 @@ public sealed class LocalBackend : ISpeechRecognitionBackend, ITranslationBacken
                 using var response = await ReadAsync(token);
                 var item = response.RootElement;
                 string? type = item.GetProperty("type").GetString();
-                if (type == "result") return new(item.GetProperty("text").GetString()!, item.GetProperty("ms").GetDouble());
+                if (type == "result") return new(item.GetProperty("text").GetString()!, item.GetProperty("ms").GetDouble(),
+                    item.TryGetProperty("words", out var words) ? words.EnumerateArray().Select(w => new SpeechWord(w.GetProperty("text").GetString()!, w.GetProperty("start").GetDouble(), w.GetProperty("end").GetDouble())).ToArray() : null);
                 if (type == "error") throw new InvalidOperationException(item.GetProperty("message").GetString());
                 if (type == "status") { if (item.TryGetProperty("backend", out var b)) Backend = b.GetString()!; Status?.Invoke(item.GetProperty("message").GetString()!); }
             }

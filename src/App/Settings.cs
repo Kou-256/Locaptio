@@ -60,6 +60,7 @@ public sealed class Settings
     public string AudioDeviceId { get; set; } = "";
     public int AudioProcessId { get; set; }
     public long AudioProcessStarted { get; set; }
+    public string PlaybackHighlightMode { get; set; } = "word";
     public string RecordingFormat { get; set; } = "wav";
     public bool FastTranscription { get; set; } = true;
     public bool RealtimeCaptions { get; set; } = true;

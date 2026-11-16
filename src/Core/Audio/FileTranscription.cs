@@ -17,11 +17,23 @@ public static class FileTranscription
         async Task Flush()
         {
             if (segment.Count == 0) return;
-            var result = await speech.RecognizeAsync(segment.ToArray(), token); segment.Clear(); silence = 0;
+            double end = (onset + segment.Count - silence) / 16000.0;
+            var audio = segment.ToArray();
+            var result = speech is ITimedSpeechRecognitionBackend timed ? await timed.RecognizeTimedAsync(audio, token) : await speech.RecognizeAsync(audio, token);
+            segment.Clear(); silence = 0;
             string text = result.Text.Trim(); if (text.Length == 0) return;
             if (correction is not null) text = (await correction.CorrectAsync(text, context.ToArray(), language, token)).Text;
             string? translated = translation is null ? null : (await translation.TranslateAsync(text, token)).Text;
-            await receive(new(++id, id, onset / 16000.0, text, translated, 1, language));
+            var words = new List<RecordingWord>(); int cursor = 0;
+            if (text == result.Text.Trim() && result.Words is not null)
+                foreach (var word in result.Words)
+                {
+                    string tokenText = word.Text.Trim(); if (tokenText.Length == 0) continue;
+                    int index = text.IndexOf(tokenText, cursor, StringComparison.Ordinal);
+                    if (index < 0 || !double.IsFinite(word.Start) || !double.IsFinite(word.End) || word.Start < 0 || word.End < word.Start) { words.Clear(); break; }
+                    words.Add(new(index, tokenText.Length, onset / 16000.0 + word.Start, onset / 16000.0 + word.End)); cursor = index + tokenText.Length;
+                }
+            await receive(new(++id, id, onset / 16000.0, text, translated, 1, language, Math.Max(onset / 16000.0, end), words.Count == 0 ? null : words.ToArray()));
             context.Enqueue(text); while (context.Count > 6) context.Dequeue();
         }
         while (true)

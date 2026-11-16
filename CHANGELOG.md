@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.47 — Timed replay highlights, drag-and-drop and save prompts
+
+- 再生時のハイライトを発話全体／単語ごと／1文字ずつから選択可能に。新しいWhisperファイル取り込みでは単語時刻を保存。文字ごとの時刻、既存録音・Windows字幕・補正文の細かい時刻は推定です。
+- MP3・M4A・WAVのドラッグ＆ドロップに対応。認識中でもファイルや録音一覧を開けます。実際の切り替え前に保存確認し、キャンセル時は認識と履歴を維持します。
+- Clear・モード変更・新規録音・保存済み録音から新しい認識を開始するときにも、保存／保存せず続行／キャンセルを共通化。保存画面をキャンセル・保存失敗した場合は先へ進みません。
+- 設定の「音声認識・Windows連携」からWhisper、音声＋翻訳、ローカルLLMを事前準備できます。進捗・中止・結果を同じ画面内に表示します。
+- ファイル認識の待ち時間をリアルタイムの30秒から5分へ分離。
+- Select phrase, word or character replay highlights; new Whisper imports store word timestamps. Character timing and old/Windows/corrected transcripts use estimates. Add audio drag-and-drop, active-session import, centralized save prompts and cancellable model preparation in Settings.
+
 ## 1.0.46 — Recording confirmation and single-pass Windows caption controls
 
 - Setupの完了ページ以外のウィザード画像を非表示にしました。

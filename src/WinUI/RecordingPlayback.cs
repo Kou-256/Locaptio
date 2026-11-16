@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Locaptio.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,12 +15,14 @@ public sealed partial class MainWindow
     private string playbackPath = "";
     private WaveOutEvent? playbackOutput;
     private AudioFileReader? playbackReader;
-    private readonly DispatcherTimer playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private readonly DispatcherTimer playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     private readonly DispatcherTimer recordingIndexTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer searchTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private Task indexWrite = Task.CompletedTask;
     private bool indexDirty, updatingPlayback;
     private RecordingPhrase? highlightedPlaybackPhrase;
+    private (int Start, int Length) playbackHighlightRange, playbackTranslationRange;
+    private double playbackSeconds, highlightedPlaybackEnd;
     private bool followPlayback = true;
     private bool reviewingRecording;
     private string RecordingRoot => string.IsNullOrWhiteSpace(settings.RecordingSaveDirectory)
@@ -83,7 +85,8 @@ public sealed partial class MainWindow
             PlaybackPanel.Visibility = Visibility.Visible;
             EnsurePlaybackSpace();
             PlaybackHint.Text = "文字をクリックすると、その発話の少し前から再生します。ドラッグで選択・コピーもできます。"
-                + (playbackDocument.ApproximateTiming ? " Windows字幕の時刻は推定です。" : "");
+                + " この録音の単語・文字ごとの進行は推定です。"
+                + (playbackDocument.ApproximateTiming ? " Windows字幕の発話時刻も推定です。" : "");
             RefreshRecordingSearch();
         }
     }
@@ -134,15 +137,27 @@ public sealed partial class MainWindow
         updatingPlayback = true; PlaybackPosition.Value = playbackReader.CurrentTime.TotalSeconds; updatingPlayback = false;
         PlaybackTime.Text = FormatMediaTime(playbackReader.CurrentTime.TotalSeconds) + " / " + FormatMediaTime(playbackReader.TotalTime.TotalSeconds);
         PlaybackButton.Content = playbackOutput?.PlaybackState == PlaybackState.Playing ? "一時停止" : "再生";
+        playbackSeconds = playbackReader.CurrentTime.TotalSeconds;
         SetPlaybackHighlight(playbackDocument is not null && playbackReader.CurrentTime < playbackReader.TotalTime
             ? RecordingTranscript.At(playbackDocument, playbackReader.CurrentTime.TotalSeconds) : null);
     }
     private void SetPlaybackHighlight(RecordingPhrase? phrase)
     {
-        if (highlightedPlaybackPhrase == phrase) return;
-        highlightedPlaybackPhrase = phrase;
+        bool changedPhrase = highlightedPlaybackPhrase != phrase;
+        double end = highlightedPlaybackEnd;
+        if (changedPhrase) end = phrase?.EndSeconds ?? playbackReader?.TotalTime.TotalSeconds ?? 0;
+        if (changedPhrase && phrase is not null && playbackDocument is not null)
+        {
+            int position = Array.IndexOf(playbackDocument.Phrases, phrase);
+            if (phrase.EndSeconds is null && position >= 0 && position + 1 < playbackDocument.Phrases.Length) end = playbackDocument.Phrases[position + 1].Seconds;
+        }
+        highlightedPlaybackEnd = end;
+        var range = phrase is null ? (0, 0) : PlaybackHighlight.Range(phrase, phrase.Text, playbackSeconds, end, settings.PlaybackHighlightMode);
+        var translatedRange = phrase?.Translation is { Length: > 0 } translated ? PlaybackHighlight.Range(phrase, translated, playbackSeconds, end, settings.PlaybackHighlightMode) : (0, 0);
+        if (!changedPhrase && playbackHighlightRange == range && playbackTranslationRange == translatedRange) return;
+        playbackTranslationRange = translatedRange; playbackHighlightRange = range; highlightedPlaybackPhrase = phrase;
         foreach (var row in RealizedCaptionRows) ApplyTextSelection(row);
-        if (phrase is null || !followPlayback || draggingText || HasTranscriptSelection) return;
+        if (!changedPhrase || phrase is null || !followPlayback || draggingText || HasTranscriptSelection) return;
         int index = historyIds.BinarySearch(phrase.Id);
         if (index >= 0 && history[index].Caption.Started == phrase.Started) CaptionList.ScrollIntoView(history[index]);
     }
@@ -154,7 +169,9 @@ public sealed partial class MainWindow
             Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 34, 91, 110)),
             Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
         };
-        highlight.Ranges.Add(new Microsoft.UI.Xaml.Documents.TextRange { StartIndex = 0, Length = text.Text.Length });
+        var range = text.Text == phrase.Text ? playbackHighlightRange : playbackTranslationRange;
+        if (range.Length <= 0) return;
+        highlight.Ranges.Add(new Microsoft.UI.Xaml.Documents.TextRange { StartIndex = range.Start, Length = range.Length });
         text.TextHighlighters.Add(highlight);
     }
     private void PlaybackSeekChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -191,7 +208,7 @@ public sealed partial class MainWindow
         => await OpenRecordingLibraryAsync();
     private async Task OpenRecordingLibraryAsync()
     {
-        if (recordingStop is not null || captionStop is not null || dialogOpen) { Status("停止してから録音を開いてください。現在のテキストは先に保存できます。"); return; }
+        if (dialogOpen || closing) return;
         dialogOpen = true;
         StartButton.IsEnabled = RecordToggle.IsEnabled = ModeSelector.IsEnabled = AudioSelector.IsEnabled = false;
         try
@@ -227,13 +244,13 @@ public sealed partial class MainWindow
                         }
                         continue;
                     }
-                    if (result == ContentDialogResult.Primary) { await LoadRecordingAsync(selected.AudioPath); return; }
+                    if (result == ContentDialogResult.Primary) { await LoadRecordingAsync(selected.AudioPath, true); return; }
                 }
                 if (result != ContentDialogResult.Secondary) return;
                 var picker = new FileOpenPicker(AppWindow.Id) { Title = "保存済み録音を開く（隣の .locaptio.json も必要です）" };
                 foreach (var extension in new[] { ".wav", ".mp3", ".m4a" }) picker.FileTypeFilter.Add(extension);
                 var file = await picker.PickSingleFileAsync(); if (file is null) continue;
-                await LoadRecordingAsync(file.Path); return;
+                await LoadRecordingAsync(file.Path, true); return;
             }
         }
         catch (Exception ex) { Status("録音を開けません: " + ex.Message); }
@@ -283,9 +300,14 @@ public sealed partial class MainWindow
             SessionTitle.Text = "録音を削除しました。表示中の文章は保存できます。";
         }
     }
-    private async Task LoadRecordingAsync(string path)
+    private async Task LoadRecordingAsync(string path, bool confirmReplacement = false)
     {
             RecordingDocument? document = File.Exists(RecordingTranscript.Sidecar(path)) ? await RecordingTranscript.LoadAsync(path) : null;
+            if (confirmReplacement)
+            {
+                if (!await ConfirmTranscriptReplacementAsync("保存済み録音を開きます。")) return;
+                await StopAllAsync();
+            }
             ClosePlayback(); ClearCaptions(); playbackPath = path; playbackDocument = document;
             reviewingRecording = true; SessionTitle.Text = "保存済み録音を再生：" + Path.GetFileName(Path.GetDirectoryName(path)) + " / " + Path.GetFileName(path);
             if (document is not null)
@@ -298,6 +320,7 @@ public sealed partial class MainWindow
             if (document is not null) playbackDocument = document with { Phrases = document.Phrases.Select((p, i) => p with { Id = history[i].Id }).ToArray() };
             RenderCaptions();
             SaveButton.IsEnabled = transcript.Count > 0; EnsurePlayback(); RefreshRecordingSearch();
-            PlaybackHint.Text = document is null ? "文字起こしデータがないため、音声のみ再生します。新しい録音では検索用データも保存されます。" : "文字や検索結果をクリックすると、その発話から再生します。時刻は発話単位です。";
+            PlaybackHint.Text = document is null ? "文字起こしデータがないため、音声のみ再生します。" : "文字や検索結果をクリックすると、その発話から再生します。"
+                + (document.Phrases.Any(p => p.Words is { Length: > 0 }) ? " 単語時刻を使用します。1文字ずつの進行は推定です。" : " 単語・文字ごとの進行は推定です。設定で発話全体のハイライトも選べます。");
     }
 }
