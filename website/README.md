@@ -27,3 +27,10 @@ Local preview: `http://127.0.0.1:4173`. Vercel project settings: Framework **Oth
 Artwork: existing Locaptio icon supplied by the project owner. The caption preview is a labeled HTML illustration over the original Windows-style wallpaper, retained at the owner's request; the settings image is captured from the packaged app using synthetic verification data. Important copy uses selective bold emphasis. Short entry and interaction animations respect reduced-motion preferences.
 
 Design process: unslop by Damir Sokolovsky (CC BY 4.0), plus the official Astryx semantic-token and design-convention documentation. This existing static site does not install the Astryx React library. See DESIGN.md for decisions and attribution.
+
+
+## URL sharing images
+
+Japanese and English pages reference `public/assets/share-ja-v1.png` and `share-en-v1.png` through Open Graph and large-image card metadata. Both images are 1200 × 630. The source layout is `render-social.mjs`; its headings and caption examples come directly from `content.mjs`, using the existing app icon and Windows-style background.
+
+The regular build copies committed PNGs and needs no browser dependency. To regenerate, run `node render-social.mjs` from this directory with an existing Playwright installation and Chrome. Optionally set `LOCAPTIO_PLAYWRIGHT_MODULE` to the module path. Inspect both outputs and run the website build/tests before publishing. Use a new image filename when changing a shared image to help distinguish cached versions.

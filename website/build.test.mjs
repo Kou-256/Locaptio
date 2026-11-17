@@ -63,3 +63,16 @@ test('every explanation section shows a real screenshot with alt text and a capt
     for(const [, , src] of figures) await access(new URL('dist'+src,import.meta.url));
   }
 });
+
+test('sharing metadata uses a readable landscape image for each language', async()=>{
+  for(const [lang,file] of [['ja','dist/index.html'],['en','dist/en/index.html']]){
+    const html=await readFile(new URL(file,import.meta.url),'utf8');
+    const image=`https://locaptio.vercel.app/assets/share-${lang}-v1.png`;
+    assert.ok(html.includes(`<meta property="og:image" content="${image}">`));
+    assert.ok(html.includes(`<meta name="twitter:image" content="${image}">`));
+    assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image">'));
+    assert.ok(html.includes('<meta property="og:image:alt"'));
+    const png=await readFile(new URL(`public/assets/share-${lang}-v1.png`,import.meta.url));
+    assert.equal(png.readUInt32BE(16),1200); assert.equal(png.readUInt32BE(20),630);
+  }
+});
