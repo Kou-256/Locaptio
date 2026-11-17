@@ -152,5 +152,13 @@ public sealed class WindowsCaptionTracker(bool japanese)
         return completeText;
     }
     private void RememberFinal() { lastFinalText = current; lastFinalPrefix = anchor; lastFinalId = id; lastFinalRevision = revision; lastFinalStarted = started; }
-    private CaptionUpdate Make(bool final, long now) => new(id, ++revision, current.Trim(), null, final, started, 0, 0, japanese ? "ja" : "en");
+    private CaptionUpdate Make(bool final, long now)
+    {
+        string text = current.Trim();
+        int leading = 0; while (leading < current.Length && char.IsWhiteSpace(current[leading])) leading++;
+        // When each character of the row first appeared on screen: the recording turns these into word times.
+        var appeared = new long[text.Length];
+        for (int i = 0; i < appeared.Length; i++) appeared[i] = Math.Max(started, AppearedAt(leading + i, now));
+        return new(id, ++revision, text, null, final, started, 0, 0, japanese ? "ja" : "en", Appeared: appeared);
+    }
 }

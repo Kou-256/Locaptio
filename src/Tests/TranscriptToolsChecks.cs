@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Locaptio.Core;
 using Locaptio.Core.AI;
 using Locaptio.Core.Audio;
@@ -151,7 +151,9 @@ internal static class TranscriptToolsChecks
         Check(Math.Abs(filler.Seconds - 6) < .001 && filler.Seconds >= first.Seconds && filler.Seconds <= last.Seconds, "Unmatched phrase not shifted: " + filler.Seconds);
         Check(Math.Abs(result.Document.Bookmarks![0].Seconds - 6) < .001 && Math.Abs(result.Document.Summary![0].Evidence[0] - 10) < .001, "Bookmark/summary times not moved");
         var none = TimingAlignment.Apply(saved, [new(1, 1, 3, "まったく別の音声", null, 1, "ja", 5)]);
-        Check(none.Aligned == 0 && none.Document.Phrases.SequenceEqual(saved.Phrases), "Unrelated audio changed timing");
+        // Timing stays; each utterance is marked as not heard in that audio.
+        Check(none.Aligned == 0 && none.Document.Phrases.Select(p => p with { Match = null }).SequenceEqual(saved.Phrases), "Unrelated audio changed timing");
+        Check(none.Low == saved.Phrases.Count(p => p.Text.Any(char.IsLetterOrDigit)) && none.Document.Phrases.All(p => p.Match is null or < TimingAlignment.LowMatch), "Unrelated audio not marked as unmatched");
         var all = TimingAlignment.Apply(saved with { Phrases = [saved.Phrases[0], saved.Phrases[2]] }, reference);
         Check(all.Aligned == 2 && !all.Document.ApproximateTiming, "Fully aligned document still marked approximate");
     }

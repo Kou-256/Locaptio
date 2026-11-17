@@ -1,11 +1,18 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.50/Locaptio-Setup-1.0.50-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.51/Locaptio-Setup-1.0.51-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese translation, floating captions, and recording. Read audio from videos or meetings and save the text and audio you need.
 
 > **Experimental personal project.** The application UI is currently mostly Japanese; this guide explains its controls in English. Accuracy and latency depend on the audio, model and hardware.
+
+## v1.0.51: checking recorded text against the audio
+
+- **Content check**: Whisper listens to the recording and matches it against the saved text character by character. Matched utterances get the word times they were actually spoken at, so playback highlighting and click-to-replay follow the audio; utterances mostly not heard are marked (!). The wording is not changed.
+- **Checked while recording**: with Windows captions, finished parts of the recording are checked in the background, so the check ends right after stopping. Choose during / after / off in Settings (Storage and recording).
+- **Windows caption word times**: taken from when each word appeared, minus the caption delay.
+- New Setup finish page design.
 
 ## v1.0.50: screen recording, video review and subtitled export
 
@@ -89,7 +96,7 @@ Fresh-profile defaults: Windows captions integration, Japanese transcription, ma
 
 Setup always offers a destination directory, including during updates. Downloaded updates require an explicit **Install** approval popup before Setup runs. Choosing Later keeps the current session running.
 
-Download **Locaptio-Setup-1.0.50-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
+Download **Locaptio-Setup-1.0.51-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
 
 ### Recording search and replay (v1.0.39)
 

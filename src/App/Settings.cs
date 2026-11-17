@@ -62,6 +62,8 @@ public sealed class Settings
     public long AudioProcessStarted { get; set; }
     public string PlaybackHighlightMode { get; set; } = "word";
     public string RecordingFormat { get; set; } = "wav";
+    /// <summary>Check recorded text against the audio with Whisper: "during" the recording, "after" it stops, or "off".</summary>
+    public string ContentCheck { get; set; } = "during";
     public bool FastTranscription { get; set; } = true;
     public bool RealtimeCaptions { get; set; } = true;
     public bool RealtimePreviewOnGpu { get; set; }
