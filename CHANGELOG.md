@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.51 — Checking recorded text against the audio
+
+- 録音した音声と文章の照合：録音の音声をWhisperで聞き取り、本体の文章と1文字ずつ照合します。一致した発話には実際に話された位置の単語時刻を付け、再生中のハイライトと文字クリックの位置を音声に合わせます。音声と一致しない部分が多い発話には行の右に印（！）を付け、一致率をツールチップで表示します。文章は変更しません。
+- Windows字幕で文字起こししながら録音しているときは、録音済みの部分を裏で順に照合するので、停止後すぐ（実測：3分の録音で0.4秒）に終わります。設定（保存先・録音）で「録音中に少しずつ／停止してから／照合しない」を選べます。録音中の照合は軽いモデル（small）をCPUで使います。
+- Windows字幕の各単語が画面に出た時刻を記録し、表示の遅れを差し引いて単語ごとの時刻にします（モデル不要）。遅れの量は停止時に録音の音声から測ります。
+- Setupの完了画面に、アイコンの色のグラデーションとアイコン・名前を表示します。
+- Recorded text is checked against the audio (during recording with Windows captions, or after stopping); matched utterances get spoken word times and mostly unmatched ones are marked. Windows caption word times come from when each word appeared, minus the measured caption delay. Setup's finish page shows a brand sidebar.
+
 ## 1.0.50 — Screen recording, video review and subtitled video export
 
 - 画面録画：画面全体または特定のウィンドウを、PC音声・マイクと一緒にMP4で録画。対象は縮小画像付きの一覧から選び、選んだ対象をプレビューで確認できます。録画しながら文字起こしもできます。

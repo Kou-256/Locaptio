@@ -2,7 +2,7 @@
   #error AppSource must name the prepared distribution folder
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.50"
+  #define AppVersion "1.0.51"
 #endif
 [Setup]
 #ifdef SetupUiTest
@@ -28,9 +28,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.26100
 OutputBaseFilename=Locaptio-Setup-{#AppVersion}-x64
 SetupIconFile={#AppSource}\Assets\Locaptio.ico
-WizardImageFile={#AppSource}\Assets\Locaptio.png
+; Finish-page sidebar: brand gradient with icon and name (scripts/make-installer-art.py).
+WizardImageFile=wizard-164.png,wizard-246.png,wizard-328.png,wizard-410.png,wizard-492.png
 WizardSmallImageFile={#AppSource}\Assets\Locaptio.png
-WizardImageBackColor=clWhite
+WizardImageBackColor=$6C3E0C
 UninstallDisplayIcon={app}\Locaptio.exe
 Compression=lzma2/fast
 SolidCompression=yes
@@ -90,11 +91,6 @@ begin
   WizardForm.WizardSmallBitmapImage.Visible := False;
   WizardForm.WizardBitmapImage.Visible := False;
   WizardForm.WizardBitmapImage2.Visible := False;
-  { Preserve the square icon's aspect ratio in the sidebar. }
-  WizardForm.WizardBitmapImage.Top := WizardForm.WizardBitmapImage.Top + (WizardForm.WizardBitmapImage.Height - WizardForm.WizardBitmapImage.Width) div 2;
-  WizardForm.WizardBitmapImage.Height := WizardForm.WizardBitmapImage.Width;
-  WizardForm.WizardBitmapImage2.Top := WizardForm.WizardBitmapImage2.Top + (WizardForm.WizardBitmapImage2.Height - WizardForm.WizardBitmapImage2.Width) div 2;
-  WizardForm.WizardBitmapImage2.Height := WizardForm.WizardBitmapImage2.Width;
   { TNewCheckListBox's owner-drawn glyph can clip on mixed/high DPI displays.
     Real checkbox controls have their own padded, native layout instead. }
   StartMenuCheck := TNewCheckBox.Create(WizardForm);

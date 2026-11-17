@@ -154,7 +154,7 @@ public sealed partial class MainWindow : Window
         {
             // Signal both operations immediately; inference cleanup must not delay WAV finalization.
             var shutdown = Stopwatch.StartNew();
-            prepared?.Dispose(); prepared = null;
+            prepared?.Dispose(); prepared = null; liveContentCheck?.Dispose();
             await Task.WhenAll(StopAsync(), StopRecordingAsync(), FinishUpdateAsync());
             await CloseWindowsCaptionsAsync();
             if (saveTask is not null) { try { await saveTask; } catch { } }
@@ -881,6 +881,7 @@ public sealed partial class MainWindow : Window
         recordingStop = new(); recordingPath = path; recordingStarted = Stopwatch.GetTimestamp();
         BeginRecordingIndex(path);
         SetRecordingChecked(true); RecordToggleText.Text = "録音中"; SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path)); StopButton.IsEnabled = true; RecordingText.Text = path; RecordingIndicator.Visibility = Visibility.Visible; UpdateDiagnostics(); recordingTask = RecordAsync(path, recordingStop.Token);
+        BeginLiveContentCheck(path);
     }
     private async Task RecordAsync(string path, CancellationToken token)
     {
@@ -938,6 +939,7 @@ public sealed partial class MainWindow : Window
         settings.CaptionEnglishSize = Math.Clamp(settings.CaptionEnglishSize, 14, 64); settings.CaptionJapaneseSize = Math.Clamp(settings.CaptionJapaneseSize, 14, 64);
         settings.CaptionHideSeconds = Math.Clamp(settings.CaptionHideSeconds, 1, 20); settings.CaptionOpacity = Math.Clamp(settings.CaptionOpacity, 0, 1); settings.CaptionTextOpacity = Math.Clamp(settings.CaptionTextOpacity, 0, 1); settings.CaptionRows = Math.Clamp(settings.CaptionRows, 1, 10); settings.CaptionMaxLines = Math.Clamp(settings.CaptionMaxLines, 1, 20); settings.WindowsCaptionRestartSeconds = Math.Clamp(settings.WindowsCaptionRestartSeconds, 10, 1800);
         if (settings.RecordingFormat is not ("wav" or "mp3" or "m4a")) settings.RecordingFormat = "wav";
+        if (settings.ContentCheck is not ("during" or "after" or "off")) settings.ContentCheck = "during";
         if (settings.MenuBarTheme is not ("white" or "matching")) settings.MenuBarTheme = "white";
         Root.Background = CaptionWindow.BackgroundBrush(settings, settings.BackgroundOpacity);
         Root.RequestedTheme = settings.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark;
@@ -1154,6 +1156,12 @@ public sealed partial class MainWindow : Window
             var highlightMode = new DownwardSelector { OwnerWindow = window, ItemsSource = new[] { "発話全体", "単語ごと", "1文字ずつ" }, SelectedIndex = settings.PlaybackHighlightMode == "phrase" ? 0 : settings.PlaybackHighlightMode == "character" ? 2 : 1 };
             highlightMode.SelectionChanged += (_, _) => { settings.PlaybackHighlightMode = highlightMode.SelectedIndex == 0 ? "phrase" : highlightMode.SelectedIndex == 2 ? "character" : "word"; settings.Save(); highlightedPlaybackPhrase = null; UpdatePlaybackPosition(); };
             content.Children.Add(highlightMode);
+            content.Children.Add(new TextBlock { Text = "録音した音声と文章の照合" });
+            var contentCheck = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "録音中に少しずつ照合する（推奨）", "録音を停止してから照合する", "照合しない" }, SelectedIndex = settings.ContentCheck == "after" ? 1 : settings.ContentCheck == "off" ? 2 : 0 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(contentCheck, "録音した音声と文章の照合");
+            contentCheck.SelectionChanged += (_, _) => { settings.ContentCheck = contentCheck.SelectedIndex == 1 ? "after" : contentCheck.SelectedIndex == 2 ? "off" : "during"; settings.Save(); };
+            content.Children.Add(contentCheck);
+            content.Children.Add(new TextBlock { Text = "録音の音声を設定の音声認識モデル（Whisper）で聞き取り、本体の文章と1文字ずつ照合します。一致した発話には実際に話された位置の単語時刻を付け、再生中のハイライトと文字クリックの位置を音声に合わせます。音声と一致しない部分が多い発話には、行の右に印（！）を付けます。文章は変更しません。\n「録音中に少しずつ照合」は、Windows字幕で文字起こししながら録音しているとき、録音済みの部分を裏で順に照合するので、停止後は最後の数秒だけで終わります（その間PCの負荷が増えます）。Whisperで文字起こし中・録画・字幕なしの録音は停止後に照合します。モデルが未準備のときは照合しません（「同期を改善」から準備できます）。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             content.Children.Add(new TextBlock { Text = "Whisperで新しく読み込む音声は単語時刻を使用します。文字ごとの時刻や、単語時刻のない録音・Windows字幕・AIで修正した文・訳文は推定です。日本語の単語区切りはモデルにより異なります。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             Toggle("未保存の文字起こしを自動保存し、異常終了しても次回起動時に復元できるようにする", settings.AutosaveSession, v => settings.AutosaveSession = v);
             content.Children.Add(new TextBlock { Text = "5秒ごとに、表示中の文章・修正・ブックマーク・録音ファイルの場所をPC内に保存します。音声そのものは複製しません。正常に終了したとき、文章をクリアしたとき、録音を保存し終えたときに自動保存データは削除します。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });

@@ -1,4 +1,4 @@
-# Testing / テストと検証範囲
+﻿# Testing / テストと検証範囲
 
 [日本語 README](../README.md) · [English README](../README.en.md)
 
@@ -16,6 +16,10 @@ dotnet run --project src/Tests/Locaptio.Tests.csproj -c Release --no-build -- --
 The first test checks baselines, revisions, reconnects, rolling captions and retention over 20,000 Japanese/English phrases. The second uses fake translation backends to check immediate source updates, stale-result rejection, context, glossary and refined-result ordering. GitHub Actions runs both after building the WinUI app and packages a portable ZIP.
 
 `--transcript-tools` checks the term dictionary, edit undo/redo and revision priority, SRT/VTT cues, time-aligned comparison and versions, word-time alignment, cited summary parsing, autosave fallback and interrupted-WAV repair without models or audio devices. The built exe's `--verify-transcript-tools` drives the real window through the same features with synthetic text, a silent WAV and a fake summary backend, and writes screenshots to `artifacts`.
+
+The built exe's `--verify-content-check` (run from a prepared runtime with `artifacts/test-*.wav`) joins real speech clips into a meeting, writes it as a WAV at four times real speed (`--realtime` for real speed, `--long` for about three minutes) while the content check follows the growing file with the installed Whisper model, saves the text 1.6 s late without word times with one utterance replaced by words never spoken, and checks the match scores, the corrected times, the warning mark on that row only, the saved scores, and that the result equals checking after stopping. 2026-11-17 on the RTX 5060 laptop (Whisper on CPU): three minutes of speech were fully checked 0.4 s after stopping, against 83.7 s when checking only after stopping; spoken rows matched 96–100 %, the unspoken row 12 %, start error ≤ 0.10 s. `--timing` also checks word times from caption appearance, the match score, and recognition that follows a growing WAV (including uneven reads that must keep each request within 12 s, and the file being deleted by MP3/M4A conversion).
+
+The built exe's `--verify-live-recording` is the whole path with real Windows Live Captions and **plays Japanese test speech aloud** (about 90 s): it records PC audio with Windows captions while the content check follows the recording, then compares every saved character's time with when it was played (Whisper word times on the clean audio). 2026-11-17: caption-appearance word times alone median 0.19 s / 90 % 0.30 s; after the content check median 0.04 s / 90 % 0.10 s (383 characters); the check finished 0.2 s after stopping; caption rows matched the audio 88–100 %. `--mixed-input` passed twice the same day.
 
 The built exe's `--verify-video` records Locaptio's own window (synthetic text, no sound) for a few seconds with a pause and a screenshot, checks the paused time is excluded from the video clock, replays the MP4 with the caption over the video, burns subtitles into a copy and confirms caption pixels appear in its frames, and reads the audio track of an MP4 for transcription. It records nothing else on screen and deletes its files.
 

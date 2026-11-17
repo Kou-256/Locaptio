@@ -12,7 +12,13 @@ namespace Locaptio.Core;
 public static class TimingAlignment
 {
     private readonly record struct Timed(char Value, double Start, double End);
-    public sealed record Result(RecordingDocument Document, int Aligned, int Total);
+    public sealed record Result(RecordingDocument Document, int Aligned, int Total)
+    {
+        /// <summary>Utterances whose text was mostly not heard in the audio at that time.</summary>
+        public int Low => Document.Phrases.Count(p => p.Match is double match && match < LowMatch);
+    }
+    /// <summary>Below this share of matching characters an utterance is marked for checking.</summary>
+    public const double LowMatch = .6;
 
     private static char Fold(char c)
     {
@@ -59,13 +65,16 @@ public static class TimingAlignment
             if (last - first > 3000) last = first + 3000;
             var letters = new List<(char Value, int Index)>();
             for (int k = 0; k < phrase.Text.Length; k++) { char value = Fold(phrase.Text[k]); if (value != '\0') letters.Add((value, k)); }
-            if (letters.Count == 0 || last <= first) continue;
+            if (letters.Count == 0) continue;
+            if (last <= first) { updated[i] = phrase with { Match = 0 }; continue; }
             var pairs = Local(letters, timed, first, last);
-            if (pairs.Count < Math.Max(2, (letters.Count + 1) / 2)) continue;
+            // Share of the saved characters that were heard, in order, in the audio around the utterance.
+            double match = Math.Round(Math.Min(1, pairs.Count / (double)letters.Count), 3);
+            if (pairs.Count < Math.Max(2, (letters.Count + 1) / 2)) { updated[i] = phrase with { Match = match }; continue; }
             double start = timed[pairs[0].Reference].Start, end = timed[pairs[^1].Reference].End;
             if (start < floor - .5) continue;
             start = Math.Max(start, floor);
-            updated[i] = phrase with { Seconds = start, EndSeconds = Math.Max(end, start + .1), Words = Words(phrase.Text, letters, pairs, timed, start, Math.Max(end, start + .1)) };
+            updated[i] = phrase with { Match = match, Seconds = start, EndSeconds = Math.Max(end, start + .1), Words = Words(phrase.Text, letters, pairs, timed, start, Math.Max(end, start + .1)) };
             shifts[i] = start - phrase.Seconds; floor = start; aligned++;
         }
         // An utterance that could not be matched moves with its nearest matched neighbour:
@@ -78,7 +87,7 @@ public static class TimingAlignment
                 shift = (i - distance >= 0 ? shifts[i - distance] : null) ?? (i + distance < phrases.Length ? shifts[i + distance] : null);
             if (shift is not double moved || aligned == 0) continue;
             var phrase = phrases[i]; double seconds = Math.Max(0, phrase.Seconds + moved);
-            updated[i] = phrase with { Seconds = seconds, EndSeconds = phrase.EndSeconds is double e ? Math.Max(seconds, e + moved) : null,
+            updated[i] = updated[i] with { Seconds = seconds, EndSeconds = phrase.EndSeconds is double e ? Math.Max(seconds, e + moved) : null,
                 Words = phrase.Words?.Select(w => w with { Start = Math.Max(seconds, w.Start + moved), End = Math.Max(seconds, w.End + moved) }).ToArray() };
         }
         // Keep the reading order: an unmatched utterance must stay between its neighbours.

@@ -87,6 +87,8 @@ public sealed partial class MainWindow
         Root.Loaded += (_, _) => { if (!VerificationRun) FindInterruptedSession(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-transcript-tools")) await VerifyTranscriptToolsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-real-tools")) await VerifyRealToolsAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-content-check")) await VerifyContentCheckAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-live-recording")) await VerifyLiveRecordingAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-site-screenshots")) await VerifySiteScreenshotsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-video")) await VerifyVideoAsync(); };
     }
@@ -140,7 +142,7 @@ public sealed partial class MainWindow
             {
                 Phrases = playbackDocument.Phrases.Select(p => p.Id != update.Id ? p : p with
                 {
-                    Text = update.English, Translation = update.Japanese, Revision = update.Revision, Words = p.Text == update.English ? p.Words : null,
+                    Text = update.English, Translation = update.Japanese, Revision = update.Revision, Words = p.Text == update.English ? p.Words : null, Match = p.Text == update.English ? p.Match : null,
                     Original = edits.Original(update.Id) is { } original && original != update.English ? original : null, Edited = edits.IsEdited(update.Id)
                 }).ToArray()
             };
@@ -466,6 +468,26 @@ public sealed partial class MainWindow
         bool edited = edits.IsEdited(caption.Id);
         row.Children[3].Visibility = edited ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(row.Children[3], edited ? "手動で編集した発話（右クリックで原文と比較・元に戻す）" : null);
+        if (row.Children.Count < 5) return;
+        double? match = reviewingRecording ? PhraseMatch(caption.Id) : null;
+        bool low = match is double value && value < TimingAlignment.LowMatch;
+        row.Children[4].Visibility = low ? Visibility.Visible : Visibility.Collapsed;
+        ToolTipService.SetToolTip(row.Children[4], low ? $"音声との一致 {match:P0}：この発話の文字の多くが、その時刻の音声から聞き取れませんでした。聞き直して確認してください。" : null);
+    }
+    private RecordingDocument? matchSource; private Dictionary<long, double>? matches;
+    /// <summary>Share of the utterance heard in the audio, from the last content check of the open recording.</summary>
+    private double? PhraseMatch(long id)
+    {
+        if (!ReferenceEquals(matchSource, playbackDocument))
+        {
+            matchSource = playbackDocument;
+            matches = playbackDocument?.Phrases.Where(p => p.Match is not null).GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First().Match!.Value);
+        }
+        return matches is not null && matches.TryGetValue(id, out var value) ? value : null;
+    }
+    private void RefreshRowMarks()
+    {
+        foreach (var row in RealizedCaptionRows) if (row.DataContext is CaptionHistoryEntry entry) StyleRowMarks(row, entry.Caption);
     }
     private string BookmarkExport()
     {

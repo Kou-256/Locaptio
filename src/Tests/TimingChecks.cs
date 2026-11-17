@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Locaptio.Core;
 using NAudio.Wave;
 
@@ -63,6 +63,108 @@ internal static class TimingChecks
         var englishTimes = englishStarts.OrderBy(s => s.Key).Select(s => (s.Value - t0) / (double)f).ToArray();
         Check(englishTimes.SequenceEqual([1.0, 3.0]), "English sentence start not taken from its text: " + string.Join(",", englishTimes));
         Console.WriteLine($"PASS: Windows caption split rows start when their text appeared ({string.Join(", ", ordered.Select(o => o.ToString("F0") + "s"))}; English {string.Join(", ", englishTimes)})");
+    }
+
+    /// <summary>Stand-in recognizer: names each segment by its order and gives one word per character.</summary>
+    private sealed class CountingSpeech : Locaptio.Core.AI.ITimedSpeechRecognitionBackend
+    {
+        public int Calls;
+        public Task<Locaptio.Core.AI.InferenceResult> RecognizeAsync(float[] samples, CancellationToken token, bool final = true) => RecognizeTimedAsync(samples, token);
+        public Task<Locaptio.Core.AI.InferenceResult> RecognizeTimedAsync(float[] samples, CancellationToken token)
+        {
+            // The real worker rejects longer requests.
+            if (samples.Length > 192000) throw new InvalidOperationException("Audio request exceeds 12 seconds");
+            string text = "音声" + (++Calls); double length = samples.Length / 16000.0;
+            return Task.FromResult(new Locaptio.Core.AI.InferenceResult(text, 1, text.Select((c, i) => new Locaptio.Core.AI.SpeechWord(c.ToString(), length * i / text.Length, length * (i + 1) / text.Length)).ToArray()));
+        }
+    }
+
+    /// <summary>
+    /// Word times from when Windows caption words appeared, the per-utterance content match, and
+    /// recognition that follows a WAV while it is still being written.
+    /// </summary>
+    public static void ContentCheck()
+    {
+        long t0 = Stopwatch.GetTimestamp(), f = Stopwatch.Frequency;
+        // Words appear one by one, 0.5 s apart, starting 2 s into the recording.
+        var tracker = new WindowsCaptionTracker(true); tracker.Observe("", t0).ToList();
+        var recording = new RecordingTranscript(Path.Combine(Path.GetTempPath(), "appear-check.wav"), t0, true);
+        string[] parts = ["今日は", "会議の", "議事録を", "保存します"]; string shown = "";
+        for (int i = 0; i < parts.Length; i++) { shown += parts[i]; foreach (var update in tracker.Observe(shown, t0 + (long)((2 + i * .5) * f))) recording.Observe(update); }
+        var phrase = recording.Snapshot().Phrases.Single();
+        var words = phrase.Words ?? throw new Exception("No word times from caption appearance");
+        var ends = parts.Select((p, i) => words.Where(w => w.StartIndex < shown.IndexOf(p) + p.Length).Max(w => w.End)).ToArray();
+        // Saved with the same 1.0 s allowance as the utterance start: each word ends where it appeared − 1.0 s.
+        Check(Math.Abs(phrase.Seconds - 1.0) < .01 && words.Zip(words.Skip(1)).All(p => p.First.End <= p.Second.Start + 1e-9) && words.All(w => w.End > w.Start),
+            "Appearance word times not ordered: " + string.Join(", ", words.Select(w => $"{w.Start:F2}-{w.End:F2}")));
+        Check(Math.Abs(ends[1] - 1.5) < .01 && Math.Abs(ends[2] - 2.0) < .01 && Math.Abs(ends[3] - 2.5) < .01, "Words do not end where they appeared: " + string.Join(", ", ends.Select(e => e.ToString("F2"))));
+
+        // Content match: what was heard against what was saved.
+        RecordingPhrase Heard(int id, double start, string text) => new(id, id, start, text, null, 1, "ja", start + text.Length * .2,
+            text.Select((c, i) => new RecordingWord(i, 1, start + i * .2, start + (i + 1) * .2)).ToArray());
+        var reference = new[] { Heard(1, 1.0, "今日は会議の議事録を保存します"), Heard(2, 6.0, "次に予算について確認します"), Heard(3, 11.0, "最後に質問を受け付けます") };
+        var saved = new RecordingDocument(1, "a.wav", DateTimeOffset.Now, true, [
+            new(1, 1, 1.4, "今日は会議の議事録を保存します", null, 1),
+            new(2, 2, 6.3, "全く別の天気の話題です", null, 1),
+            new(3, 3, 11.2, "最後に質問を受けつけます", null, 1)]);
+        var result = TimingAlignment.Apply(saved, reference, 8);
+        var match = result.Document.Phrases.Select(p => p.Match ?? -1).ToArray();
+        Check(match[0] == 1 && match[1] < TimingAlignment.LowMatch && match[2] >= .85 && result.Low == 1 && result.Aligned == 2,
+            "Content match wrong: " + string.Join(", ", match.Select(m => m.ToString("F2"))) + $" low={result.Low} aligned={result.Aligned}");
+        Check(Math.Abs(result.Document.Phrases[0].Seconds - 1.0) < .01 && result.Document.Phrases[0].Words is { Length: > 0 }, "Matched utterance did not take the heard time");
+
+        // Recognition keeps up with a WAV being written, and finishes after the recorder deletes it.
+        string directory = Path.Combine(Path.GetTempPath(), "Locaptio-growing-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        try
+        {
+            string wav = Path.Combine(directory, "live.wav"); var speech = new CountingSpeech(); bool complete = false;
+            var phrases = new List<RecordingPhrase>(); int beforeEnd = -1;
+            var reading = Task.Run(() => Locaptio.Core.Audio.FileTranscription.RunGrowingAsync(wav, () => Volatile.Read(ref complete), speech, "ja", p => { lock (phrases) phrases.Add(p); return Task.CompletedTask; }, CancellationToken.None));
+            double[] bursts = [1.0, 3.5, 6.0];
+            // One continuous 20 s stretch, written in uneven pieces: segments must stay within 12 s.
+            string longWav = Path.Combine(directory, "long.wav"); var longSpeech = new CountingSpeech(); bool longDone = false; var longPhrases = new List<RecordingPhrase>();
+            var longReading = Task.Run(() => Locaptio.Core.Audio.FileTranscription.RunGrowingAsync(longWav, () => Volatile.Read(ref longDone), longSpeech, "ja", p => { lock (longPhrases) longPhrases.Add(p); return Task.CompletedTask; }, CancellationToken.None));
+            using (var writer = new WaveFileWriter(new FileStream(longWav, FileMode.Create, FileAccess.Write, FileShare.Read), new WaveFormat(16000, 16, 1)))
+            {
+                var pieces = new Random(4); int written = 0;
+                while (written < 16000 * 21)
+                {
+                    int n = 300 + pieces.Next(2500);
+                    for (int i = 0; i < n; i++, written++) { double t = written / 16000.0; writer.WriteSample(t >= .5 && t < 20.5 ? (float)(.2 * Math.Sin(2 * Math.PI * 180 * t)) : 0f); }
+                    writer.Flush(); Thread.Sleep(2);
+                }
+            }
+            Volatile.Write(ref longDone, true);
+            if (!longReading.Wait(TimeSpan.FromSeconds(20))) throw new Exception("Long growing recognition did not finish");
+            if (longReading.IsFaulted) throw longReading.Exception!;
+            Check(longPhrases.Count == 2 && longPhrases.All(p => p.EndSeconds - p.Seconds <= 12.0001) && Math.Abs(longPhrases[1].EndSeconds!.Value - 20.5) < .1,
+                "Continuous speech in a growing file not split within 12 s: " + string.Join(", ", longPhrases.Select(p => $"{p.Seconds:F2}-{p.EndSeconds:F2}")));
+            using (var writer = new WaveFileWriter(new FileStream(wav, FileMode.Create, FileAccess.Write, FileShare.Read), new WaveFormat(16000, 16, 1)))
+            {
+                // Real time is compressed 10×; the recorder flushes about once a second.
+                for (int block = 0; block < 80; block++)
+                {
+                    for (int i = 0; i < 1600; i++)
+                    {
+                        double t = (block * 1600 + i) / 16000.0;
+                        bool loud = bursts.Any(b => t >= b && t < b + 1.2);
+                        writer.WriteSample(loud ? (float)(.2 * Math.Sin(2 * Math.PI * 180 * t)) : 0f);
+                    }
+                    if (block % 10 == 9) writer.Flush();
+                    Thread.Sleep(10);
+                }
+                Thread.Sleep(700);
+                lock (phrases) beforeEnd = phrases.Count;
+            }
+            File.Delete(wav);
+            Volatile.Write(ref complete, true);
+            if (!reading.Wait(TimeSpan.FromSeconds(20))) throw new Exception("Growing recognition did not finish");
+            Check(beforeEnd >= 2, $"Recognition did not keep up while recording ({beforeEnd} segments before the end)");
+            Check(phrases.Count == 3 && phrases.Zip(bursts).All(p => Math.Abs(p.First.Seconds - p.Second) < .11) && phrases.All(p => p.Words is { Length: > 0 }),
+                "Growing recognition times wrong: " + string.Join(", ", phrases.Select(p => p.Seconds.ToString("F2"))));
+            Console.WriteLine($"PASS: word times from caption appearance (ends {string.Join(", ", ends.Skip(1).Select(e => e.ToString("F1")))}s); content match {string.Join(" / ", match.Select(m => m.ToString("P0")))} with 1 low row; recognition followed a recording being written ({beforeEnd}/3 segments before it ended) and finished after the file was deleted");
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     /// <summary>Writes speech-like sound at known onsets and returns them.</summary>

@@ -94,7 +94,9 @@ public sealed partial class MainWindow
                 + " この録音の単語・文字ごとの進行は推定です。"
                 + (playbackDocument.ApproximateTiming ? " Windows字幕の発話時刻も推定です。" : "");
             RefreshRecordingSearch();
+            contentCheckTask = CheckRecordedContentAsync(path);
         }
+        else { liveContentCheck?.Dispose(); liveContentCheck = null; }
     }
     /// <summary>
     /// Moves each utterance start to where speech begins in the saved audio. Caption times are when
