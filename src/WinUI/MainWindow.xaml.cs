@@ -623,7 +623,8 @@ public sealed partial class MainWindow : Window
     }
     private void StyleHistoryRow(Grid row, CaptionUpdate caption)
     {
-        bool japanese = playbackDocument is not null && captionStop is null ? caption.SourceLanguage == "ja" : TranscriptionOnly;
+        // "Transcription only": a reviewed recording without a translation, or the current mode without a target.
+        bool japanese = playbackDocument is not null && captionStop is null ? string.IsNullOrWhiteSpace(caption.Japanese) : TranscriptionOnly;
         row.Margin = new Thickness(0, 0, 0, settings.CaptionLineGap);
         row.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0);
         row.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
@@ -636,7 +637,7 @@ public sealed partial class MainWindow : Window
         en.LineStackingStrategy = ja.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         en.Visibility = japanese || settings.English ? Visibility.Visible : Visibility.Collapsed;
         ja.Visibility = !japanese && settings.Japanese ? Visibility.Visible : Visibility.Collapsed;
-        en.Foreground = !settings.CaptionCorrectedSameColor && caption.SourceCorrected ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.OrdinaryBrush(settings, japanese);
+        en.Foreground = !settings.CaptionCorrectedSameColor && caption.SourceCorrected ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.RoleBrush(settings, japanese, false);
         ja.Foreground = !settings.CaptionCorrectedSameColor && (caption.SourceCorrected || caption.TranslationRefined) ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.OrdinaryBrush(settings, true);
         if (settings.SpeakerDiarization && caption.SpeakerId > 0) en.Foreground = ja.Foreground = CaptionWindow.SpeakerBrush(settings, caption.SpeakerId);
         ToolTipService.SetToolTip(en, caption.SpeakerId > 0 ? $"話者{caption.SpeakerId}（音声から推定）" : caption.SourceCorrected ? "高精度モデルまたはAIで更新した文字起こし" : null);
@@ -1028,13 +1029,13 @@ public sealed partial class MainWindow : Window
                 control.SelectionChanged += (_, _) => { set(control.SelectedIndex); ApplySettings(); }; content.Children.Add(control); return control;
             }
             Section("字幕の見た目", "字幕の位置、色、行間、表示時間を変更します。");
-            Choice("字幕の配置", ["上に英語・下に日本語", "上に日本語・下に英語", "左に英語・右に日本語"], settings.CaptionLayout == "japanese-top" ? 1 : settings.CaptionLayout == "side-by-side" ? 2 : 0, i => settings.CaptionLayout = i == 1 ? "japanese-top" : i == 2 ? "side-by-side" : "english-top");
-            Slider("字幕の英語サイズ", 14, 64, settings.CaptionEnglishSize, v => settings.CaptionEnglishSize = v);
-            Slider("字幕の日本語サイズ", 14, 64, settings.CaptionJapaneseSize, v => settings.CaptionJapaneseSize = v);
+            Choice("翻訳時の字幕の配置", ["上に原文・下に翻訳", "上に翻訳・下に原文", "左に原文・右に翻訳"], settings.CaptionLayout == "japanese-top" ? 1 : settings.CaptionLayout == "side-by-side" ? 2 : 0, i => settings.CaptionLayout = i == 1 ? "japanese-top" : i == 2 ? "side-by-side" : "english-top");
+            Slider("原文の文字サイズ（翻訳時）", 14, 64, settings.CaptionEnglishSize, v => settings.CaptionEnglishSize = v);
+            Slider("翻訳・文字起こしの文字サイズ", 14, 64, settings.CaptionJapaneseSize, v => settings.CaptionJapaneseSize = v);
             Slider("字幕の行と行の間隔", 0, 30, settings.CaptionLineGap, v => settings.CaptionLineGap = v);
             Slider("折り返し行の高さ (%)", 105, 180, settings.CaptionLineHeight * 100, v => settings.CaptionLineHeight = v / 100);
             Toggle("補正済みの字幕も通常と同じ文字色にする", settings.CaptionCorrectedSameColor, v => settings.CaptionCorrectedSameColor = v);
-            DownwardSelector? textPaletteSelector = null, surfaceSelector = null;
+            DownwardSelector? textPaletteSelector = null, surfaceSelector = null, transcriptColorSelector = null;
             void ColorSetting(string label, string value, Action<string> set)
             {
                 var input = new TextBox { Header = label + "（#RRGGBB）", Text = value };
@@ -1075,11 +1076,13 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = "行数を超える古い発話は非表示にします。1つの発話が長い場合は最新の部分を表示し、本体には全文を残します。", TextWrapping = TextWrapping.Wrap });
             Slider("字幕に表示する発話数", 1, 10, settings.CaptionRows, v => settings.CaptionRows = (int)v);
             Slider("字幕を消すまでの秒数（認識更新が止まった後）", 1, 20, settings.CaptionHideSeconds, v => settings.CaptionHideSeconds = v);
-            textPaletteSelector = Choice("字幕の文字色", ["英語: 白／日本語: 黄色", "両方とも白", "英語: 水色／日本語: 白（既定）", "指定した文字色"], settings.CaptionPalette == "custom" ? 3 : settings.CaptionPalette == "white" ? 1 : settings.CaptionPalette == "cyan-white" ? 2 : 0, i => settings.CaptionPalette = i == 3 ? "custom" : i == 1 ? "white" : i == 2 ? "cyan-white" : "white-yellow");
+            textPaletteSelector = Choice("翻訳時の文字色", ["原文: 白／翻訳: 黄色", "原文・翻訳とも白", "原文: 水色／翻訳: 白（既定）", "指定した文字色"], settings.CaptionPalette == "custom" ? 3 : settings.CaptionPalette == "white" ? 1 : settings.CaptionPalette == "cyan-white" ? 2 : 0, i => settings.CaptionPalette = i == 3 ? "custom" : i == 1 ? "white" : i == 2 ? "cyan-white" : "white-yellow");
+            transcriptColorSelector = Choice("文字起こしのみのときの文字色", ["白（既定）", "水色", "黄色"], settings.CaptionTranscriptColor switch { "cyan" => 1, "yellow" => 2, _ => 0 }, i => { settings.CaptionTranscriptColor = i switch { 1 => "cyan", 2 => "yellow", _ => "white" }; if (settings.CaptionPalette == "custom") { settings.CaptionPalette = "cyan-white"; if (textPaletteSelector is not null) textPaletteSelector.SelectedIndex = 2; } });
+            content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8, Text = "色は言語ではなく役割で決まります。翻訳するときは「原文（話した言葉）」と「翻訳」、翻訳しないときは「文字起こしのみ」の色を使います。「指定した文字色」はすべてに同じ色を使います。" });
             surfaceSelector = Choice("字幕の背景", ["従来の暗い背景", "黒", "白（文字は濃色）", "ライブキャプション風／指定した背景色"], settings.CaptionBackground == "live" ? 3 : settings.CaptionBackground == "black" ? 1 : settings.CaptionBackground == "light" ? 2 : 0, i => settings.CaptionBackground = i == 3 ? "live" : i == 1 ? "black" : i == 2 ? "light" : "dark");
             Choice("字幕の文字揃え", ["中央", "左", "右"], settings.CaptionAlignment == "left" ? 1 : settings.CaptionAlignment == "right" ? 2 : 0, i => settings.CaptionAlignment = i == 1 ? "left" : i == 2 ? "right" : "center");
             Toggle("字幕の文字を太くする", settings.CaptionBold, v => settings.CaptionBold = v);
-            var en = new CheckBox { Content = "英語を表示", IsChecked = settings.English }; var ja = new CheckBox { Content = "日本語を表示", IsChecked = settings.Japanese };
+            var en = new CheckBox { Content = "原文を表示（翻訳時）", IsChecked = settings.English }; var ja = new CheckBox { Content = "翻訳を表示", IsChecked = settings.Japanese };
             en.Click += (_, _) => { settings.English = en.IsChecked == true; if (!settings.English && !settings.Japanese) { settings.Japanese = true; ja.IsChecked = true; } ApplySettings(); };
             ja.Click += (_, _) => { settings.Japanese = ja.IsChecked == true; if (!settings.English && !settings.Japanese) { settings.English = true; en.IsChecked = true; } ApplySettings(); };
             content.Children.Add(en); content.Children.Add(ja);
@@ -1399,7 +1402,7 @@ public sealed partial class MainWindow : Window
             string colorDebug = $"palette={settings.CaptionPalette}, text={settings.CaptionTextColor}, surface={settings.CaptionSurfaceColor}, bg={((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color}, ordinary={captionWindow.UsesOrdinaryColors()}";
             bool customColors = settings.CaptionPalette == "custom" && settings.CaptionTextColor == "#AADDEE" && settings.CaptionSurfaceColor == "#444444" && captionWindow.UsesOrdinaryColors()
                 && ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color == Windows.UI.Color.FromArgb(255, 68, 68, 68);
-            var paletteSelector = settingItems.OfType<DownwardSelector>().Single(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(c) == "字幕の文字色");
+            var paletteSelector = settingItems.OfType<DownwardSelector>().Single(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(c) == "翻訳時の文字色");
             colorDebug += $"; selector={paletteSelector.SelectedIndex}"; customColors &= paletteSelector.SelectedIndex == 3;
             paletteSelector.SelectedIndex = 1; await Task.Delay(100); customColors &= settings.CaptionPalette == "white" && captionWindow.UsesOrdinaryColors(); colorDebug += $"; preset={settings.CaptionPalette}, ordinary={captionWindow.UsesOrdinaryColors()}";
             settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; ApplySettings(); settingsWindow?.Close();

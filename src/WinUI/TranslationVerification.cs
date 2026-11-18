@@ -37,6 +37,28 @@ public sealed partial class MainWindow
             Check(settings.CaptionMode == "en>ja" && Route is { BuiltIn: true }, "English → Japanese stays built in");
             await Choose(ModeSelector, 0); await Choose(TargetSelector, 1); RenderCaptions();
             Check(settings.CaptionMode == "ja>en" && SpeechJapanese && Route is { Source: "ja", Target: "en", Pack: "ja-en" } && EnglishHeader.Text == "日本語" && JapaneseHeader.Text == "英語", $"Japanese → English route and headers ({EnglishHeader.Text} / {JapaneseHeader.Text})");
+            // Caption colors follow the role (original / translation / transcription only), not the language.
+            string savedPalette = settings.CaptionPalette, savedTranscript = settings.CaptionTranscriptColor, savedBackground = settings.CaptionBackground;
+            try
+            {
+                settings.CaptionPalette = "cyan-white"; settings.CaptionTranscriptColor = "white"; settings.CaptionBackground = "live";
+                Windows.UI.Color RowColor(int child, CaptionUpdate caption)
+                {
+                    var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition());
+                    row.Children.Add(new TextBlock()); row.Children.Add(new TextBlock()); StyleHistoryRow(row, caption);
+                    return ((Microsoft.UI.Xaml.Media.SolidColorBrush)((TextBlock)row.Children[child]).Foreground).Color;
+                }
+                var spoken = new CaptionUpdate(1, 1, "今日の会議を始めます。", "Let's start today's meeting.", true, 0, 0, 0, "ja");
+                var cyan = Windows.UI.Color.FromArgb(255, 0x7D, 0xE3, 0xFF); var white = Windows.UI.Color.FromArgb(255, 255, 255, 255); var yellow = Windows.UI.Color.FromArgb(255, 0xFF, 0xE7, 0x94);
+                Check(RowColor(0, spoken) == cyan && RowColor(1, spoken) == white, "Japanese → English: the original (Japanese) uses the original color, the English translation the translation color");
+                modeChanging = true; settings.CaptionMode = "ja"; modeChanging = false; ApplySettings();
+                Check(RowColor(0, spoken with { Japanese = null }) == white, "transcription only uses its own color (white by default)");
+                settings.CaptionTranscriptColor = "yellow";
+                Check(RowColor(0, spoken with { Japanese = null }) == yellow, "the transcription-only color can be changed separately");
+                modeChanging = true; settings.CaptionMode = "it>es"; modeChanging = false; ApplySettings();
+                Check(RowColor(0, spoken) == cyan, "translation colors stay as chosen for other languages");
+            }
+            finally { settings.CaptionPalette = savedPalette; settings.CaptionTranscriptColor = savedTranscript; settings.CaptionBackground = savedBackground; modeChanging = true; settings.CaptionMode = "ja>en"; modeChanging = false; ApplySettings(); }
             bool packHere = TranslationPacks.Find("ja-en")!.IsInstalled(root);
             Check(packHere ? MissingTranslationPack(root) is null : MissingTranslationPack(root)?.Contains("日本語 → 英語") == true, "missing pack explained (or none missing): " + (MissingTranslationPack(root) ?? "installed"));
             Check(CaptionModes.Normalize("translate", "zh") == "en>ja" && CaptionModes.Normalize("translate", "es") == "en>es" && CaptionModes.Normalize("ja-translate", "ja", "en") == "ja>en"
