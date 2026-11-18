@@ -67,7 +67,7 @@ public sealed partial class MainWindow
     {
         await Task.Yield();
         string? audio = null; bool copied = false; List<RecordingPhrase> phrases = new();
-        var recordedAt = DateTimeOffset.Now; bool japanese = settings.CaptionMode == "japanese";
+        var recordedAt = DateTimeOffset.Now; bool japanese = SpeechJapanese; var route = Route is { } chosen ? TranslationPacks.Route(chosen.Source, chosen.Target, root) : null;
         RecordingDocument Document() => new(1, Path.GetFileName(audio!), recordedAt, true, phrases.ToArray(), Model: settings.SpeechModel);
         try
         {
@@ -75,9 +75,10 @@ public sealed partial class MainWindow
             // Validate the codec before downloading models or replacing the visible transcript.
             using (var check = new NAudio.Wave.AudioFileReader(source)) { if (check.TotalTime <= TimeSpan.Zero) throw new InvalidDataException("音声が空です。"); }
             bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu";
-            await SpeechPreparation.EnsureAsync(root, settings.SpeechModel, !japanese, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
+            if (MissingTranslationPack(root) is { } missing) throw new InvalidOperationException(missing);
+            await SpeechPreparation.EnsureAsync(root, settings.SpeechModel, route is { BuiltIn: true }, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
             using var worker = new PreparedInference(root, japanese, settings.SpeechModel, Terms.SpeechPrompt(settings.SpeechPrompt), settings.InferenceDevice, cpu, false,
-                settings.CorrectTranscriptWithAi, LlmModelFile, Status, progress: BeginPreparation());
+                settings.CorrectTranscriptWithAi, LlmModelFile, Status, progress: BeginPreparation(), route: route);
             worker.Speech.RequestTimeout = TimeSpan.FromMinutes(5);
             if (worker.Translation is not null) worker.Translation.RequestTimeout = TimeSpan.FromMinutes(5);
             await worker.Ready.WaitAsync(token);

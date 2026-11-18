@@ -92,6 +92,8 @@ public sealed partial class MainWindow
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-llm-models")) await VerifyLlmModelsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-session-home")) await VerifySessionHomeAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-ai-review")) await VerifyAiReviewAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-checkbox-glyph")) await VerifyCheckBoxGlyphAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-translation-modes")) await VerifyTranslationModesAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-site-screenshots")) await VerifySiteScreenshotsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-video")) await VerifyVideoAsync(); };
     }
@@ -672,10 +674,10 @@ public sealed partial class MainWindow
         }
         ClearCaptions(); reviewingRecording = false; playbackDocument = null; playbackPath = "";
         PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;
-        if (snapshot.Mode is "translate" or "japanese" && snapshot.Mode != settings.CaptionMode)
+        if (snapshot.Mode is "translate" or "japanese" or "ja-translate" && snapshot.Mode != settings.CaptionMode)
         {
             // Show the columns the session was captured with, without the mode-change prompt.
-            modeChanging = true; settings.CaptionMode = snapshot.Mode; ModeSelector.SelectedIndex = snapshot.Mode == "japanese" ? 1 : 0; modeChanging = false; ApplySettings();
+            modeChanging = true; settings.CaptionMode = snapshot.Mode; ModeSelector.SelectedIndex = ModeIndex(snapshot.Mode); modeChanging = false; ApplySettings();
         }
         // Place the rows in the past on the session clock, so new speech continues after them in order.
         long now = Stopwatch.GetTimestamp(); double last = snapshot.Rows.Max(r => r.Seconds) + 1;

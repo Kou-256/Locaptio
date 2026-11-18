@@ -12,6 +12,7 @@ if (args.Contains("--recording-playback")) { await RecordingPlaybackChecks.RunAs
 if (args.Contains("--transcript-tools")) { await TranscriptToolsChecks.RunAsync(); return; }
 if (args.Contains("--real-tools")) { await RealToolsChecks.RunAsync(); return; }
 if (args.Length > 1 && args[0] == "--llm-recovery") { await LlmRecoveryChecks.RunAsync(args[1]); return; }
+if (args.Length > 2 && args[0] == "--translation-pack") { await TranslationPackChecks.RunAsync(args[1], args[2], args.Length > 3 ? args[3] : "en", args.Length > 4 ? args[4] : "ja"); return; }
 if (args.Contains("--text-tools")) { TextToolsChecks.Run(); return; }
 if (args.Contains("--timing")) { TimingChecks.Pause(); TimingChecks.Tracker(); TimingChecks.ContentCheck(); TimingChecks.Synthetic(); return; }
 if (args.Contains("--timing-real")) { TimingChecks.Real(); return; }
