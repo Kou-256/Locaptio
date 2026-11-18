@@ -209,6 +209,9 @@ public sealed partial class MainWindow : Window
         ApplySettings();
         PrepareAiInBackground();
     }
+    /// <summary>Translation-time palettes (original / translation), default first; "custom" uses one chosen color.</summary>
+    private static readonly string[] TranslationPalettes = ["white-cyan", "yellow-white", "cyan-white", "white-yellow", "white", "custom"];
+    private static readonly string[] TranslationPaletteLabels = ["原文: 白／翻訳: 水色（既定）", "原文: 黄色／翻訳: 白", "原文: 水色／翻訳: 白", "原文: 白／翻訳: 黄色", "原文・翻訳とも白", "指定した文字色"];
     private void SetAiCorrectionEnabled(bool enabled)
     {
         settings.CorrectTranscriptWithAi = enabled;
@@ -942,7 +945,7 @@ public sealed partial class MainWindow : Window
         if (settings.SpeechModel is not ("tiny" or "base" or "small" or "medium" or "large-v3-turbo")) settings.SpeechModel = "large-v3-turbo";
         if (settings.InferenceDevice is not ("gpu" or "cuda" or "npu" or "cpu")) settings.InferenceDevice = "gpu";
         if (settings.CaptionLayout is not ("english-top" or "japanese-top" or "side-by-side")) settings.CaptionLayout = "english-top";
-        if (settings.CaptionPalette is not ("white-yellow" or "white" or "cyan-white" or "custom")) settings.CaptionPalette = "white";
+        if (settings.CaptionPalette is not ("white-cyan" or "yellow-white" or "white-yellow" or "white" or "cyan-white" or "custom")) settings.CaptionPalette = "white-cyan";
         if (settings.CaptionBackground is not ("dark" or "black" or "light" or "live")) settings.CaptionBackground = "live";
         if (settings.CaptionAlignment is not ("left" or "center" or "right")) settings.CaptionAlignment = "center";
         settings.CaptionEnglishSize = Math.Clamp(settings.CaptionEnglishSize, 14, 64); settings.CaptionJapaneseSize = Math.Clamp(settings.CaptionJapaneseSize, 14, 64);
@@ -1053,7 +1056,7 @@ public sealed partial class MainWindow : Window
                 input.TextChanged += (_, _) => { string hex = input.Text.Trim().TrimStart('#'); if (hex.Length == 6 && uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out uint rgb)) { set("#" + hex.ToUpperInvariant()); picker.Color = Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb); ApplySettings(); } };
                 content.Children.Add(input); content.Children.Add(new Expander { Header = label + "を選択", Content = picker, HorizontalAlignment = HorizontalAlignment.Stretch });
             }
-            ColorSetting("通常の文字色", settings.CaptionTextColor, v => { settings.CaptionTextColor = v; settings.CaptionPalette = "custom"; if (textPaletteSelector is not null) textPaletteSelector.SelectedIndex = 3; });
+            ColorSetting("通常の文字色", settings.CaptionTextColor, v => { settings.CaptionTextColor = v; settings.CaptionPalette = "custom"; if (textPaletteSelector is not null) textPaletteSelector.SelectedIndex = Array.IndexOf(TranslationPalettes, "custom"); });
             ColorSetting("アプリと字幕の背景色", settings.CaptionSurfaceColor, v => { settings.CaptionSurfaceColor = v; settings.CaptionBackground = "live"; if (surfaceSelector is not null) surfaceSelector.SelectedIndex = 3; });
             ColorSetting("字幕とウィンドウの枠色", settings.CaptionBorderColor, v => settings.CaptionBorderColor = v);
             var correctedColor = new TextBox { Header = "補正済みの文字色（#RRGGBB）", Text = settings.CaptionCorrectedColor, PlaceholderText = "#70E1C4" };
@@ -1076,8 +1079,8 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = "行数を超える古い発話は非表示にします。1つの発話が長い場合は最新の部分を表示し、本体には全文を残します。", TextWrapping = TextWrapping.Wrap });
             Slider("字幕に表示する発話数", 1, 10, settings.CaptionRows, v => settings.CaptionRows = (int)v);
             Slider("字幕を消すまでの秒数（認識更新が止まった後）", 1, 20, settings.CaptionHideSeconds, v => settings.CaptionHideSeconds = v);
-            textPaletteSelector = Choice("翻訳時の文字色", ["原文: 白／翻訳: 黄色", "原文・翻訳とも白", "原文: 水色／翻訳: 白（既定）", "指定した文字色"], settings.CaptionPalette == "custom" ? 3 : settings.CaptionPalette == "white" ? 1 : settings.CaptionPalette == "cyan-white" ? 2 : 0, i => settings.CaptionPalette = i == 3 ? "custom" : i == 1 ? "white" : i == 2 ? "cyan-white" : "white-yellow");
-            transcriptColorSelector = Choice("文字起こしのみのときの文字色", ["白（既定）", "水色", "黄色"], settings.CaptionTranscriptColor switch { "cyan" => 1, "yellow" => 2, _ => 0 }, i => { settings.CaptionTranscriptColor = i switch { 1 => "cyan", 2 => "yellow", _ => "white" }; if (settings.CaptionPalette == "custom") { settings.CaptionPalette = "cyan-white"; if (textPaletteSelector is not null) textPaletteSelector.SelectedIndex = 2; } });
+            textPaletteSelector = Choice("翻訳時の文字色", TranslationPaletteLabels, Math.Max(0, Array.IndexOf(TranslationPalettes, settings.CaptionPalette)), i => settings.CaptionPalette = TranslationPalettes[i]);
+            transcriptColorSelector = Choice("文字起こしのみのときの文字色", ["白（既定）", "水色", "黄色"], settings.CaptionTranscriptColor switch { "cyan" => 1, "yellow" => 2, _ => 0 }, i => { settings.CaptionTranscriptColor = i switch { 1 => "cyan", 2 => "yellow", _ => "white" }; if (settings.CaptionPalette == "custom") { settings.CaptionPalette = "white-cyan"; if (textPaletteSelector is not null) textPaletteSelector.SelectedIndex = 0; } });
             content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8, Text = "色は言語ではなく役割で決まります。翻訳するときは「原文（話した言葉）」と「翻訳」、翻訳しないときは「文字起こしのみ」の色を使います。「指定した文字色」はすべてに同じ色を使います。" });
             surfaceSelector = Choice("字幕の背景", ["従来の暗い背景", "黒", "白（文字は濃色）", "ライブキャプション風／指定した背景色"], settings.CaptionBackground == "live" ? 3 : settings.CaptionBackground == "black" ? 1 : settings.CaptionBackground == "light" ? 2 : 0, i => settings.CaptionBackground = i == 3 ? "live" : i == 1 ? "black" : i == 2 ? "light" : "dark");
             Choice("字幕の文字揃え", ["中央", "左", "右"], settings.CaptionAlignment == "left" ? 1 : settings.CaptionAlignment == "right" ? 2 : 0, i => settings.CaptionAlignment = i == 1 ? "left" : i == 2 ? "right" : "center");
@@ -1403,8 +1406,8 @@ public sealed partial class MainWindow : Window
             bool customColors = settings.CaptionPalette == "custom" && settings.CaptionTextColor == "#AADDEE" && settings.CaptionSurfaceColor == "#444444" && captionWindow.UsesOrdinaryColors()
                 && ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color == Windows.UI.Color.FromArgb(255, 68, 68, 68);
             var paletteSelector = settingItems.OfType<DownwardSelector>().Single(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(c) == "翻訳時の文字色");
-            colorDebug += $"; selector={paletteSelector.SelectedIndex}"; customColors &= paletteSelector.SelectedIndex == 3;
-            paletteSelector.SelectedIndex = 1; await Task.Delay(100); customColors &= settings.CaptionPalette == "white" && captionWindow.UsesOrdinaryColors(); colorDebug += $"; preset={settings.CaptionPalette}, ordinary={captionWindow.UsesOrdinaryColors()}";
+            colorDebug += $"; selector={paletteSelector.SelectedIndex}"; customColors &= paletteSelector.SelectedIndex == Array.IndexOf(TranslationPalettes, "custom");
+            paletteSelector.SelectedIndex = Array.IndexOf(TranslationPalettes, "white"); await Task.Delay(100); customColors &= settings.CaptionPalette == "white" && captionWindow.UsesOrdinaryColors(); colorDebug += $"; preset={settings.CaptionPalette}, ordinary={captionWindow.UsesOrdinaryColors()}";
             settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; ApplySettings(); settingsWindow?.Close();
             bool noMarker = captionWindow.RenderedPositions().All(t => !t.Text.Contains("AI補正"));
             await captionWindow.CaptureAsync(Path.Combine(root, "artifacts", "caption-text-bubbles.png"));

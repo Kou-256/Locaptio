@@ -8,6 +8,8 @@ export const updates = {
     latest: '最新',
     all: 'すべての変更履歴を見る（GitHub）',
     items: [
+      ['1.0.60', '字幕の文字色の既定を変更', [
+        '翻訳時の既定を「原文: 白／翻訳: 水色」にし、「原文: 黄色／翻訳: 白」を追加しました。']],
       ['1.0.59', '字幕の文字色を「原文」「翻訳」で設定', [
         '色は言語ではなく役割で決まります。翻訳時は原文と翻訳、翻訳しないときは「文字起こしのみ」の色を別に選べます。']],
       ['1.0.58', '要約欄の表示をそろえ、AIの準備を早めに', [
@@ -64,6 +66,8 @@ export const updates = {
     latest: 'Latest',
     all: 'See the full changelog (GitHub)',
     items: [
+      ['1.0.60', 'New default caption colors', [
+        'While translating, the default is now original white / translation cyan; original yellow / translation white was added.']],
       ['1.0.59', 'Caption colors by role', [
         'Colors follow the role, not the language: original and translation while translating, and a separate color when only transcribing.']],
       ['1.0.58', 'Consistent summary pane; AI prepared earlier', [
