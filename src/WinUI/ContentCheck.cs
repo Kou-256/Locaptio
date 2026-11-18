@@ -50,7 +50,7 @@ public sealed partial class MainWindow
         if (!ContentCheckModelReady(model)) model = settings.SpeechModel;
         if (!ContentCheckModelReady(model)) return;
         string wav = Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase) ? path : path + ".recording.wav";
-        bool japanese = SpeechJapanese;
+        bool japanese = SpeechJapanese; string language = SpeechLanguage;
         const bool cpu = true;
         var run = new LiveContentCheck(Path.GetFullPath(path)); liveContentCheck = run;
         var token = run.Stop.Token; var normalize = Terms.Apply; string prompt = Terms.SpeechPrompt(settings.SpeechPrompt);
@@ -58,14 +58,14 @@ public sealed partial class MainWindow
         {
             try
             {
-                run.Models = new PreparedInference(root, japanese, model, prompt, "cpu", cpu, false, false, LlmModelFile, _ => { });
+                run.Models = new PreparedInference(root, japanese, model, prompt, "cpu", cpu, false, false, LlmModelFile, _ => { }, language: language);
                 await Task.WhenAll(run.Models.Ready, run.Models.AccuracyReady).WaitAsync(token);
                 run.Models.Speech.RequestTimeout = TimeSpan.FromMinutes(5);
                 // As for whole-file recognition: earlier text must not steer the next segment.
                 run.Models.Speech.ResetSpeechContext();
                 var speech = run.Models.Speech; run.ModelReady = run.Clock.Elapsed.TotalSeconds; run.Backend = speech.Backend + " " + speech.Model;
                 var phrases = new List<RecordingPhrase>();
-                await FileTranscription.RunGrowingAsync(wav, () => run.Complete, speech, japanese ? "ja" : "en", phrase => { phrases.Add(phrase); run.Heard = phrases.Count; lock (run.Timeline) run.Timeline.Add($"{phrase.Seconds:F1}-{phrase.EndSeconds:F1}s@{run.Clock.Elapsed.TotalSeconds:F1}"); return Task.CompletedTask; }, token, normalize, message => { lock (run.Timeline) run.Timeline.Add($"{message}@{run.Clock.Elapsed.TotalSeconds:F1}"); });
+                await FileTranscription.RunGrowingAsync(wav, () => run.Complete, speech, language, phrase => { phrases.Add(phrase); run.Heard = phrases.Count; lock (run.Timeline) run.Timeline.Add($"{phrase.Seconds:F1}-{phrase.EndSeconds:F1}s@{run.Clock.Elapsed.TotalSeconds:F1}"); return Task.CompletedTask; }, token, normalize, message => { lock (run.Timeline) run.Timeline.Add($"{message}@{run.Clock.Elapsed.TotalSeconds:F1}"); });
                 return phrases;
             }
             catch (OperationCanceledException) { return null; }

@@ -67,7 +67,7 @@ public sealed partial class MainWindow
     {
         await Task.Yield();
         string? audio = null; bool copied = false; List<RecordingPhrase> phrases = new();
-        var recordedAt = DateTimeOffset.Now; bool japanese = SpeechJapanese; var route = Route is { } chosen ? TranslationPacks.Route(chosen.Source, chosen.Target, root) : null;
+        var recordedAt = DateTimeOffset.Now; bool japanese = SpeechJapanese; string language = SpeechLanguage; var route = Route is { } chosen ? TranslationPacks.Route(chosen.Source, chosen.Target, root) : null;
         RecordingDocument Document() => new(1, Path.GetFileName(audio!), recordedAt, true, phrases.ToArray(), Model: settings.SpeechModel);
         try
         {
@@ -78,7 +78,7 @@ public sealed partial class MainWindow
             if (MissingTranslationPack(root) is { } missing) throw new InvalidOperationException(missing);
             await SpeechPreparation.EnsureAsync(root, settings.SpeechModel, route is { BuiltIn: true }, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
             using var worker = new PreparedInference(root, japanese, settings.SpeechModel, Terms.SpeechPrompt(settings.SpeechPrompt), settings.InferenceDevice, cpu, false,
-                settings.CorrectTranscriptWithAi, LlmModelFile, Status, progress: BeginPreparation(), route: route);
+                settings.CorrectTranscriptWithAi, LlmModelFile, Status, progress: BeginPreparation(), route: route, language: language);
             worker.Speech.RequestTimeout = TimeSpan.FromMinutes(5);
             if (worker.Translation is not null) worker.Translation.RequestTimeout = TimeSpan.FromMinutes(5);
             await worker.Ready.WaitAsync(token);
@@ -95,7 +95,7 @@ public sealed partial class MainWindow
             PlaybackPanel.Visibility = Visibility.Collapsed;
             DateTime nextSave = DateTime.UtcNow;
             var progress = new Progress<double>(percent => { if (!closing) StatusText.Text = $"ファイル文字起こし：{percent:F0}%（Stopで中止・認識済み部分は保存）"; });
-            await Task.Run(() => FileTranscription.RunAsync(audio, worker.Speech, japanese ? "ja" : "en", async phrase =>
+            await Task.Run(() => FileTranscription.RunAsync(audio, worker.Speech, language, async phrase =>
             {
                 phrases.Add(phrase);
                 var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

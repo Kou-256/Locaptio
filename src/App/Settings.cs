@@ -80,8 +80,12 @@ public sealed class Settings
     public bool SpeakerDiarization { get; set; }
     public double SpeakerThreshold { get; set; } = .55;
     public string[] SpeakerColors { get; set; } = ["#7DD3FC", "#FCA5A5", "#86EFAC", "#FDE68A", "#C4B5FD", "#FDBA74", "#F9A8D4", "#5EEAD4"];
-    /// <summary>"translate" (English speech), "japanese" (Japanese transcription) or "ja-translate" (Japanese speech).</summary>
-    public string CaptionMode { get; set; } = "japanese";
+    /// <summary>Spoken language and optional translation target, e.g. "ja" or "en>ja" (CaptionModes). Older values still read.</summary>
+    public string CaptionMode { get; set; } = "ja";
+    /// <summary>Main toolbar items in display order (control names); missing names keep their default place.</summary>
+    public string[] ToolbarOrder { get; set; } = [];
+    /// <summary>Main toolbar items the user has hidden (control names).</summary>
+    public string[] ToolbarHidden { get; set; } = [];
     /// <summary>Language English speech is translated into (M2M100 code).</summary>
     public string EnglishTranslationTarget { get; set; } = "ja";
     /// <summary>Language Japanese speech is translated into in "ja-translate" mode.</summary>

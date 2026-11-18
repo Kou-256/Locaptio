@@ -2,7 +2,7 @@
   #error AppSource must name the prepared distribution folder
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.53"
+  #define AppVersion "1.0.54"
 #endif
 [Setup]
 #ifdef SetupUiTest

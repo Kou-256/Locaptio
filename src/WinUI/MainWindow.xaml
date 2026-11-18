@@ -38,7 +38,7 @@
     <MenuFlyoutItem x:Name="VersionsMenuItem" Text="文字起こしの版を比較・切り替え…" Click="VersionsClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE81C;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <MenuFlyoutSeparator/>
     <MenuFlyoutItem x:Name="BurnSubtitlesMenuItem" Text="字幕付き動画を書き出す…" Click="BurnSubtitlesClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE714;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
-    <ToggleMenuFlyoutItem x:Name="LiveSummaryMenuItem" Text="ライブ要約（文字起こし中に数分ごとに自動で要約）" Click="LiveSummaryClick"/>
+    <ToggleMenuFlyoutItem x:Name="LiveSummaryMenuItem" Text="ライブ要約（録音・文字起こし中に自動で要約）" Click="LiveSummaryClick"><ToggleMenuFlyoutItem.Icon><ImageIcon Source="ms-appx:///Assets/Icons/live-summary.svg"/></ToggleMenuFlyoutItem.Icon></ToggleMenuFlyoutItem>
     <MenuFlyoutItem x:Name="SummaryMenuItem" Text="AIで要約（要点・決定事項・TODO）" Click="SummaryClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8FD;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
    </MenuBarItem>
    <MenuBarItem Title="設定(S)">
@@ -51,8 +51,8 @@
    </MenuBarItem>
   </MenuBar>
   <StackPanel Grid.Row="1" Spacing="6">
-  <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><local:DownwardSelector x:Name="ModeSelector" Width="260" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="字幕モード" ToolTipService.ToolTip="切り替え前にテキストの保存を確認します。キャンセルすると現在のモードを維持します。"></local:DownwardSelector><local:DownwardSelector x:Name="AudioSelector" Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="500" SelectionChanged="AudioChanged" DropDownOpened="AudioMenuOpened" AutomationProperties.Name="音声入力" ToolTipService.ToolTip="Windows字幕連携ではPC内音声／PC内音声＋マイクを選択し、Windows側のマイク設定も自動で切り替えます。Whisperではマイク単独・指定アプリも選べます。入力を切り替えても会話履歴は保持します。録音中は同じ録音フォルダーの別ファイルに分割します。"/></Grid>
-  <local:ToolbarPanel x:Name="MainToolbar">
+  <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><local:DownwardSelector x:Name="ModeSelector" Width="170" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="話す言語" ToolTipService.ToolTip="音声の言語（日本語・英語・イタリア語・スペイン語）。切り替え前にテキストの保存を確認します。"></local:DownwardSelector><local:DownwardSelector x:Name="TargetSelector" Grid.Column="1" Width="200" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="翻訳" ToolTipService.ToolTip="文字起こしのみ、または翻訳先の言語。英語→日本語以外は設定でダウンロードする翻訳モデルを使います。"></local:DownwardSelector><local:DownwardSelector x:Name="AudioSelector" Grid.Column="2" HorizontalAlignment="Stretch" MaxWidth="500" SelectionChanged="AudioChanged" DropDownOpened="AudioMenuOpened" AutomationProperties.Name="音声入力" ToolTipService.ToolTip="Windows字幕連携ではPC内音声／PC内音声＋マイクを選択し、Windows側のマイク設定も自動で切り替えます。Whisperではマイク単独・指定アプリも選べます。入力を切り替えても会話履歴は保持します。録音中は同じ録音フォルダーの別ファイルに分割します。"/></Grid>
+  <local:ToolbarPanel x:Name="MainToolbar" RightTapped="ToolbarRightTapped">
    <local:ToolbarPanel.Resources>
     <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}"><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
     <Style x:Key="PrimaryToolbarButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}"><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="14,4"/><Setter Property="FontSize" Value="14"/><Setter Property="CornerRadius" Value="4"/></Style>
@@ -85,6 +85,7 @@
    <Button x:Name="LibraryButton" Click="OpenRecordingClick" AutomationProperties.Name="録音一覧・再生" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8B7;"/><TextBlock Text="録音一覧"/></StackPanel></Button>
    <Button x:Name="ImportButton" Click="ImportAudioClick" AutomationProperties.Name="音声ファイル読込" ToolTipService.ToolTip="MP3・M4A・WAVの音声やMP4・MOVなどの動画をローカルで文字起こし。ドラッグ＆ドロップにも対応。原本は変更しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8E5;"/><TextBlock Text="ファイル読込"/></StackPanel></Button>
    <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回の開始から。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
+   <CheckBox x:Name="LiveSummaryToggle" Content="ライブ要約" Click="LiveSummaryToggleClick" AutomationProperties.Name="ライブ要約" ToolTipService.ToolTip="録音・文字起こし中に、数分ごとの発話をローカルAIが要約して右の欄に追加します。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。録音中でもON/OFFできます。"/>
    <Button x:Name="SearchButton" Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;"/></Button>
   </local:ToolbarPanel></StackPanel>
   <StackPanel Grid.Row="2" Spacing="4">

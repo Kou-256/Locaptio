@@ -38,20 +38,42 @@ function Test-LocaptioPython([string]$Python) {
     try { & $Python -I -c 'import sys' 2>&1 | Out-Null; return $LASTEXITCODE -eq 0 } catch { return $false }
 }
 
+# A working environment is left untouched: rewriting Scripts\python.exe fails (os error 32)
+# while another Locaptio worker or download runs from it.
+function Test-LocaptioEnvironment([string]$Environment) {
+    $config = Join-Path $Environment 'pyvenv.cfg'
+    if (-not (Test-Path -LiteralPath $config)) { return $false }
+    $venvHome = ([IO.File]::ReadAllLines($config) | Where-Object { $_ -match '^home\s*=' } | Select-Object -First 1) -replace '^home\s*=\s*', ''
+    if (-not $venvHome -or -not (Test-Path -LiteralPath (Join-Path $venvHome 'python.exe'))) { return $false }
+    if ((Get-Item -LiteralPath $venvHome).Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+    return Test-LocaptioPython (Join-Path $Environment 'Scripts\python.exe')
+}
+
 # Creates or repairs a Python environment and returns the full path of its python.exe, checked to run.
 function Initialize-LocaptioEnvironment([string]$Root, [string]$Name) {
     $python = Get-LocaptioPython -Root $Root
     $environment = Join-Path $Root $Name
+    $environmentPython = Join-Path $environment 'Scripts\python.exe'
+    if (Test-LocaptioEnvironment $environment) { return $environmentPython }
     # Repair existing environments too: v1.0.42 could leave home pointing at
     # uv's minor-version junction. Keep installed packages and all user data.
-    & uv venv --allow-existing --python $python $environment | Out-Host
-    if ($LASTEXITCODE) { throw 'Python環境の作成または修復に失敗しました。' }
+    # uv reports progress on stderr; with 'Stop' Windows PowerShell would turn that into an error.
+    $preference = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $output = @(& uv venv --allow-existing --python $python $environment 2>&1 | ForEach-Object { "$_" }) }
+    finally { $ErrorActionPreference = $preference }
+    $output | Out-Host
+    if ($LASTEXITCODE) {
+        if (($output | Out-String) -match 'os error 32') {
+            throw ("Python環境（$Name）を修復できません。別の処理（翻訳モデルのダウンロード、文字起こし、AI補正など）がこのPythonを使用中です。" +
+                '実行中の処理が終わるか停止してから、もう一度お試しください。')
+        }
+        throw 'Python環境の作成または修復に失敗しました。'
+    }
     $config = Join-Path $environment 'pyvenv.cfg'
     $pythonHome = Split-Path $python -Parent
     $lines = [IO.File]::ReadAllLines($config)
     $lines = @($lines | ForEach-Object { if ($_ -match '^home\s*=') { 'home = ' + $pythonHome } else { $_ } })
     [IO.File]::WriteAllLines($config, [string[]]$lines, (New-Object System.Text.UTF8Encoding $false))
-    $environmentPython = Join-Path $environment 'Scripts\python.exe'
     if (-not (Test-LocaptioPython $environmentPython)) {
         # Security software can remove or block the launcher uv places in the environment.
         # Python's own venv module writes a fresh launcher; installed packages stay.

@@ -57,12 +57,11 @@ public static class TranslationPacks
     /// <summary>The pack still to be downloaded for a route, or null when it is ready (or built in).</summary>
     public static TranslationPack? Missing(string root, TranslationRoute route) => route.BuiltIn ? null : Find(route.Pack) is { } pack && !pack.IsInstalled(root) ? pack : null;
 
-    private static readonly SemaphoreSlim gate = new(1);
     /// <summary>Downloads and converts a pack (scripts/setup-translation.ps1). Only called from Settings.</summary>
     public static async Task EnsureAsync(string root, string key, Action<PreparationProgress>? progress, CancellationToken token)
     {
         var pack = Find(key) ?? throw new ArgumentException("Unknown translation pack", nameof(key));
-        await gate.WaitAsync(token);
+        await SpeechPreparation.WaitAsync(progress, token);
         try
         {
             if (pack.IsInstalled(root)) return;
@@ -88,6 +87,6 @@ public static class TranslationPacks
             if (process.ExitCode != 0 || !pack.IsInstalled(root)) throw new IOException("翻訳モデルを準備できませんでした。ネット接続と空き容量を確認してください。\n" + string.Join("\n", tail));
             progress?.Invoke(new("翻訳モデル", 2, 2, "準備完了"));
         }
-        finally { gate.Release(); }
+        finally { SpeechPreparation.EnvironmentGate.Release(); }
     }
 }

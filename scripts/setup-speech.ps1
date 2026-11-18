@@ -1,4 +1,4 @@
-﻿param([ValidateSet('tiny','base','small','medium','large-v3-turbo')][string]$Model = 'small', [switch]$Translation)
+﻿param([ValidateSet('tiny','base','small','medium','large-v3-turbo')][string]$Model = 'small', [switch]$Translation, [switch]$TranslationOnly)
 . (Join-Path $PSScriptRoot 'setup-common.ps1')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -9,9 +9,11 @@ try {
     if ($LASTEXITCODE) { throw '音声認識の依存関係をインストールできませんでした。ネット接続と空き容量を確認してください。' }
     # Installing large packages can take minutes; security software may scan or remove files meanwhile.
     if (-not (Test-LocaptioPython $python)) { $python = Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv' }
-    & $python inference/setup_speech.py --model $Model
-    if ($LASTEXITCODE) { throw '音声認識モデルを準備できませんでした' }
-    if ($Translation -and -not (Test-Path 'models/translation/model.bin')) {
+    if (-not $TranslationOnly) {
+        & $python inference/setup_speech.py --model $Model
+        if ($LASTEXITCODE) { throw '音声認識モデルを準備できませんでした' }
+    }
+    if (($Translation -or $TranslationOnly) -and -not (Test-Path 'models/translation/model.bin')) {
         & $python inference/setup_models.py
         if ($LASTEXITCODE) { throw 'Translation preparation failed' }
     }

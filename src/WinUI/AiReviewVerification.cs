@@ -104,6 +104,60 @@ public sealed partial class MainWindow
             Check(liveBlocks.Count == 2 && liveBlocks[1].LastId == historyIds[^1], $"the rest is summarized when listening stops ({liveBlocks.Count} blocks, {standIn.Calls} calls, next={liveSummaryNextId}, last={historyIds[^1]})");
             Check(SummaryContent.Children.OfType<TextBlock>().First().Text.StartsWith("ライブ要約") && SummaryContent.Children.OfType<StackPanel>().Count() == 2, "pane shows both blocks, newest first");
             await CaptureComposedAsync(Path.Combine(shots, "live-summary.png"));
+
+            // 5. During a recording: the toolbar toggle turns it off and on, and turning it on catches up earlier speech.
+            //    A long session folds older blocks into "so far" and keeps the originals under an expander.
+            ClearCaptions(); standIn = new StandInSummary(); liveSummaryBackendForVerification = standIn;
+            using (var recordingRun = new CancellationTokenSource())
+            using (var listening = new CancellationTokenSource())
+            {
+                recordingStop = recordingRun; captionStop = listening; UpdateCommandStates();
+                LiveSummaryToggle.IsChecked = false; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                Check(!settings.LiveSummary && LiveSummaryMenuItem.IsChecked == false && LiveSummaryToggle.IsEnabled, "toolbar toggle turns live summary off while recording");
+                for (int i = 0; i < 40; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, sentence, null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                await LiveSummaryTickAsync();
+                Check(liveBlocks.Count == 0 && standIn.Calls == 0, "nothing is summarized while it is off");
+                LiveSummaryToggle.IsChecked = true; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                Check(settings.LiveSummary && LiveSummaryMenuItem.IsChecked, "toolbar toggle turns live summary on while recording");
+                await LiveSummaryTickAsync();
+                Check(liveBlocks.Count == 1 && liveBlocks[0].FirstId == historyIds[0], "speech from before it was turned on is caught up");
+                for (int block = 0; block < 3; block++)
+                {
+                    for (int i = 0; i < 40; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, sentence, null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    await LiveSummaryTickAsync();
+                }
+                Check(liveDigest is not null && liveArchived.Count == 1 && liveBlocks.Count == LiveRecentBlocks, $"older blocks are folded into a digest ({liveArchived.Count} archived, {liveBlocks.Count} recent)");
+                Check(SummaryContent.Children.OfType<Expander>().Count() == 1 && SummaryContent.Children.OfType<StackPanel>().Count() == LiveRecentBlocks + 1, "pane shows recent blocks, the digest and the folded originals");
+                await CaptureComposedAsync(Path.Combine(shots, "live-summary-recording.png"));
+                captionStop = null; recordingStop = null; UpdateCommandStates();
+            }
+            log.Add("PASS: live summary toggles while recording, catches up, and condenses older blocks");
+            Check(LiveSummaryToggle is CheckBox && LiveSummaryMenuItem.Icon is ImageIcon, "live summary is a toolbar checkbox; its icon is only in the menu bar");
+
+            // 6. Toolbar: hide, reorder, settings rows, persistence and reset (the user's own layout is restored afterwards).
+            string[] savedOrder = settings.ToolbarOrder, savedHidden = settings.ToolbarHidden;
+            try
+            {
+                ResetToolbar();
+                string[] defaults = CurrentToolbarOrder();
+                SetToolbarHidden("ImportButton", true); SetToolbarHidden("StartButton", true);
+                MoveToolbarItem("LiveSummaryToggle", -2);
+                await Task.Delay(200); MainToolbar.UpdateLayout();
+                var order = CurrentToolbarOrder();
+                Check(MainToolbar.Hidden.Contains(ImportButton) && Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(ImportButton).Width == 0 && !MainToolbar.Hidden.Contains(StartButton) && Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(StartButton).Width > 0, "an item hides; 開始 cannot be hidden");
+                Check(Array.IndexOf(order, "LiveSummaryToggle") == Array.IndexOf(defaults, "LiveSummaryToggle") - 2 && settings.ToolbarOrder.SequenceEqual(order) && settings.ToolbarHidden.SequenceEqual(["ImportButton"]), "an item moves and both are saved: " + string.Join(",", order));
+                await CaptureComposedAsync(Path.Combine(shots, "toolbar-customized.png"));
+                // A fresh layout pass from the saved settings gives the same result (as after a restart).
+                ResetToolbarOrderForVerification(defaults); ApplyToolbarLayout();
+                Check(CurrentToolbarOrder().SequenceEqual(order) && MainToolbar.Hidden.Contains(ImportButton), "saved order and hidden items are applied again");
+                var toolbarPage = new StackPanel(); AddToolbarSettings(toolbarPage);
+                var rows = toolbarPage.Children.OfType<StackPanel>().Single().Children.OfType<Grid>().ToArray();
+                Check(rows.Length == defaults.Length && rows.Any(r => r.Children.OfType<CheckBox>().First().Content as string == "音声ファイル読込" && r.Children.OfType<CheckBox>().First().IsChecked == false)
+                    && rows.First(r => (string)r.Children.OfType<CheckBox>().First().Content == "開始").Children.OfType<CheckBox>().First().IsEnabled == false, "settings list every item with show checkboxes (開始 locked)");
+                ResetToolbar();
+                Check(CurrentToolbarOrder().SequenceEqual(defaults) && MainToolbar.Hidden.Count == 0, "reset restores the default toolbar");
+            }
+            finally { settings.ToolbarOrder = savedOrder; settings.ToolbarHidden = savedHidden; settings.Save(); ApplyToolbarLayout(); }
         }
         catch (Exception ex) { failures.Add(ex.Message); log.Add(ex.ToString()); }
         finally

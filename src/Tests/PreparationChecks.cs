@@ -5,6 +5,30 @@ internal static class PreparationChecks
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
     public static async Task RunAsync(bool realWorker)
     {
+        // Windows-captions translation needs no speech model, and must not touch .venv while it is ready.
+        string root = Directory.CreateTempSubdirectory("locaptio-prep-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, ".venv", "Scripts"));
+            File.WriteAllText(Path.Combine(root, ".venv", "Scripts", "python.exe"), "");
+            File.WriteAllText(Path.Combine(root, ".venv", ".locaptio-speech-v2"), "ready");
+            using var quick = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await SpeechPreparation.EnsureTranslationAsync(root, false, null, quick.Token);
+            Directory.CreateDirectory(Path.Combine(root, "models", "translation"));
+            File.WriteAllText(Path.Combine(root, "models", "translation", "model.bin"), "");
+            await SpeechPreparation.EnsureTranslationAsync(root, true, null, quick.Token);
+            Check(!Directory.Exists(Path.Combine(root, "models", "speech-base")), "Translation-only preparation fetched a speech model");
+            // While another preparation holds the environment, the wait is reported instead of failing.
+            await SpeechPreparation.EnvironmentGate.WaitAsync();
+            string? waiting = null;
+            File.Delete(Path.Combine(root, "models", "translation", "model.bin"));
+            using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+            try { await SpeechPreparation.EnsureTranslationAsync(root, true, p => waiting = p.Stage, cancel.Token); } catch (OperationCanceledException) { }
+            finally { SpeechPreparation.EnvironmentGate.Release(); }
+            Check(waiting?.Contains("待って") == true, "Waiting for another preparation was not reported");
+        }
+        finally { Directory.Delete(root, true); }
+        Console.WriteLine("PASS: translation-only preparation skips speech models and waits for other setups");
         var tracker = new PreparationTracker();
         tracker.Update(new("NPU", 0, 6, "環境確認"));
         Check(tracker.Percent == 0 && !tracker.Complete, "Preparation started completed");
