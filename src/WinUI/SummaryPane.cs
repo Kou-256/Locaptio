@@ -49,10 +49,16 @@ public sealed partial class MainWindow
         ShowSummaryPane(true);
         if (summaryItems.Length == 0) RenderSummary();
     }
-    private void SummaryCloseClick(object sender, RoutedEventArgs e) => ShowSummaryPane(false);
+    private void SummaryCloseClick(object sender, RoutedEventArgs e) { if (summaryWindow is not null) summaryWindow.Close(); else ShowSummaryPane(false); }
+    /// <summary>The summary is on screen, beside the transcript or in its own window.</summary>
+    private bool SummaryShown => summaryWindow is not null || SummaryPane.Visibility == Visibility.Visible;
     private void ShowSummaryPane(bool visible)
     {
-        SummaryPane.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        // Popped out: the separate window is the summary pane.
+        if (summaryWindow is not null) { if (visible) summaryWindow.Activate(); else summaryWindow.Close(); return; }
+        SummaryPane.Width = Math.Clamp(settings.SummaryPaneWidth, 260, Math.Max(260, Root.ActualWidth > 0 ? Root.ActualWidth * .7 : 900));
+        SummaryPane.Visibility = SummaryResizeGrip.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        SummaryResizeGrip.Margin = new Thickness(0, 24, SummaryPane.Width + 2, 24);
         // The pane sits beside the transcript rather than over it.
         double reserved = visible ? SummaryPane.Width + 10 : 0;
         CaptionList.Margin = new Thickness(0, 0, reserved, 0); Header.Margin = new Thickness(0, 0, reserved, 0);
@@ -62,17 +68,18 @@ public sealed partial class MainWindow
     private void ClearSummary()
     {
         summaryItems = []; ResetLiveSummary();
-        if (SummaryPane.Visibility == Visibility.Visible) RenderSummary();
+        if (SummaryShown) RenderSummary();
     }
     private void RestoreSummary(RecordingDocument document)
     {
         summaryItems = (document.Summary ?? []).Select(item => new SummaryItem(item.Section, item.Text,
             item.Evidence.Select(seconds => RecordingTranscript.At(document, seconds + .0005)?.Id ?? 0).Where(id => id != 0).Distinct().ToArray())).ToArray();
-        if (summaryItems.Length > 0 || SummaryPane.Visibility == Visibility.Visible) RenderSummary();
+        if (summaryItems.Length > 0 || SummaryShown) RenderSummary();
         if (summaryItems.Length > 0) ShowSummaryPane(true);
     }
     private void RenderSummary(string? message = null)
     {
+        UpdateLiveSummaryClear();
         if (message is null && summaryItems.Length == 0 && (liveBlocks.Count > 0 || liveDigest is not null)) { RenderLiveSummary(); return; }
         SummaryContent.Children.Clear();
         SummaryCopyButton.IsEnabled = SummarySaveButton.IsEnabled = summaryItems.Length > 0;
