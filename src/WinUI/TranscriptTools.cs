@@ -589,7 +589,7 @@ public sealed partial class MainWindow
         if (!settings.AutosaveSession || reviewingRecording || history.Count == 0) return;
         var rows = history.Select(row => new AutosaveRow(row.Id, RowSeconds(row.Caption), row.English, row.Japanese, row.Caption.SourceLanguage, row.Caption.SpeakerId,
             edits.Original(row.Id) is { } original && original != row.English ? original : null, edits.IsEdited(row.Id))).ToArray();
-        var snapshot = new AutosaveSnapshot(1, DateTimeOffset.Now, settings.CaptionMode, recordingStop is not null ? recordingPath : null, rows, bookmarks.Count == 0 ? null : bookmarks.ToArray());
+        var snapshot = new AutosaveSnapshot(1, DateTimeOffset.Now, settings.CaptionMode, recordingStop is not null ? recordingPath : null, rows, bookmarks.Count == 0 ? null : bookmarks.ToArray(), SummarySnapshot());
         string path = autosavePath;
         // Up to 1,000 rows every 5 s; a multi-hour session (20,000 rows, a few MB) every 30 s at most.
         autosaveTimer.Interval = TimeSpan.FromSeconds(Math.Clamp(5 + rows.Length / 800.0, 5, 30));
@@ -670,6 +670,12 @@ public sealed partial class MainWindow
             // The recording's own search data carries the media times; open it like any saved recording.
             await LoadRecordingAsync(audio);
             if (playbackDocument is not null && !File.Exists(audio + ".txt")) await RecordingLibrary.SaveTextAsync(audio, playbackDocument);
+            // The recording's phrases are the same utterances in the same order as the snapshot's rows.
+            if (snapshot.Summary is { } saved && history.Count == snapshot.Rows.Length)
+            {
+                var byOrder = snapshot.Rows.Select((row, i) => (row.Id, history[i].Id)).ToDictionary(p => p.Item1, p => p.Item2);
+                RestoreSummarySnapshot(saved, byOrder);
+            }
             Status("中断された録音と文字起こしを復元しました: " + audio); return;
         }
         ClearCaptions(); reviewingRecording = false; playbackDocument = null; playbackPath = "";
@@ -690,6 +696,7 @@ public sealed partial class MainWindow
         }
         foreach (var bookmark in snapshot.Bookmarks ?? [])
             if (ids.TryGetValue(bookmark.PhraseId, out long id) && FindCaption(id) is { } caption) bookmarks.Add(bookmark with { PhraseId = id, Seconds = SessionSeconds(caption.Started) });
+        if (snapshot.Summary is { } summary) RestoreSummarySnapshot(summary, ids);
         RefreshBookmarks(); RenderCaptions(); SaveButton.IsEnabled = transcript.Count > 0; sessionDirty = true;
         SessionTitle.Text = "復元した文字起こし（未保存）／「テキスト保存」で保存、「開始」で続きを追加";
         Status(audio is null ? "前回の文字起こしを復元しました。保存するまでは引き続き自動保存します。" : "文字起こしを復元しました。録音は再生できる状態に直しましたが、対応データがないため文章のみ表示しています: " + audio);

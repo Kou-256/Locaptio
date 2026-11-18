@@ -3,7 +3,11 @@ using System.Text.Json;
 namespace Locaptio.Core;
 
 public sealed record AutosaveRow(long Id, double Seconds, string Text, string? Translation, string Language, int SpeakerId = 0, string? Original = null, bool Edited = false);
-public sealed record AutosaveSnapshot(int Version, DateTimeOffset SavedAt, string Mode, string? RecordingPath, AutosaveRow[] Rows, RecordingBookmark[]? Bookmarks = null);
+public sealed record AutosaveSnapshot(int Version, DateTimeOffset SavedAt, string Mode, string? RecordingPath, AutosaveRow[] Rows, RecordingBookmark[]? Bookmarks = null, AutosaveSummary? Summary = null);
+/// <summary>One live-summary block: the rows it covers and its lines (row IDs are the snapshot's).</summary>
+public sealed record AutosaveSummaryBlock(long FirstId, long LastId, SummaryItem[] Items);
+/// <summary>The summary pane: a full summary, live blocks, folded blocks, the "so far" digest and where live summary continues.</summary>
+public sealed record AutosaveSummary(SummaryItem[] Full, AutosaveSummaryBlock[] Live, AutosaveSummaryBlock[] Archived, AutosaveSummaryBlock? Digest, long NextId);
 
 /// <summary>
 /// Crash recovery for the transcript on screen. The snapshot is replaced atomically while a

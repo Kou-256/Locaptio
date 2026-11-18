@@ -46,8 +46,8 @@ public sealed partial class MainWindow
         Set(!busy && (text || review), ClearButton, ClearMenuItem);
         Set(!busy && !recording && !live && (text || review || SummaryPane.Visibility == Visibility.Visible), HomeButton, HomeMenuItem);
         Set(!busy && text, SubtitlesMenuItem, MoreSubtitlesItem, SubtitlesToolButton, CopyMenuItem, MoreCopyItem, ChangesMenuItem, MoreChangesItem, EditMenuItem);
-        // The summary reads a finished transcript; during listening or recording the text is still changing.
-        Set(!busy && text && !live && !recording, SummaryMenuItem, MoreSummaryItem, SummaryToolButton);
+        // During listening or recording the summary pane summarizes what has been said so far (live summary).
+        Set(!busy && (text || live || recording), SummaryMenuItem, MoreSummaryItem, SummaryToolButton);
         Set(!busy && review, RetranscribeButton, RetranscribeMenuItem, SyncButton, SyncMenuItem, VersionsButton, VersionsMenuItem);
         Set(!busy, LibraryButton, ImportButton, MoreButton);
         Set(!busy && (recording || playbackDocument is not null), SearchButton);
