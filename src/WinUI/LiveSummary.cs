@@ -26,9 +26,18 @@ public sealed partial class MainWindow
     private bool liveSummaryRunning, liveSummaryNoModelShown;
     /// <summary>Self-checks summarize with a stand-in instead of the local LLM.</summary>
     private ISummaryBackend? liveSummaryBackendForVerification;
-    /// <summary>A block is summarized once it has this much text, or after this long with at least the minimum.</summary>
-    private const int LiveBlockChars = 1500, LiveMinimumChars = 300;
-    private static readonly TimeSpan LiveBlockTime = TimeSpan.FromMinutes(2.5);
+    /// <summary>A block is summarized once it has this much text, or after this long with at least the minimum (Settings).</summary>
+    private int LiveBlockChars => Math.Clamp(settings.LiveSummaryChars, 300, 6000);
+    private int LiveMinimumChars => Math.Min(300, LiveBlockChars / 3);
+    private TimeSpan LiveBlockTime => TimeSpan.FromMinutes(Math.Clamp(settings.LiveSummaryMinutes, .5, 30));
+    public static readonly double[] LiveSummaryMinuteChoices = [1, 2, 2.5, 3, 5, 10];
+    public static readonly int[] LiveSummaryCharChoices = [500, 1000, 1500, 2500, 4000];
+    /// <summary>Lines kept per section for "short" / "normal" ("detailed" keeps all).</summary>
+    private SummaryItem[] LimitLiveItems(SummaryItem[] items, bool digest = false)
+    {
+        int limit = settings.LiveSummaryDetail switch { "short" => digest ? 3 : 2, "detailed" => int.MaxValue, _ => digest ? 6 : 4 };
+        return TranscriptSummary.Sections.SelectMany(section => items.Where(i => i.Section == section).Take(limit)).ToArray();
+    }
 
     private void InitializeLiveSummary()
     {
@@ -65,7 +74,8 @@ public sealed partial class MainWindow
         if (!flush && chars < LiveBlockChars && !old) return;
         // One block stays within what the model reads at once.
         int taken = 0, total = 0;
-        while (taken < rows.Count && (taken == 0 || total + rows[taken].English.Length <= 2400)) total += rows[taken++].English.Length;
+        int maximum = Math.Max(2400, LiveBlockChars + LiveBlockChars / 2);
+        while (taken < rows.Count && (taken == 0 || total + rows[taken].English.Length <= maximum)) total += rows[taken++].English.Length;
         rows = rows.Take(taken).ToList();
         root = FindRoot();
         if (liveSummaryBackendForVerification is null && (root.Length == 0 || LocalLlmPreparation.Required(root, LlmModelFile)))
@@ -79,13 +89,13 @@ public sealed partial class MainWindow
             using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
             var input = rows.Select(r => (r.Id, r.English)).ToArray();
             ISummaryBackend backend = liveSummaryBackendForVerification ?? await SummaryLlmAsync(timeout.Token);
-            var items = await Task.Run(() => TranscriptSummary.RunAsync(backend, input, null, timeout.Token), timeout.Token);
+            var items = LimitLiveItems(await Task.Run(() => TranscriptSummary.RunAsync(backend, input, null, timeout.Token), timeout.Token));
             toolLlmUsed = Stopwatch.GetTimestamp();
             liveSummaryNextId = rows[^1].Id + 1;
             if (items.Length > 0) { liveBlocks.Add(new(rows[0].Id, rows[^1].Id, items)); sessionDirty = true; }
             if (liveBlocks.Count > LiveRecentBlocks && !closing) await CondenseLiveSummaryAsync(backend, timeout.Token);
             if (closing) return;
-            if (SummaryPane.Visibility != Visibility.Visible) ShowSummaryPane(true);
+            if (!SummaryShown) ShowSummaryPane(true);
             RenderLiveSummary();
         }
         catch (Exception ex) when (!closing) { Status("ライブ要約を作成できませんでした（次のまとまりで再試行します）: " + ex.Message); }
@@ -99,7 +109,7 @@ public sealed partial class MainWindow
         // Each earlier summary line is one numbered input; its first evidence row keeps the link to what was said.
         var input = (liveDigest?.Items ?? []).Concat(older.SelectMany(b => b.Items))
             .Select(i => (Id: i.RowIds.FirstOrDefault(), Text: (i.Section == "要点" ? "" : "【" + i.Section + "】") + i.Text)).ToArray();
-        var items = await Task.Run(() => TranscriptSummary.RunAsync(backend, input, null, token), token);
+        var items = LimitLiveItems(await Task.Run(() => TranscriptSummary.RunAsync(backend, input, null, token), token), digest: true);
         if (items.Length == 0) return; // keep the blocks rather than lose them
         liveDigest = new(liveDigest?.FirstId ?? older[0].FirstId, older[^1].LastId, items);
         liveArchived.AddRange(older);
@@ -174,14 +184,47 @@ public sealed partial class MainWindow
         if (summaryItems.Length > 0 || liveBlocks.Count > 0 || liveDigest is not null) { ShowSummaryPane(true); RenderSummary(); }
     }
 
+    private string LiveDetailLabel => settings.LiveSummaryDetail switch { "short" => "短め", "detailed" => "詳しめ", _ => "標準" };
+
+    /// <summary>Removes every live summary from the pane (a full summary stays). Speech already on screen is not summarized again.</summary>
+    private async void LiveSummaryClearClick(object sender, RoutedEventArgs e)
+    {
+        if (dialogOpen || closing || liveBlocks.Count == 0 && liveDigest is null) return;
+        if (liveSummaryClearConfirmForVerification is null)
+        {
+            dialogOpen = true;
+            try
+            {
+                var confirm = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "ライブ要約をクリアしますか？", RequestedTheme = Root.RequestedTheme, PrimaryButtonText = "クリア", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Close,
+                    Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "要約欄のライブ要約（「ここまでの流れ」を含む）を消します。文字起こしの文章と「作成」で作った全体の要約は消しません。これ以降の発話から、また要約します。" } };
+                if (await confirm.ShowAsync() != ContentDialogResult.Primary || closing) return;
+            }
+            finally { dialogOpen = false; }
+        }
+        else if (!liveSummaryClearConfirmForVerification()) return;
+        ClearLiveSummary();
+    }
+    private Func<bool>? liveSummaryClearConfirmForVerification;
+    private void ClearLiveSummary()
+    {
+        liveBlocks.Clear(); liveArchived.Clear(); liveDigest = null;
+        liveSummaryNextId = (history.LastOrDefault()?.Id ?? 0) + 1;
+        sessionDirty = true;
+        if (summaryItems.Length > 0) RenderSummary(); else RenderLiveSummary();
+        UpdateLiveSummaryClear();
+        Status("ライブ要約をクリアしました。これ以降の発話から要約します。");
+    }
+    private void UpdateLiveSummaryClear() => SummaryLiveClearButton.Visibility = liveBlocks.Count > 0 || liveDigest is not null ? Visibility.Visible : Visibility.Collapsed;
+
     private void RenderLiveSummary()
     {
         if (summaryItems.Length > 0) { RenderSummary(); return; } // a full summary shows the live summary below it
         bool listening = captionStop is not null || recordingStop is not null;
+        UpdateLiveSummaryClear();
         SummaryRunButton.Content = listening ? "今までを要約" : "作成";
         SummaryContent.Children.Clear();
         SummaryContent.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8,
-            Text = $"ライブ要約：約{LiveBlockTime.TotalMinutes:0.#}分（または約{LiveBlockChars}文字）ごとの発話のまとまりを、ローカルAIが自動で要約します。新しいまとまりが上です。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。" + (listening ? " 「今までを要約」を押すと、次のまとまりを待たずにここまでの発話を要約します。" : " 全体の要約は「作成」を押してください。") });
+            Text = $"ライブ要約：約{LiveBlockTime.TotalMinutes:0.#}分（または約{LiveBlockChars}文字）ごとの発話のまとまりを（{LiveDetailLabel}）、ローカルAIが自動で要約します。新しいまとまりが上です。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。" + (listening ? " 「今までを要約」を押すと、次のまとまりを待たずにここまでの発話を要約します。" : " 全体の要約は「作成」を押してください。") });
         if (liveBlocks.Count == 0 && liveDigest is null) { SummaryContent.Children.Add(new TextBlock { Text = "最初のまとまりを待っています…", FontSize = 12, Opacity = .65 }); return; }
         AddLiveSummaryCards();
     }

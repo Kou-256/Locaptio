@@ -43,6 +43,7 @@
    </MenuBarItem>
    <MenuBarItem Title="設定(S)">
     <MenuFlyoutItem Text="設定を開く…" Click="SettingsClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <ToggleMenuFlyoutItem x:Name="KeepOnTopMenuItem" Text="常に手前に表示" Click="KeepOnTopMenuClick"/>
    </MenuBarItem>
    <MenuBarItem Title="ヘルプ(H)">
     <MenuFlyoutItem Text="モデルの説明" Click="ModelHelpClick"/>
@@ -161,18 +162,22 @@
    </Grid>
   </StackPanel>
   <Button x:Name="ResumeHistoryButton" Grid.Row="4" Content="最新へ" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,12" Click="ResumeHistoryClick" ToolTipService.ToolTip="最新の字幕へ移動し、自動スクロールを再開します。"/>
+  <Thumb x:Name="SummaryResizeGrip" Grid.Row="4" Visibility="Collapsed" HorizontalAlignment="Right" Width="8" Margin="0,24,344,24" DragDelta="SummaryResizeDrag" DragCompleted="SummaryResizeCompleted" Opacity=".55" ToolTipService.ToolTip="ドラッグで要約欄の幅を変更" AutomationProperties.Name="要約欄の幅を変更"/>
   <Border x:Name="SummaryPane" Grid.Row="4" Visibility="Collapsed" HorizontalAlignment="Right" Width="340" Background="#2B2B2B" BorderBrush="#858585" BorderThickness="1" CornerRadius="8" Padding="12,10,8,10" AutomationProperties.Name="AI要約">
    <Grid RowSpacing="8">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8FD;" FontSize="14"/><TextBlock Text="AI要約" FontSize="15" FontWeight="SemiBold"/></StackPanel>
-     <Button Grid.Column="1" Click="SummaryCloseClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を閉じる"><FontIcon Glyph="&#xE711;" FontSize="11"/></Button>
+     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+     <Button x:Name="SummaryPopOutButton" Click="SummaryPopOutClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を別ウィンドウで開く" ToolTipService.ToolTip="別ウィンドウで開く（大きさを自由に変えられます）"><FontIcon x:Name="SummaryPopOutIcon" Glyph="&#xE8A7;" FontSize="12"/></Button>
+     <Button Click="SummaryCloseClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を閉じる"><FontIcon Glyph="&#xE711;" FontSize="11"/></Button></StackPanel>
     </Grid>
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0"><StackPanel x:Name="SummaryContent" Spacing="6"/></ScrollViewer>
     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
      <Button x:Name="SummaryRunButton" Content="作成" Click="SummaryRunClick" Padding="8,3" FontSize="12"/>
      <Button x:Name="SummaryCopyButton" Content="コピー" Click="SummaryCopyClick" Padding="8,3" FontSize="12" IsEnabled="False"/>
      <Button x:Name="SummarySaveButton" Content="Markdown保存…" Click="SummarySaveClick" Padding="8,3" FontSize="12" IsEnabled="False"/>
+     <Button x:Name="SummaryLiveClearButton" Content="ライブ要約をクリア" Click="LiveSummaryClearClick" Padding="8,3" FontSize="12" Visibility="Collapsed" ToolTipService.ToolTip="ライブ要約（「ここまでの流れ」を含む）を消します。文章と全体の要約は残ります。"/>
     </StackPanel>
    </Grid>
   </Border>

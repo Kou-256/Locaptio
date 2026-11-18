@@ -1,11 +1,17 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.55/Locaptio-Setup-1.0.55-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.56/Locaptio-Setup-1.0.56-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese translation, floating captions, and recording. Read audio from videos or meetings and save the text and audio you need.
 
 > **Experimental personal project.** The application UI is currently mostly Japanese; this guide explains its controls in English. Accuracy and latency depend on the audio, model and hardware.
+
+## v1.0.56: live summary settings and window, keep-on-top switch
+
+- Live summary frequency, amount and length are configurable, and live summaries can be cleared.
+- The summary pane can be resized or opened in its own window.
+- "Always on top" can be switched in Settings, the 設定 menu or with a system-wide shortcut (Ctrl+Alt+T by default).
 
 ## v1.0.55: summaries while transcribing, kept and restored
 
@@ -124,7 +130,7 @@ Fresh-profile defaults: Windows captions integration, Japanese transcription, ma
 
 Setup always offers a destination directory, including during updates. Downloaded updates require an explicit **Install** approval popup before Setup runs. Choosing Later keeps the current session running.
 
-Download **Locaptio-Setup-1.0.55-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
+Download **Locaptio-Setup-1.0.56-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
 
 ### Recording search and replay (v1.0.39)
 

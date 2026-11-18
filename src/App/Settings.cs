@@ -86,6 +86,18 @@ public sealed class Settings
     public string[] ToolbarOrder { get; set; } = [];
     /// <summary>Main toolbar items the user has hidden (control names).</summary>
     public string[] ToolbarHidden { get; set; } = [];
+    /// <summary>Live summary: summarize after this many minutes of speech…</summary>
+    public double LiveSummaryMinutes { get; set; } = 2.5;
+    /// <summary>…or once this many characters have been said.</summary>
+    public int LiveSummaryChars { get; set; } = 1500;
+    /// <summary>Lines kept per block: "short", "normal" or "detailed".</summary>
+    public string LiveSummaryDetail { get; set; } = "normal";
+    /// <summary>Keep the main window in front of other windows.</summary>
+    public bool KeepOnTop { get; set; } = true;
+    /// <summary>Width of the summary pane beside the transcript (pixels at 100%).</summary>
+    public double SummaryPaneWidth { get; set; } = 340;
+    /// <summary>System-wide shortcut that toggles <see cref="KeepOnTop"/>: "ctrl-alt-t", "ctrl-shift-t", "ctrl-alt-f12" or "none".</summary>
+    public string KeepOnTopHotkey { get; set; } = "ctrl-alt-t";
     /// <summary>Language English speech is translated into (M2M100 code).</summary>
     public string EnglishTranslationTarget { get; set; } = "ja";
     /// <summary>Language Japanese speech is translated into in "ja-translate" mode.</summary>

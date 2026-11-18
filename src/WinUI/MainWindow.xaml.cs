@@ -87,7 +87,7 @@ public sealed partial class MainWindow : Window
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
         ExtendsContentIntoTitleBar = false; SystemBackdrop = new TransparentWindowBackdrop(retainSurface: true);
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
-        presenter.SetBorderAndTitleBar(true, true); presenter.IsAlwaysOnTop = true; presenter.IsMaximizable = true; presenter.IsMinimizable = true;
+        presenter.SetBorderAndTitleBar(true, true); presenter.IsAlwaysOnTop = settings.KeepOnTop; presenter.IsMaximizable = true; presenter.IsMinimizable = true;
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = GetDpiForWindow(hwnd) / 96.0;
         var size = new SizeInt32(Math.Clamp(settings.WinUiWidth > 0 ? settings.WinUiWidth : (int)(settings.Width * scale), Math.Min((int)(760 * scale), area.Width), area.Width), Math.Clamp(settings.WinUiHeight > 0 ? settings.WinUiHeight : (int)(settings.Height * scale), Math.Min((int)(360 * scale), area.Height), area.Height));
@@ -103,7 +103,7 @@ public sealed partial class MainWindow : Window
             await ShutdownAsync();
         };
         ModeSelector.OwnerWindow = this; TargetSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; RefreshModeLabels();
-        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
+        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeKeepOnTop(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
         Root.Loaded += async (_, _) =>
         {
             ApplyMainTextOpacity(Root);
@@ -1011,6 +1011,7 @@ public sealed partial class MainWindow : Window
             }
             Slider("フォントサイズ", 14, 40, settings.FontSize, v => settings.FontSize = v); Slider("本体：背景の透過率 (%)", 0, 100, (1 - settings.BackgroundOpacity) * 100, v => settings.BackgroundOpacity = 1 - v / 100); Slider("本体：文字の不透明度 (%)", 0, 100, settings.TextOpacity * 100, v => settings.TextOpacity = v / 100); content.Children.Add(new TextBlock { Text = "本体の履歴：全行を表示（行数制限なし）", TextWrapping = TextWrapping.Wrap });
             Toggle("文章をダブルクリックで直接編集し、選択して Delete キーで削除する", settings.DirectTextEditing, v => settings.DirectTextEditing = v);
+            AddKeepOnTopSettings(content, Choice);
             AddToolbarSettings(content);
             content.Children.Add(new TextBlock { Text = "ダブルクリックした発話がその場で入力欄になります（Enterで確定、Escで取り消し）。文字を選んで Delete／BackSpace キーを押すと、その文字だけを削除します。どちらも Ctrl+Z で元に戻せます。OFFのときは右クリック→「この発話を編集…」か F2 で編集します。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             DownwardSelector Choice(string title, string[] labels, int index, Action<int> set)
@@ -1112,6 +1113,9 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = "Windows字幕連携でも日本語・英語の認識原文を先に表示し、確定した発話を直前の最大8発話とともにローカルLLMで補正します。ON/OFFは連携中も即時反映。OFFにすると補正待ちと未反映の結果を破棄し、反映済みの文章は保持します。Windows側の字幕表示自体は変更しません。補正にはLLM環境・モデルの準備が必要です。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "高速でも日本語は選択したモデルを使用します（CPUではsmall）。最初は約400ms分の音声から簡易認識し、確定時は精度を優先します。英語の高速モードはbaseを使います。AI補正は補正済みの直前最大8発話を参照。日本語の補正では文脈を推論するため、数秒〜十数秒後に反映される場合があります。先行字幕はその間も表示します。数字が変わる補正は拒否し、補正後も既定では通常と同じ文字色です。色を変える場合は「補正済みの字幕も通常と同じ文字色にする」をOFFにします。保存テキストに補正ラベルは付けません。", TextWrapping = TextWrapping.Wrap });
             Toggle("録音・文字起こし中に、数分ごとの発話のまとまりをローカルAIで要約する（ライブ要約。長くなると古い部分をまとめ直します）", settings.LiveSummary, v => SetLiveSummary(v));
+            Choice("ライブ要約の頻度（この時間ごとに要約）", LiveSummaryMinuteChoices.Select(m => $"約{m:0.#}分ごと").ToArray(), Math.Max(0, Array.IndexOf(LiveSummaryMinuteChoices, settings.LiveSummaryMinutes)), i => settings.LiveSummaryMinutes = LiveSummaryMinuteChoices[i]);
+            Choice("1回に要約する量（この文字数がたまったら、時間を待たずに要約）", LiveSummaryCharChoices.Select(c => $"約{c}文字").ToArray(), Math.Max(0, Array.IndexOf(LiveSummaryCharChoices, settings.LiveSummaryChars)), i => settings.LiveSummaryChars = LiveSummaryCharChoices[i]);
+            Choice("ライブ要約の長さ", ["短め（各項目2つまで）", "標準（各項目4つまで）", "詳しめ（制限なし）"], settings.LiveSummaryDetail switch { "short" => 0, "detailed" => 2, _ => 1 }, i => settings.LiveSummaryDetail = i switch { 0 => "short", 2 => "detailed", _ => "normal" });
             content.Children.Add(new TextBlock { Text = "1文ずつの補正ではなく、約2〜3分（約1500文字）ごとの発話をまとめて、要点・決定事項・TODOを右の要約欄に追加していきます。時刻を押すとその発話へ移動します。AI補正と同時に使うとローカルAIの処理が増えます。ローカルAIのモデルが未準備のときは動作しません。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             Toggle("AIが補正した箇所に色を付け、「AI」印から補正前の文章を確認・元に戻せるようにする", settings.ShowAiChanges, v => { settings.ShowAiChanges = v; RefreshRowMarks(); foreach (var row in RealizedCaptionRows) ApplyTextSelection(row); });
             content.Children.Add(new TextBlock { Text = "補正で変わった文字を紫色で示し、行の右に「AI」印を付けます。印にカーソルを合わせると補正前の文章と変更点が表示され、「補正前に戻す」で元に戻せます。AIが話した語を消したり、話していない語を足したりした補正は採用せず、原文のままにします。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
@@ -1227,7 +1231,7 @@ public sealed partial class MainWindow : Window
             var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(window)) / 96.0;
             int width = Math.Min((int)(1040 * scale), area.Width - 32), height = Math.Min((int)(900 * scale), area.Height - 32);
             window.AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height));
-            ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = true;
+            ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = settings.KeepOnTop;
             window.Activate();
         }
         catch (Exception ex) { settingsWindow?.Close(); settingsWindow = null; StatusText.Text = ex.Message; }
@@ -1263,7 +1267,7 @@ public sealed partial class MainWindow : Window
         int width = Math.Min((int)(760 * scale), work.Width - 32), height = Math.Min((int)(850 * scale), work.Height - 32);
         window.AppWindow.MoveAndResize(new RectInt32(work.X + (work.Width - width) / 2, work.Y + (work.Height - height) / 2, width, height));
         window.AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
-        ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = true; window.Activate();
+        ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = settings.KeepOnTop; window.Activate();
     }
     private async void AboutClick(object sender, RoutedEventArgs e)
     {

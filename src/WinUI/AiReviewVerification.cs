@@ -11,6 +11,7 @@ namespace Locaptio.WinUI;
 // Synthetic text and a stand-in summarizer; no model is loaded and nothing is recorded.
 public sealed partial class MainWindow
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")] private static extern nint SendMessageHotkey(nint window, uint message, nint wParam, nint lParam);
     private sealed class StandInSummary : ISummaryBackend
     {
         public int Calls;
@@ -211,6 +212,79 @@ public sealed partial class MainWindow
                 Check(CurrentToolbarOrder().SequenceEqual(defaults) && MainToolbar.Hidden.Count == 0, "reset restores the default toolbar");
             }
             finally { settings.ToolbarOrder = savedOrder; settings.ToolbarHidden = savedHidden; settings.Save(); ApplyToolbarLayout(); }
+
+            // 7. Live summary settings, clear, keep-on-top with its shortcut, pane width and separate window.
+            double savedMinutes = settings.LiveSummaryMinutes; int savedChars = settings.LiveSummaryChars; string savedDetail = settings.LiveSummaryDetail, savedHotkey = settings.KeepOnTopHotkey;
+            bool savedTop = settings.KeepOnTop; double savedWidth = settings.SummaryPaneWidth;
+            try
+            {
+                settings.LiveSummaryMinutes = 1; settings.LiveSummaryChars = 500;
+                Check(LiveBlockTime == TimeSpan.FromMinutes(1) && LiveBlockChars == 500 && LiveMinimumChars <= 500, "live summary interval and size follow the settings");
+                var many = Enumerable.Range(1, 6).Select(n => new SummaryItem("要点", "項目" + n, [])).Append(new SummaryItem("TODO", "宿題", [])).ToArray();
+                settings.LiveSummaryDetail = "short"; int shortCount = LimitLiveItems(many).Length;
+                settings.LiveSummaryDetail = "normal"; int normalCount = LimitLiveItems(many).Length;
+                settings.LiveSummaryDetail = "detailed"; int detailedCount = LimitLiveItems(many).Length;
+                Check(shortCount == 3 && normalCount == 5 && detailedCount == 7, $"summary length: short {shortCount}, normal {normalCount}, detailed {detailedCount}");
+
+                ClearCaptions(); standIn = new StandInSummary(); liveSummaryBackendForVerification = standIn; settings.LiveSummary = true;
+                using (var listening = new CancellationTokenSource())
+                {
+                    captionStop = listening;
+                    for (int i = 0; i < 20; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, sentence, null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    await LiveSummaryTickAsync();
+                    Check(liveBlocks.Count >= 1 && SummaryLiveClearButton.Visibility == Visibility.Visible, $"500 characters make a block; the clear button appears ({liveBlocks.Count})");
+                    summaryItems = [new SummaryItem("要点", "全体の要約", [historyIds[0]])];
+                    liveSummaryClearConfirmForVerification = () => false; LiveSummaryClearClick(this, new RoutedEventArgs());
+                    Check(liveBlocks.Count >= 1, "cancelling keeps the live summary");
+                    liveSummaryClearConfirmForVerification = () => true; LiveSummaryClearClick(this, new RoutedEventArgs());
+                    Check(liveBlocks.Count == 0 && liveDigest is null && summaryItems.Length == 1 && history.Count == 20 && liveSummaryNextId > historyIds[^1] && SummaryLiveClearButton.Visibility == Visibility.Collapsed,
+                        "clear removes only the live summary; old speech is not summarized again");
+                    await LiveSummaryTickAsync();
+                    Check(liveBlocks.Count == 0, "nothing is re-summarized right after clearing");
+                    captionStop = null;
+                }
+
+                // Pane width and the separate window.
+                settings.SummaryPaneWidth = 480; ShowSummaryPane(true);
+                Check(Math.Abs(SummaryPane.Width - 480) < 1 && SummaryResizeGrip.Visibility == Visibility.Visible, $"pane width follows the setting ({SummaryPane.Width})");
+                SummaryResizeDrag(SummaryResizeGrip, new Microsoft.UI.Xaml.Controls.Primitives.DragDeltaEventArgs(-60, 0));
+                double widest = Math.Min(540, Math.Max(260, Root.ActualWidth * .7));
+                Check(Math.Abs(SummaryPane.Width - widest) < 1 && SummaryPane.Width > 480 && Math.Abs(settings.SummaryPaneWidth - widest) < 1, $"dragging the grip widens the pane up to 70% of the window ({SummaryPane.Width} / {widest})");
+                SummaryPopOutClick(SummaryPopOutButton, new RoutedEventArgs()); await Task.Delay(400);
+                Check(summaryWindow is not null && SummaryPane.Child is null && SummaryPane.Visibility == Visibility.Collapsed && SummaryShown, "the summary opens in its own window");
+                RenderSummary();
+                Check(SummaryContent.Children.OfType<StackPanel>().Any(card => card.Children.OfType<TextBlock>().Any(t => t.Text == "全体の要約")), "the separate window keeps updating");
+                if (summaryWindow is not null) await CaptureElementAsync((UIElement)summaryWindow.Content, Path.Combine(shots, "summary-window.png"));
+                SummaryPopOutClick(SummaryPopOutButton, new RoutedEventArgs()); await Task.Delay(300);
+                Check(summaryWindow is null && SummaryPane.Child is not null && SummaryPane.Visibility == Visibility.Visible, "「本体に戻す」 docks the summary again");
+                SummaryPopOutClick(SummaryPopOutButton, new RoutedEventArgs()); await Task.Delay(300);
+                SummaryCloseClick(this, new RoutedEventArgs()); await Task.Delay(300);
+                Check(summaryWindow is null && SummaryPane.Child is not null && SummaryPane.Visibility == Visibility.Collapsed, "closing the separate window returns the content to the hidden pane");
+                summaryItems = [];
+
+                // Keep on top: menu, settings and the system-wide shortcut (sent as the WM_HOTKEY Windows delivers).
+                var presenter = (Microsoft.UI.Windowing.OverlappedPresenter)AppWindow.Presenter;
+                SetKeepOnTop(false);
+                Check(!presenter.IsAlwaysOnTop && !KeepOnTopMenuItem.IsChecked && !settings.KeepOnTop, "keep-on-top turns off");
+                settings.KeepOnTopHotkey = "ctrl-alt-f12"; bool registered = RegisterKeepOnTopHotkey(); UpdateKeepOnTopMenuText();
+                Check(KeepOnTopMenuItem.Text.Contains("Ctrl+Alt+F12"), "the menu names the shortcut");
+                if (registered)
+                {
+                    SendMessageHotkey(hwnd, 0x0312, KeepOnTopHotkeyId, 0); await Task.Delay(300);
+                    Check(presenter.IsAlwaysOnTop && settings.KeepOnTop && KeepOnTopMenuItem.IsChecked, "the shortcut turns keep-on-top on");
+                    SendMessageHotkey(hwnd, 0x0312, KeepOnTopHotkeyId, 0); await Task.Delay(300);
+                    Check(!presenter.IsAlwaysOnTop && !settings.KeepOnTop, "the shortcut turns it off again");
+                }
+                else log.Add("skip shortcut: Ctrl+Alt+F12 is registered by another app");
+                SetKeepOnTop(true);
+                Check(presenter.IsAlwaysOnTop, "keep-on-top turns on again");
+            }
+            finally
+            {
+                settings.LiveSummaryMinutes = savedMinutes; settings.LiveSummaryChars = savedChars; settings.LiveSummaryDetail = savedDetail; settings.SummaryPaneWidth = savedWidth;
+                settings.KeepOnTopHotkey = savedHotkey; RegisterKeepOnTopHotkey(); UpdateKeepOnTopMenuText(); SetKeepOnTop(savedTop);
+                liveSummaryClearConfirmForVerification = null; captionStop = null; settings.Save();
+            }
         }
         catch (Exception ex) { failures.Add(ex.Message); log.Add(ex.ToString()); }
         finally
