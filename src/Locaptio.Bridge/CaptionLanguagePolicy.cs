@@ -56,25 +56,30 @@ internal static class CaptionLanguageConfirmation
 
 internal static class CaptionLanguagePolicy
 {
+    /// <summary>Live Captions languages Locaptio can switch to: Japanese, English, Italian and Spanish.</summary>
+    private static readonly Dictionary<string, (string Japanese, string English, string Short)> Known = new()
+    {
+        ["ja-JP"] = ("日本語 (日本)", "Japanese (Japan)", "日本語"),
+        ["en-US"] = ("英語 (米国)", "English (United States)", "英語（米国）"),
+        ["it-IT"] = ("イタリア語 (イタリア)", "Italian (Italy)", "イタリア語"),
+        ["es-ES"] = ("スペイン語 (スペイン)", "Spanish (Spain)", "スペイン語"),
+    };
     internal static bool ReadyLabelMatches(string? text, string code)
     {
-        if (text is null || code is not ("ja-JP" or "en-US")) return false;
-        string[] labels = code == "ja-JP" ? ["日本語 (日本)", "Japanese (Japan)"] : ["英語 (米国)", "English (United States)"];
-        return labels.Any(label => text.Contains(label, StringComparison.OrdinalIgnoreCase));
+        if (text is null || !Known.TryGetValue(code, out var names)) return false;
+        return new[] { names.Japanese, names.English }.Any(label => text.Contains(label, StringComparison.OrdinalIgnoreCase));
     }
     internal static bool Matches(string label, string code)
     {
-        if (code is not ("ja-JP" or "en-US")) return false;
+        if (!Known.TryGetValue(code, out var names)) return false;
         var culture = CultureInfo.GetCultureInfo(code);
-        string[] labels = code == "ja-JP"
-            ? ["日本語 (日本)", "Japanese (Japan)", code, culture.DisplayName, culture.NativeName, culture.EnglishName]
-            : ["英語 (米国)", "English (United States)", code, culture.DisplayName, culture.NativeName, culture.EnglishName];
+        string[] labels = [names.Japanese, names.English, code, culture.DisplayName, culture.NativeName, culture.EnglishName];
         string Normalize(string text) => text.Replace('（', '(').Replace('）', ')').Trim();
         return labels.Any(name => string.Equals(Normalize(name), Normalize(label), StringComparison.OrdinalIgnoreCase));
     }
     internal static CaptionLanguageResult Synchronize(ICaptionLanguageUi ui, string code)
     {
-        if (code is not ("ja-JP" or "en-US")) return new(false, "対応していない字幕言語です。");
+        if (!Known.ContainsKey(code)) return new(false, "対応していない字幕言語です。");
         string? original = null; bool confirmed = false, targetVerified = false;
         try
         {
@@ -90,7 +95,7 @@ internal static class CaptionLanguagePolicy
             targetVerified = true;
             ui.Confirm(); confirmed = true;
             if (!ui.WaitReady()) return new(false, "言語の準備完了を確認できません。Windows側で言語ファイルの準備・ダウンロードを完了してください。");
-            return new(true, $"Windows字幕の言語を{(code == "ja-JP" ? "日本語" : "英語（米国）")}に合わせました。");
+            return new(true, $"Windows字幕の言語を{Known[code].Short}に合わせました。");
         }
         catch (Exception ex)
         {

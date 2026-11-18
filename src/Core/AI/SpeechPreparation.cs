@@ -5,15 +5,33 @@ namespace Locaptio.Core.AI;
 
 public static class SpeechPreparation
 {
-    private static readonly SemaphoreSlim gate = new(1);
+    /// <summary>Serializes everything that installs into .venv (speech setup and translation packs).</summary>
+    public static readonly SemaphoreSlim EnvironmentGate = new(1);
+    private static bool PythonReady(string root) => File.Exists(Path.Combine(root, ".venv", "Scripts", "python.exe")) && File.Exists(Path.Combine(root, ".venv", ".locaptio-speech-v2"));
+
+    /// <summary>Only what a translation worker needs (Windows-captions mode): no speech model is downloaded.</summary>
+    public static async Task EnsureTranslationAsync(string root, bool builtIn, Action<PreparationProgress>? progress, CancellationToken token)
+    {
+        bool Ready() => PythonReady(root) && (!builtIn || File.Exists(Path.Combine(root, "models", "translation", "model.bin")));
+        if (Ready()) return;
+        await WaitAsync(progress, token);
+        try { if (!Ready()) await RunAsync(root, "setup-speech.ps1", ["-TranslationOnly"], progress, token); }
+        finally { EnvironmentGate.Release(); }
+    }
+    internal static async Task WaitAsync(Action<PreparationProgress>? progress, CancellationToken token)
+    {
+        if (EnvironmentGate.Wait(0)) return;
+        progress?.Invoke(new("音声環境の自動準備", 0, 1, "実行中の別の準備（翻訳モデルのダウンロードなど）が終わるのを待っています。"));
+        await EnvironmentGate.WaitAsync(token);
+    }
     public static async Task EnsureAsync(string root, string model, bool translation, string device, Action<PreparationProgress>? progress, CancellationToken token)
     {
         if (model is not ("tiny" or "base" or "small" or "medium" or "large-v3-turbo"))
             throw new ArgumentException("音声モデルを設定で選び直してください。", nameof(model));
-        await gate.WaitAsync(token);
+        await WaitAsync(progress, token);
         try
         {
-            bool python = File.Exists(Path.Combine(root, ".venv", "Scripts", "python.exe")) && File.Exists(Path.Combine(root, ".venv", ".locaptio-speech-v2"));
+            bool python = PythonReady(root);
             bool speech = File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin"));
             bool translate = File.Exists(Path.Combine(root, "models", "translation", "model.bin"));
             if (!python || !speech || translation && !translate)
@@ -25,7 +43,7 @@ public static class SpeechPreparation
                     .Any(file => !File.Exists(Path.Combine(root, "models", "speech-amd-npu", file)))))
                 await RunAsync(root, "setup-amd-speech.ps1", [], progress, token);
         }
-        finally { gate.Release(); }
+        finally { EnvironmentGate.Release(); }
     }
     private static async Task RunAsync(string root, string script, string[] args, Action<PreparationProgress>? progress, CancellationToken token)
     {

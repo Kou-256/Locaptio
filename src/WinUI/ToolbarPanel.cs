@@ -5,10 +5,13 @@ using Windows.Foundation;
 namespace Locaptio.WinUI;
 public sealed class ToolbarPanel : Panel
 {
+    /// <summary>Items the user hid; kept apart from Visibility, which the app also sets by state.</summary>
+    public HashSet<UIElement> Hidden { get; } = new();
+    private bool Shown(UIElement child) => child.Visibility == Visibility.Visible && !Hidden.Contains(child);
     protected override Size MeasureOverride(Size availableSize)
     {
         double x = 0, y = 0, row = 0, width = 0;
-        foreach (var child in Children.Where(c => c.Visibility == Visibility.Visible))
+        foreach (var child in Children.Where(Shown))
         {
             child.Measure(new Size(availableSize.Width, double.PositiveInfinity));
             var size = child.DesiredSize;
@@ -20,7 +23,8 @@ public sealed class ToolbarPanel : Panel
     protected override Size ArrangeOverride(Size finalSize)
     {
         double x = 0, y = 0, row = 0;
-        foreach (var child in Children.Where(c => c.Visibility == Visibility.Visible))
+        foreach (var child in Children.Where(c => !Shown(c))) child.Arrange(new Rect(0, 0, 0, 0));
+        foreach (var child in Children.Where(Shown))
         {
             var size = child.DesiredSize;
             if (x > 0 && x + size.Width > finalSize.Width) { y += row + 6; x = row = 0; }

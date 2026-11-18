@@ -144,7 +144,7 @@ public sealed class CaptionWindow : Window
         var visibleCaptions = captions.TakeLast(settings.CaptionSentenceMode ? 1 : settings.CaptionRows).ToArray();
         foreach (var caption in visibleCaptions)
         {
-            bool japanese = settings.CaptionMode == "japanese";
+            bool japanese = CaptionModes.TranscriptionOnly(CaptionModes.Normalize(settings.CaptionMode, settings.EnglishTranslationTarget, settings.JapaneseTranslationTarget));
             uint enColor = OrdinaryColor(settings, false);
             uint jaColor = OrdinaryColor(settings, true);
             TextBlock Text(string text, bool ja) => new()

@@ -47,8 +47,8 @@ class WhisperBackend(ISpeechRecognitionBackend):
                                   cpu_threads=max(1, min(8, (os.cpu_count() or 4) // 2)), local_files_only=True)
         self.language = language
         self.context = []
-        if language == 'ja' and not self.model.model.is_multilingual:
-            raise RuntimeError('日本語には多言語モデルが必要です。scripts/setup-speech.ps1を実行してください。')
+        if language != 'en' and not self.model.model.is_multilingual:
+            raise RuntimeError('日本語・イタリア語・スペイン語には多言語モデルが必要です。scripts/setup-speech.ps1を実行してください。')
     def recognize(self, samples, vad=True, final=True, prompt='', draft=False, word_timestamps=False):
         history = ' '.join(self.context)[-100 if draft else -500:]
         segments, _ = self.model.transcribe(samples, language=self.language, task='transcribe', beam_size=5 if final and not draft else 1,
@@ -101,7 +101,7 @@ def main():
     parser.add_argument('--prefer-npu', action='store_true')
     parser.add_argument('--fast', action='store_true')
     parser.add_argument('--draft', action='store_true')
-    parser.add_argument('--language', choices=['en', 'ja'], default='en')
+    parser.add_argument('--language', choices=['en', 'ja', 'it', 'es'], default='en')
     parser.add_argument('--speech-model', choices=['legacy', 'tiny', 'base', 'small', 'medium', 'large-v3-turbo'], default='legacy')
     # Translation packs other than the built-in English → Japanese model, downloaded from Settings.
     parser.add_argument('--pack', choices=['en-ja', 'ja-en', 'multi'], default='en-ja')

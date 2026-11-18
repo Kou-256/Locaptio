@@ -201,7 +201,7 @@ public sealed partial class MainWindow
             int narrow = overlay.AppWindow.Size.Width; appearance.CaptionWrapWidth = 700; overlay.ApplyAppearance(); await Task.Delay(100);
             bool width = overlay.AppWindow.Size.Width > narrow && overlay.HasWholeTextBlocks();
             var defaults = new Locaptio.App.Settings();
-            bool initial = defaults.BackgroundOpacity == .9 && defaults.CaptionOpacity == .8 && defaults.CaptionPalette == "cyan-white" && defaults.MenuBarTheme == "matching" && defaults.SpeechEngine == "windows-live" && defaults.CaptionMode == "japanese";
+            bool initial = defaults.BackgroundOpacity == .9 && defaults.CaptionOpacity == .8 && defaults.CaptionPalette == "cyan-white" && defaults.MenuBarTheme == "matching" && defaults.SpeechEngine == "windows-live" && defaults.CaptionMode == "ja";
             passed = restart && folders && retained && denied && stable && width && initial;
             report = $"PASS={passed}; recordStopStart={restart}; separateFolders={folders}; inputHistoryRetained={retained}; updateDeniedKeepsSession={denied}; moveShapeStable={stable}; wrapWidth={width}; defaults={initial}; only silent test-process audio recorded";
             await overlay.CaptureAsync(Path.Combine(root, "artifacts", "caption-width-1.0.41.png"));

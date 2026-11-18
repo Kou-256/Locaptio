@@ -5,7 +5,8 @@ internal static class WindowsLanguageChecks
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
     public static void Run()
     {
-        foreach (var (from, to, code) in new[] { ("日本語 (日本)", "英語 (米国)", "en-US"), ("English (United States)", "Japanese (Japan)", "ja-JP") })
+        foreach (var (from, to, code) in new[] { ("日本語 (日本)", "英語 (米国)", "en-US"), ("English (United States)", "Japanese (Japan)", "ja-JP"),
+            ("日本語 (日本)", "イタリア語 (イタリア)", "it-IT"), ("英語 (米国)", "スペイン語 (スペイン)", "es-ES"), ("Japanese (Japan)", "Spanish (Spain)", "es-ES") })
         {
             var ui = new Fake(from, [from, to]); var result = CaptionLanguagePolicy.Synchronize(ui, code);
             Check(result.Success && ui.Selected == to && ui.Confirmed == 1 && ui.Selections == 1, "Language mode did not select and confirm the exact target");
@@ -46,7 +47,7 @@ internal static class WindowsLanguageChecks
         CaptionLanguageConfirmation.Confirm(advancedManually, () => advancedManually.Time, ms => advancedManually.Time += ms);
         Check(advancedManually.Attempts == 0, "An already advanced picker was clicked again");
         Console.WriteLine("PASS: late/reappearing captions-only tips, bounded Continue retries, manual completion and preserving verified Japanese after confirmation failure");
-        Console.WriteLine("PASS: Japanese/English switching policy, exact language selection, unchanged language, missing target, verification failure, model-not-ready and unsupported input");
+        Console.WriteLine("PASS: Japanese/English/Italian/Spanish switching policy, exact language selection, unchanged language, missing target, verification failure, model-not-ready and unsupported input");
     }
     private sealed class Fake(string original, string[] choices) : ICaptionLanguageUi
     {

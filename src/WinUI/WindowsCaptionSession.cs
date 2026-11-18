@@ -7,11 +7,13 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "", TranslationRoute? route = null) : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "", TranslationRoute? route = null, string? language = null) : IDisposable
 {
     private Process? worker;
     /// <summary>What is translated: the given route, or English → Japanese for English captions.</summary>
-    private TranslationRoute? Route { get; } = route ?? (japanese ? null : new TranslationRoute("en", "ja", TranslationPacks.EnglishJapanese));
+    private TranslationRoute? Route { get; } = language is not null ? route : route ?? (japanese ? null : new TranslationRoute("en", "ja", TranslationPacks.EnglishJapanese));
+    /// <summary>Spoken language (ja, en, it, es); Italian and Spanish are written with spaces, like English.</summary>
+    private readonly string speechLanguage = language ?? (japanese ? "ja" : "en");
     private readonly LocalBackend translation = new();
     private readonly LocalLlmBackend llm = new();
     private StreamingSpeechCorrection? correction;
@@ -72,7 +74,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         {
             translation.PreparationChanged += p => PreparationChanged?.Invoke(p with { Component = "翻訳モデル" });
             translation.Status += s => Status?.Invoke(s);
-            await SpeechPreparation.EnsureAsync(root, "base", Route!.BuiltIn, cpu ? "cpu" : device == "cuda" ? "cuda" : "auto", p => PreparationChanged?.Invoke(p), linked.Token);
+            await SpeechPreparation.EnsureTranslationAsync(root, Route!.BuiltIn, p => PreparationChanged?.Invoke(p), linked.Token);
             translation.TranslationTarget = Route.Target;
             await translation.StartAsync(root, "translation", cpu || device == "cpu", linked.Token, false, Route.Source, Route.BuiltIn ? "legacy" : Route.Pack, device: device == "cuda" ? "cuda" : "auto");
             Status?.Invoke($"速報翻訳の準備完了。{TranslationPacks.Name(Route.Source)}の表示と並行して{TranslationPacks.Name(Route.Target)}訳を更新します。");
@@ -92,7 +94,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         var translator = Route is null ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), useLlm && Route.BuiltIn ? new ReadyLocalLlm(llm, llmReady.Value) : null, glossary);
         if (translator is not null) { translator.Caption += update => Caption?.Invoke(update); translator.Status += s => Status?.Invoke(s); }
         var translating = translator?.RunAsync(linked.Token) ?? Task.CompletedTask;
-        correction = new StreamingSpeechCorrection(new LazyCorrection(llm, () => llmReady.Value), japanese ? "ja" : "en");
+        correction = new StreamingSpeechCorrection(new LazyCorrection(llm, () => llmReady.Value), speechLanguage);
         correction.Caption += update => { if (translator is null) Caption?.Invoke(update); else translator.Submit(update); };
         correction.Status += s => Status?.Invoke(s);
         SetCorrectionEnabled(correctionEnabled);
@@ -104,7 +106,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
             OperationChanged?.Invoke(true);
             try { await recovery.EnsureStartedAsync(linked.Token); }
             finally { OperationChanged?.Invoke(false); }
-            tracker = new WindowsCaptionTracker(japanese); snapshot = "";
+            tracker = new WindowsCaptionTracker(japanese, speechLanguage); snapshot = "";
             bool textChanged = false;
             bool blockFirstBridge = verifyBlockedBridge;
             bool synchronizeLanguage = autoSwitchLanguage;
@@ -116,7 +118,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
                 var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = new UTF8Encoding(false) };
                 start.ArgumentList.Add("--microphone"); start.ArgumentList.Add(includeMicrophone ? "on" : "off");
                 if (blockFirstBridge) { start.ArgumentList.Add("--verify-blocked-pipe"); blockFirstBridge = false; }
-                if (synchronizeLanguage) { start.ArgumentList.Add("--language"); start.ArgumentList.Add(japanese ? "ja-JP" : "en-US"); synchronizeLanguage = false; }
+                if (synchronizeLanguage) { start.ArgumentList.Add("--language"); start.ArgumentList.Add(CaptionModes.WindowsLanguage(speechLanguage)); synchronizeLanguage = false; }
                 worker = Process.Start(start) ?? throw new InvalidOperationException("Windows連携を開始できませんでした。");
                 workerReady.TrySetResult();
                 worker.ErrorDataReceived += (_, _) => { }; worker.BeginErrorReadLine();

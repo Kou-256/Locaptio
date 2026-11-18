@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace Locaptio.Core;
 
 // Converts Windows' growing/rolling accessibility text into replaceable caption rows.
-public sealed class WindowsCaptionTracker(bool japanese)
+public sealed class WindowsCaptionTracker(bool japanese, string? language = null)
 {
     private bool initialized, active;
     private string anchor = "", snapshot = "", current = "", lastFinalText = "";
@@ -159,6 +159,6 @@ public sealed class WindowsCaptionTracker(bool japanese)
         // When each character of the row first appeared on screen: the recording turns these into word times.
         var appeared = new long[text.Length];
         for (int i = 0; i < appeared.Length; i++) appeared[i] = Math.Max(started, AppearedAt(leading + i, now));
-        return new(id, ++revision, text, null, final, started, 0, 0, japanese ? "ja" : "en", Appeared: appeared);
+        return new(id, ++revision, text, null, final, started, 0, 0, language ?? (japanese ? "ja" : "en"), Appeared: appeared);
     }
 }

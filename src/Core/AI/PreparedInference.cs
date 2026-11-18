@@ -15,7 +15,7 @@ public sealed class PreparedInference : IDisposable
     public bool IsUsable => !Ready.IsFaulted && !Ready.IsCanceled && !AccuracyReady.IsFaulted && !AccuracyReady.IsCanceled
         && (!AccuracyReady.IsCompleted || Speech.ProcessId is not null)
         && (!Ready.IsCompleted || LiveSpeech.ProcessId is not null && (Translation is null || Translation.ProcessId is not null));
-    public PreparedInference(string root, bool japanese, string model, string prompt, string device, bool cpu, bool fast, bool useLlm, string llmPath, Action<string> status, bool realtime = false, bool previewCpu = true, string previewModel = "base", Action<PreparationProgress>? progress = null, TranslationRoute? route = null)
+    public PreparedInference(string root, bool japanese, string model, string prompt, string device, bool cpu, bool fast, bool useLlm, string llmPath, Action<string> status, bool realtime = false, bool previewCpu = true, string previewModel = "base", Action<PreparationProgress>? progress = null, TranslationRoute? route = null, string? language = null)
     {
         lifetime.CancelAfter(TimeSpan.FromMinutes(useLlm ? 60 : device == "npu" ? 30 : 3));
         previewModel = previewModel == "tiny" && File.Exists(Path.Combine(root, "models", "speech-tiny", "model.bin")) ? "tiny" : "base";
@@ -24,7 +24,9 @@ public sealed class PreparedInference : IDisposable
         {
             Preview = new(); Preview.Status += status;
         }
-        route ??= japanese ? null : new TranslationRoute("en", "ja", TranslationPacks.EnglishJapanese);
+        // Callers that name the spoken language also say whether to translate (route); older callers get English → Japanese.
+        string speechLanguage = language ?? (japanese ? "ja" : "en");
+        if (language is null) route ??= japanese ? null : new TranslationRoute("en", "ja", TranslationPacks.EnglishJapanese);
         if (route is not null) { Translation = new() { TranslationTarget = route.Target }; Translation.Status += status; }
         void Track(LocalBackend backend, string label)
         {
@@ -40,8 +42,8 @@ public sealed class PreparedInference : IDisposable
             Llm = new(); Llm.PreparationChanged += p => progress?.Invoke(p with { Component = "文脈AI" }); LlmReady = Llm.StartAsync(root, llmPath, cpu, lifetime.Token);
             _ = ObserveLlmAsync(status);
         }
-        AccuracyReady = Speech.StartAsync(root, "speech", cpu, lifetime.Token, false, japanese ? "ja" : "en", model, prompt, cpu ? "cpu" : device, fast);
-        var live = Preview is null ? AccuracyReady : Preview.StartAsync(root, "speech", previewCpu, lifetime.Token, false, japanese ? "ja" : "en", previewModel, prompt, previewCpu ? "cpu" : device, fast, draft: true);
+        AccuracyReady = Speech.StartAsync(root, "speech", cpu, lifetime.Token, false, speechLanguage, model, prompt, cpu ? "cpu" : device, fast);
+        var live = Preview is null ? AccuracyReady : Preview.StartAsync(root, "speech", previewCpu, lifetime.Token, false, speechLanguage, previewModel, prompt, previewCpu ? "cpu" : device, fast, draft: true);
         Ready = Translation is null || route is null ? live : Task.WhenAll(live, Translation.StartAsync(root, "translation", cpu, lifetime.Token, false, route.Source,
             route.BuiltIn ? "legacy" : route.Pack, device: device == "cuda" ? "cuda" : "auto"));
         _ = ObserveReadyAsync();

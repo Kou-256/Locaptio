@@ -20,28 +20,33 @@ public sealed partial class MainWindow
         void Check(bool condition, string name) { log.Add((condition ? "ok   " : "FAIL ") + name); if (!condition) failures.Add(name); }
         try
         {
-            settings.EnglishTranslationTarget = "ja"; settings.JapaneseTranslationTarget = "en"; ApplySettings();
-            var labels = ((System.Collections.IEnumerable)ModeSelector.ItemsSource!).Cast<object>().Select(o => o.ToString()).ToArray();
-            Check(labels.SequenceEqual(["英語 → 日本語 翻訳", "日本語の文字起こし", "日本語 → 英語 翻訳"]), "three modes: " + string.Join(" / ", labels));
+            string[] Items(DownwardSelector selector) => ((System.Collections.IEnumerable)selector.ItemsSource!).Cast<object>().Select(o => o.ToString()!).ToArray();
+            async Task Choose(DownwardSelector selector, int index) { selector.SelectedIndex = index; for (int i = 0; i < 40 && modeChanging; i++) await Task.Delay(50); await Task.Delay(150); }
+            ClearCaptions(); modeChanging = true; settings.CaptionMode = "ja"; modeChanging = false; ApplySettings();
+            Check(Items(ModeSelector).SequenceEqual(["日本語を話す", "英語を話す", "イタリア語を話す", "スペイン語を話す"]), "four spoken languages: " + string.Join(" / ", Items(ModeSelector)));
+            Check(Items(TargetSelector).SequenceEqual(["文字起こしのみ", "→ 英語に翻訳", "→ イタリア語に翻訳", "→ スペイン語に翻訳"]) && TranscriptionOnly, "Japanese: transcription only or one of the other three: " + string.Join(" / ", Items(TargetSelector)));
 
-            modeChanging = true; settings.CaptionMode = "ja-translate"; ModeSelector.SelectedIndex = 2; modeChanging = false; ApplySettings(); RenderCaptions();
-            Check(SpeechJapanese && Route is { Source: "ja", Target: "en", Pack: "ja-en" }, "日本語 → 英語: Japanese speech, Japanese → English route");
-            Check(EnglishHeader.Text == "日本語" && JapaneseHeader.Text == "英語", $"column headers name the languages ({EnglishHeader.Text} / {JapaneseHeader.Text})");
+            await Choose(ModeSelector, 2); RenderCaptions();
+            Check(settings.CaptionMode == "it" && SpeechLanguage == "it" && TranscriptionOnly && Route is null && EnglishHeader.Text == "イタリア語", $"Italian transcription chosen from the selector ({settings.CaptionMode}, header {EnglishHeader.Text})");
+            Check(Items(TargetSelector)[1] == "→ 日本語に翻訳" && Items(TargetSelector).Length == 4, "Italian offers Japanese, English and Spanish targets");
+            await Choose(TargetSelector, 3); RenderCaptions();
+            Check(settings.CaptionMode == "it>es" && Route is { Source: "it", Target: "es", Pack: "multi" } && JapaneseHeader.Text == "スペイン語", $"Italian → Spanish uses the multilingual pack ({settings.CaptionMode})");
+            await Choose(ModeSelector, 3);
+            Check(settings.CaptionMode == "es" && TranscriptionOnly && TargetSelector.SelectedIndex == 0, $"switching to Spanish speech drops the Spanish target ({settings.CaptionMode})");
+            await Choose(ModeSelector, 1); await Choose(TargetSelector, 1);
+            Check(settings.CaptionMode == "en>ja" && Route is { BuiltIn: true }, "English → Japanese stays built in");
+            await Choose(ModeSelector, 0); await Choose(TargetSelector, 1); RenderCaptions();
+            Check(settings.CaptionMode == "ja>en" && SpeechJapanese && Route is { Source: "ja", Target: "en", Pack: "ja-en" } && EnglishHeader.Text == "日本語" && JapaneseHeader.Text == "英語", $"Japanese → English route and headers ({EnglishHeader.Text} / {JapaneseHeader.Text})");
             bool packHere = TranslationPacks.Find("ja-en")!.IsInstalled(root);
             Check(packHere ? MissingTranslationPack(root) is null : MissingTranslationPack(root)?.Contains("日本語 → 英語") == true, "missing pack explained (or none missing): " + (MissingTranslationPack(root) ?? "installed"));
-
-            settings.JapaneseTranslationTarget = "zh"; ApplySettings();
-            labels = ((System.Collections.IEnumerable)ModeSelector.ItemsSource!).Cast<object>().Select(o => o.ToString()).ToArray();
-            Check(labels[2] == "日本語 → 中国語 翻訳" && Route is { Pack: "multi", Target: "zh" } && ModeSelector.SelectedIndex == 2 && settings.CaptionMode == "ja-translate", "Chinese target uses the multilingual pack; relabeling keeps the mode");
-            modeChanging = true; settings.CaptionMode = "translate"; ModeSelector.SelectedIndex = 0; modeChanging = false; settings.EnglishTranslationTarget = "ko"; ApplySettings();
-            Check(!SpeechJapanese && Route is { Source: "en", Target: "ko", Pack: "multi" }, "English → Korean uses the multilingual pack");
-            settings.EnglishTranslationTarget = "ja"; ApplySettings();
-            Check(Route is { BuiltIn: true }, "English → Japanese stays built in");
+            Check(CaptionModes.Normalize("translate", "zh") == "en>ja" && CaptionModes.Normalize("translate", "es") == "en>es" && CaptionModes.Normalize("ja-translate", "ja", "en") == "ja>en"
+                && CaptionModes.Normalize("japanese") == "ja" && CaptionModes.Normalize("fr>de") == "ja" && CaptionModes.WindowsLanguage("it") == "it-IT" && CaptionModes.WindowsLanguage("es") == "es-ES",
+                "older settings are carried over; Windows captions languages it-IT / es-ES");
 
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(400);
             settingsNavigation!.Select("翻訳・ローカルLLM"); await Task.Delay(300);
             var page = settingsNavigation.Page("翻訳・ローカルLLM");
-            Check(page.Children.OfType<TextBlock>().Any(t => t.Text == "翻訳の言語") && TranslationPacks.Downloadable.All(pack => page.Children.OfType<StackPanel>().Any(p => p.Children.OfType<TextBlock>().FirstOrDefault()?.Text.StartsWith(pack.Name + "：") == true && p.Children.OfType<Button>().Any())), "settings list the target languages and two downloadable packs");
+            Check(page.Children.OfType<TextBlock>().Any(t => t.Text == "翻訳の言語") && TranslationPacks.Downloadable.All(pack => page.Children.OfType<StackPanel>().Any(p => p.Children.OfType<TextBlock>().FirstOrDefault()?.Text.StartsWith(pack.Name + "：") == true && p.Children.OfType<Button>().Any())), "settings explain the languages and list two downloadable packs");
             await settingsNavigation.CaptureAsync(Path.Combine(root, "artifacts", "settings-translation.png"));
             settingsWindow?.Close(); await Task.Delay(200);
 
@@ -58,6 +63,18 @@ public sealed partial class MainWindow
                 Check(phrases.Count > 0 && phrases.All(p => !string.IsNullOrWhiteSpace(p.Translation) && !System.Text.RegularExpressions.Regex.IsMatch(p.Translation!, "[ぁ-んァ-ヶ]")), "real Japanese speech translated into English");
             }
             else log.Add("skip real speech: run from a runtime folder with the Japanese → English pack, speech-small and artifacts/test-ja.wav");
+            // Real speech: English transcription only (no translation worker).
+            string english = Path.Combine(root, "artifacts", File.Exists(Path.Combine(root, "artifacts", "test.wav")) ? "test.wav" : "test-translation.wav");
+            if (File.Exists(english) && File.Exists(Path.Combine(root, "models", "speech-small", "model.bin")))
+            {
+                using var models = new PreparedInference(root, false, "small", "", "cpu", true, false, false, LlmModelFile, _ => { }, language: "en");
+                await models.Ready.WaitAsync(TimeSpan.FromMinutes(5));
+                var phrases = new List<RecordingPhrase>();
+                await Task.Run(() => FileTranscription.RunAsync(english, models.Speech, "en", p => { phrases.Add(p); return Task.CompletedTask; }, _ => { }, CancellationToken.None, models.Translation));
+                log.Add("english: " + string.Join(" / ", phrases.Select(p => p.Text)));
+                Check(models.Translation is null && phrases.Count > 0 && phrases.All(p => p.Language == "en" && string.IsNullOrWhiteSpace(p.Translation) && System.Text.RegularExpressions.Regex.IsMatch(p.Text, "[A-Za-z]")), "real English speech transcribed in English without translation");
+            }
+            else log.Add("skip English speech: needs speech-small and artifacts/test.wav");
         }
         catch (Exception ex) { failures.Add(ex.Message); log.Add(ex.ToString()); }
         finally

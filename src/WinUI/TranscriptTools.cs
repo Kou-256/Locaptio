@@ -198,7 +198,7 @@ public sealed partial class MainWindow
         dialogOpen = true;
         try
         {
-            bool translated = caption.Japanese is not null || settings.CaptionMode != "japanese" && !reviewingRecording;
+            bool translated = caption.Japanese is not null || !TranscriptionOnly && !reviewingRecording;
             var source = new TextBox { Header = translated ? "原文" : "文章", Text = caption.English, TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, MinWidth = 420 };
             var translation = new TextBox { Header = "日本語訳", Text = caption.Japanese ?? "", TextWrapping = TextWrapping.Wrap, Visibility = translated ? Visibility.Visible : Visibility.Collapsed };
             var content = new StackPanel { Spacing = 12 };
@@ -269,7 +269,7 @@ public sealed partial class MainWindow
         if (index < 0) return;
         PauseHistoryFollowing(); CaptionList.ScrollIntoView(history[index], ScrollIntoViewAlignment.Leading);
         // Highlight the whole row so the eye finds it after the scroll.
-        bool japanese = playbackDocument is not null && captionStop is null ? history[index].Caption.SourceLanguage == "ja" : settings.CaptionMode == "japanese";
+        bool japanese = playbackDocument is not null && captionStop is null ? history[index].Caption.SourceLanguage == "ja" : TranscriptionOnly;
         SetTextSelection(new(new(id, 0), new(id, int.MaxValue), japanese || settings.English ? 0 : 1));
         if (play && playbackDocument is not null && recordingStop is null) PlayCaption(id);
     }
@@ -674,7 +674,7 @@ public sealed partial class MainWindow
         }
         ClearCaptions(); reviewingRecording = false; playbackDocument = null; playbackPath = "";
         PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;
-        if (snapshot.Mode is "translate" or "japanese" or "ja-translate" && snapshot.Mode != settings.CaptionMode)
+        if (!string.IsNullOrEmpty(snapshot.Mode) && CaptionModes.Normalize(snapshot.Mode, settings.EnglishTranslationTarget, settings.JapaneseTranslationTarget) != CaptionModes.Normalize(settings.CaptionMode, settings.EnglishTranslationTarget, settings.JapaneseTranslationTarget))
         {
             // Show the columns the session was captured with, without the mode-change prompt.
             modeChanging = true; settings.CaptionMode = snapshot.Mode; ModeSelector.SelectedIndex = ModeIndex(snapshot.Mode); modeChanging = false; ApplySettings();
