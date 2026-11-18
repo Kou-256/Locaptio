@@ -14,7 +14,10 @@ public sealed class Settings
     public double CaptionOpacity { get; set; } = .8;
     public double CaptionWrapWidth { get; set; } = 960;
     public double CaptionTextOpacity { get; set; } = 1;
+    /// <summary>Colors while translating: the original (spoken) text and its translation. "white-yellow", "white", "cyan-white" or "custom".</summary>
     public string CaptionPalette { get; set; } = "cyan-white";
+    /// <summary>Text color when only transcribing (no translation): "white", "cyan" or "yellow" ("custom" palette uses CaptionTextColor).</summary>
+    public string CaptionTranscriptColor { get; set; } = "white";
     public string CaptionBackground { get; set; } = "live";
     public string CaptionAlignment { get; set; } = "center";
     public bool CaptionBold { get; set; } = true;

@@ -145,11 +145,12 @@ public sealed class CaptionWindow : Window
         foreach (var caption in visibleCaptions)
         {
             bool japanese = CaptionModes.TranscriptionOnly(CaptionModes.Normalize(settings.CaptionMode, settings.EnglishTranslationTarget, settings.JapaneseTranslationTarget));
-            uint enColor = OrdinaryColor(settings, false);
+            // Colors follow the role, not the language: original vs translation, and transcription only.
+            uint enColor = japanese ? TranscriptColor(settings) : OrdinaryColor(settings, false);
             uint jaColor = OrdinaryColor(settings, true);
             TextBlock Text(string text, bool ja) => new()
             {
-                Text = text, Tag = ja, FontSize = ja ? settings.CaptionJapaneseSize : settings.CaptionEnglishSize,
+                Text = text, Tag = ja ? (japanese ? "transcript" : "translation") : "original", FontSize = ja ? settings.CaptionJapaneseSize : settings.CaptionEnglishSize,
                 LineHeight = (ja ? settings.CaptionJapaneseSize : settings.CaptionEnglishSize) * settings.CaptionLineHeight,
                 LineStackingStrategy = LineStackingStrategy.MaxHeight,
                 MaxLines = Math.Max(1, settings.CaptionMaxLines / (!japanese && settings.English && settings.Japanese && !string.IsNullOrWhiteSpace(caption.Japanese) && settings.CaptionLayout != "side-by-side" ? 2 : 1)),
@@ -159,6 +160,7 @@ public sealed class CaptionWindow : Window
                 FontWeight = settings.CaptionBold ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal
             };
             var source = Text(caption.English, japanese);
+            if (japanese) source.Foreground = Brush(enColor);
             var translation = Text(caption.Japanese ?? "", true);
             if (!settings.CaptionCorrectedSameColor && caption.SourceCorrected) source.Foreground = CorrectedBrush(settings);
             if (!settings.CaptionCorrectedSameColor && (caption.TranslationRefined || caption.SourceCorrected)) translation.Foreground = CorrectedBrush(settings);
@@ -324,10 +326,16 @@ public sealed class CaptionWindow : Window
     internal static uint OrdinaryColor(Settings value, bool japanese) => value.CaptionPalette == "custom" ? ParseColor(value.CaptionTextColor, 0xFFFFFF)
         : value.CaptionBackground == "light" ? 0x162030u : japanese ? value.CaptionPalette == "white-yellow" ? 0xFFE794u : 0xFFFFFFu : value.CaptionPalette == "cyan-white" ? 0x7DE3FFu : 0xFFFFFFu;
     internal static SolidColorBrush OrdinaryBrush(Settings value, bool japanese) => Brush(OrdinaryColor(value, japanese));
+    /// <summary>Text when only transcribing (any of the four languages), chosen separately from the translation colors.</summary>
+    internal static uint TranscriptColor(Settings value) => value.CaptionPalette == "custom" ? ParseColor(value.CaptionTextColor, 0xFFFFFF)
+        : value.CaptionBackground == "light" ? 0x162030u : value.CaptionTranscriptColor switch { "cyan" => 0x7DE3FFu, "yellow" => 0xFFE794u, _ => 0xFFFFFFu };
+    /// <summary>The color for a caption role: transcription only, the original while translating, or the translation.</summary>
+    internal static SolidColorBrush RoleBrush(Settings value, bool transcriptionOnly, bool translation) =>
+        Brush(translation ? OrdinaryColor(value, true) : transcriptionOnly ? TranscriptColor(value) : OrdinaryColor(value, false));
     internal static SolidColorBrush SurfaceBrush(Settings value) => Brush(value.CaptionBackground switch { "light" => 0xF5F7FAu, "black" => 0u, "dark" => 0x141A24u, _ => ParseColor(value.CaptionSurfaceColor, 0x363636) });
     internal static SolidColorBrush BackgroundBrush(Settings settings, double opacity) => new(SurfaceBrush(settings).Color) { Opacity = Math.Clamp(opacity, 0, 1) };
     internal bool HasIndependentOpacity() => bubbles.All(b => Math.Abs(b.Background.Opacity - settings.CaptionOpacity) < .001 && Math.Abs(((TextBlock)b.Child).Opacity - settings.CaptionTextOpacity) < .001);
-    internal bool UsesOrdinaryColors() => bubbles.All(b => { var text = (TextBlock)b.Child; bool japanese = text.Tag is true; return ((SolidColorBrush)text.Foreground).Color == OrdinaryBrush(settings, japanese).Color; });
+    internal bool UsesOrdinaryColors() => bubbles.All(b => { var text = (TextBlock)b.Child; string role = text.Tag as string ?? "original"; return ((SolidColorBrush)text.Foreground).Color == RoleBrush(settings, role == "transcript", role == "translation").Color; });
     internal bool UsesCorrectionColor() => bubbles.Select(b => (TextBlock)b.Child).Any(t => ((SolidColorBrush)t.Foreground).Color == CorrectedBrush(settings).Color && !t.Text.Contains("AI補正"));
     internal bool HasNoNativeFrame()
     {
