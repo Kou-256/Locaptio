@@ -8,6 +8,8 @@ export const updates = {
     latest: '最新',
     all: 'すべての変更履歴を見る（GitHub）',
     items: [
+      ['1.0.57', '要約欄のボタン表示を修正', [
+        '要約欄が狭いときに「ライブ要約をクリア」が切れる問題を修正しました。']],
       ['1.0.56', 'ライブ要約を自分好みに、ウィンドウの重なりも切り替え', [
         'ライブ要約の**頻度（約1〜10分ごと）・1回に要約する量・長さ（短め／標準／詳しめ）**を設定で選べます。',
         '「ライブ要約をクリア」で、文章や全体の要約を残したままライブ要約だけを消せます。',
@@ -57,6 +59,8 @@ export const updates = {
     latest: 'Latest',
     all: 'See the full changelog (GitHub)',
     items: [
+      ['1.0.57', 'Summary pane button fix', [
+        'The summary pane buttons wrap instead of clipping "ライブ要約をクリア".']],
       ['1.0.56', 'Tune live summaries; switch "always on top"', [
         'Choose live summary **frequency (about 1–10 minutes), amount per summary and length (short / normal / detailed)**.',
         '"ライブ要約をクリア" clears live summaries while keeping the text and the full summary.',
