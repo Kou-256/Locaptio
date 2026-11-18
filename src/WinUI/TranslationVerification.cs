@@ -51,6 +51,11 @@ public sealed partial class MainWindow
                 var spoken = new CaptionUpdate(1, 1, "今日の会議を始めます。", "Let's start today's meeting.", true, 0, 0, 0, "ja");
                 var cyan = Windows.UI.Color.FromArgb(255, 0x7D, 0xE3, 0xFF); var white = Windows.UI.Color.FromArgb(255, 255, 255, 255); var yellow = Windows.UI.Color.FromArgb(255, 0xFF, 0xE7, 0x94);
                 Check(RowColor(0, spoken) == cyan && RowColor(1, spoken) == white, "Japanese → English: the original (Japanese) uses the original color, the English translation the translation color");
+                settings.CaptionPalette = new Locaptio.App.Settings().CaptionPalette;
+                Check(settings.CaptionPalette == "white-cyan" && RowColor(0, spoken) == white && RowColor(1, spoken) == cyan, "default: original white, translation cyan");
+                settings.CaptionPalette = "yellow-white";
+                Check(RowColor(0, spoken) == Windows.UI.Color.FromArgb(255, 0xFF, 0xE7, 0x94) && RowColor(1, spoken) == white, "original yellow / translation white");
+                settings.CaptionPalette = "cyan-white";
                 modeChanging = true; settings.CaptionMode = "ja"; modeChanging = false; ApplySettings();
                 Check(RowColor(0, spoken with { Japanese = null }) == white, "transcription only uses its own color (white by default)");
                 settings.CaptionTranscriptColor = "yellow";

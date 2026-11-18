@@ -324,7 +324,10 @@ public sealed class CaptionWindow : Window
     internal string ShapeDiagnostic() => $"size={AppWindow.Size}; root={root.ActualWidth}x{root.ActualHeight}; scroll={scroll.ActualWidth}x{scroll.ActualHeight}; geometry={regionGeometry}";
     internal static uint ParseColor(string hex, uint fallback) => uint.TryParse(hex.Trim().TrimStart('#'), System.Globalization.NumberStyles.HexNumber, null, out uint rgb) && hex.Trim().TrimStart('#').Length == 6 ? rgb : fallback;
     internal static uint OrdinaryColor(Settings value, bool japanese) => value.CaptionPalette == "custom" ? ParseColor(value.CaptionTextColor, 0xFFFFFF)
-        : value.CaptionBackground == "light" ? 0x162030u : japanese ? value.CaptionPalette == "white-yellow" ? 0xFFE794u : 0xFFFFFFu : value.CaptionPalette == "cyan-white" ? 0x7DE3FFu : 0xFFFFFFu;
+        : value.CaptionBackground == "light" ? 0x162030u
+        // japanese = the translation line; otherwise the original (spoken) text.
+        : japanese ? value.CaptionPalette switch { "white-yellow" => 0xFFE794u, "white-cyan" => 0x7DE3FFu, _ => 0xFFFFFFu }
+        : value.CaptionPalette switch { "cyan-white" => 0x7DE3FFu, "yellow-white" => 0xFFE794u, _ => 0xFFFFFFu };
     internal static SolidColorBrush OrdinaryBrush(Settings value, bool japanese) => Brush(OrdinaryColor(value, japanese));
     /// <summary>Text when only transcribing (any of the four languages), chosen separately from the translation colors.</summary>
     internal static uint TranscriptColor(Settings value) => value.CaptionPalette == "custom" ? ParseColor(value.CaptionTextColor, 0xFFFFFF)
