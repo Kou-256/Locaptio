@@ -9,7 +9,7 @@ using ScreenRecorderLib;
 
 namespace Locaptio.WinUI;
 
-internal sealed record CaptureChoice(CaptureTarget Target, bool SystemAudio, bool Microphone, bool Cursor, bool Clicks, int Framerate, string Quality, bool Countdown, bool Transcribe, bool HideLocaptio);
+internal sealed record CaptureChoice(CaptureTarget Target, bool SystemAudio, bool Microphone, bool Cursor, bool Clicks, int Framerate, string Quality, int CountdownSeconds, bool Transcribe, bool HideLocaptio);
 
 // Screen and window recording to MP4 with ScreenRecorderLib. The recording takes the place of a
 // new audio recording: captions, bookmarks, search and replay use the video file the same way.
@@ -49,7 +49,7 @@ public sealed partial class MainWindow
         try
         {
             bool confirmedExistingText = history.Count > 0;
-            if (!await ConfirmNewRecordingAsync() || closing) return;
+            if (!await ConfirmNewRecordingAsync("新規録画") || closing) return;
             var choice = captureChoiceForVerification is not null ? await captureChoiceForVerification() : await ChooseCaptureAsync();
             if (choice is null || closing) return;
             string directory = RecordingRoot; Directory.CreateDirectory(directory);
@@ -64,23 +64,23 @@ public sealed partial class MainWindow
             }
             if (string.IsNullOrWhiteSpace(path) || closing) return;
             if (!path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)) path = Path.ChangeExtension(path, ".mp4");
-            if (!confirmedExistingText && !await ConfirmNewRecordingAsync()) return;
+            if (!confirmedExistingText && !await ConfirmNewRecordingAsync("新規録画")) return;
             bool keepWindowsConnection = windowsSession is not null && captionStop is { IsCancellationRequested: false };
             if (!keepWindowsConnection) await StopAsync();
             settings.RecordingSaveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!; settings.Save();
             path = RecordingLibrary.CreateSessionPath(path);
-            ClearCaptions(); windowsSession?.ResetTranscript();
-            if (choice.Countdown)
+            PrepareTextForNewRecording();
+            if (choice.CountdownSeconds > 0)
             {
                 CountdownOverlay.Visibility = Visibility.Visible;
-                for (int i = 3; i > 0 && !closing; i--) { CountdownText.Text = i.ToString(); await Task.Delay(VerificationRun ? 150 : 1000); }
+                for (int i = choice.CountdownSeconds; i > 0 && !closing; i--) { CountdownText.Text = i.ToString(); await Task.Delay(VerificationRun ? 150 : 1000); }
                 CountdownOverlay.Visibility = Visibility.Collapsed;
             }
             if (closing) return;
             StartVideoRecording(path, choice);
             if (choice.Transcribe && !keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
         }
-        catch (Exception ex) { Status("録画を開始できません: " + ex.Message); ShowStatusDetails(pin: true); }
+        catch (Exception ex) { Status("録画を開始できません: " + VideoErrorText(ex)); ShowStatusDetails(pin: true); }
         finally
         {
             CountdownOverlay.Visibility = Visibility.Collapsed;
@@ -106,6 +106,27 @@ public sealed partial class MainWindow
         recordingTask = RecordVideoAsync(path, choice, recordingStop.Token);
     }
 
+    internal static readonly string[] QualityKeys = ["best", "high", "standard", "small"];
+    internal static readonly string[] QualityLabels = ["最高画質", "高画質", "標準", "ファイルサイズ優先"];
+    internal static readonly int[] CountdownChoices = [0, 1, 2, 3, 5, 10];
+    internal static readonly string[] CountdownLabels = ["なし", "1秒", "2秒", "3秒", "5秒", "10秒"];
+    internal static int VideoQualityValue(string key) => key switch { "best" => 95, "high" => 85, "small" => 50, _ => 70 };
+    private static string TargetKey(CaptureTarget target) => target.IsDisplay ? "display:" + target.DeviceName : "window:" + target.Title;
+    /// <summary>Self-check: start attempts that fail as if the encoder were unusable on this PC.</summary>
+    private int videoAttemptsToFailForVerification;
+    /// <summary>The recording library (C++/CLI) or the Visual C++ runtime it needs could not be loaded.</summary>
+    private static bool IsRecorderMissing(Exception? ex)
+    {
+        for (; ex is not null; ex = ex.InnerException)
+            if (ex is FileNotFoundException or FileLoadException or BadImageFormatException or DllNotFoundException
+                || ex is TypeInitializationException or TypeLoadException && ex.Message.Contains("ScreenRecorderLib", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+    private static string VideoErrorText(Exception ex) => IsRecorderMissing(ex)
+        ? "録画機能に必要な Microsoft Visual C++ ランタイムを読み込めませんでした。最新版の Locaptio に更新するか、Microsoft の「Visual C++ 再頒布可能パッケージ (x64)」をインストールしてから、もう一度お試しください: https://aka.ms/vs/17/release/vc_redist.x64.exe（詳細: " + ex.Message + "）"
+        : ex.Message;
+
     private RecorderOptions VideoOptions(CaptureChoice choice, RecordingSourceBase source)
     {
         var audio = new AudioOptions { IsAudioEnabled = choice.SystemAudio || choice.Microphone };
@@ -118,7 +139,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex) { Status("録画の音声デバイスを確認できません。映像のみ録画します: " + ex.Message); }
         if (audio.AudioSources.Count == 0) audio.IsAudioEnabled = false;
-        int quality = choice.Quality switch { "high" => 85, "small" => 50, _ => 70 };
+        int quality = VideoQualityValue(choice.Quality);
         return new RecorderOptions
         {
             SourceOptions = new SourceOptions { RecordingSources = { source } },
@@ -140,25 +161,52 @@ public sealed partial class MainWindow
         Recorder? recorder = null;
         try
         {
-            RecordingSourceBase source = choice.Target.IsDisplay
-                ? new DisplayRecordingSource(choice.Target.DeviceName) { IsCursorCaptureEnabled = choice.Cursor }
-                : new WindowRecordingSource(choice.Target.Window) { IsCursorCaptureEnabled = choice.Cursor, IsBorderRequired = false };
-            source.IsVideoFramePreviewEnabled = true; source.VideoFramePreviewSize = new ScreenSize(320, 0);
-            source.OnFrameRecorded += (_, e) => PushPreview(e.BitmapData);
-            recorder = await Task.Run(() => Recorder.CreateRecorder(VideoOptions(choice, source)), token);
-            recorder.OnStatusChanged += (_, e) => { if (e.Status == RecorderStatus.Recording) started.TrySetResult(Stopwatch.GetTimestamp()); };
-            recorder.OnRecordingComplete += (_, _) => completed.TrySetResult(null);
-            recorder.OnRecordingFailed += (_, e) => completed.TrySetResult(string.IsNullOrWhiteSpace(e.Error) ? "不明なエラー" : e.Error);
-            videoRecorder = recorder;
             if (choice.HideLocaptio) ExcludeFromCapture(true);
-            var record = recorder; await Task.Run(() => record.Record(path), token);
-            var first = await Task.WhenAny(started.Task, completed.Task, Task.Delay(TimeSpan.FromSeconds(20), token));
-            if (first == completed.Task) throw new IOException("録画を開始できませんでした: " + (await completed.Task ?? "開始前に終了しました"));
-            if (first != started.Task) throw new TimeoutException("録画が20秒以内に始まりませんでした。対象のウィンドウが表示されているか確認してください。");
+            // Some PCs cannot use the hardware H.264 encoder or Desktop Duplication (for example a laptop whose
+            // screen is driven by another GPU). Fall back to software encoding, then to Windows Graphics Capture.
+            var attempts = new List<(bool Hardware, RecorderApi? Api, string Note)> { (true, null, ""), (false, null, "ハードウェアエンコーダーを使えなかったため、ソフトウェアで録画しています。") };
+            if (choice.Target.IsDisplay) attempts.Add((false, RecorderApi.WindowsGraphicsCapture, "画面の取り込み方式を切り替えて録画しています。"));
+            var failures = new List<string>(); string note = "";
+            int attemptIndex = -1;
+            foreach (var attempt in attempts)
+            {
+                attemptIndex++;
+                started = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+                completed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var (attemptStarted, attemptCompleted) = (started, completed);
+                RecordingSourceBase source = choice.Target.IsDisplay
+                    ? new DisplayRecordingSource(choice.Target.DeviceName) { IsCursorCaptureEnabled = choice.Cursor }
+                    : new WindowRecordingSource(choice.Target.Window) { IsCursorCaptureEnabled = choice.Cursor, IsBorderRequired = false };
+                if (attempt.Api is RecorderApi api) { if (source is DisplayRecordingSource display) display.RecorderApi = api; }
+                source.IsVideoFramePreviewEnabled = true; source.VideoFramePreviewSize = new ScreenSize(320, 0);
+                source.OnFrameRecorded += (_, e) => PushPreview(e.BitmapData);
+                try
+                {
+                    if (attemptIndex < videoAttemptsToFailForVerification) throw new IOException("simulated encoder failure");
+                    var options = VideoOptions(choice, source); options.VideoEncoderOptions.IsHardwareEncodingEnabled = attempt.Hardware;
+                    recorder = await Task.Run(() => Recorder.CreateRecorder(options), token);
+                    recorder.OnStatusChanged += (_, e) => { if (e.Status == RecorderStatus.Recording) attemptStarted.TrySetResult(Stopwatch.GetTimestamp()); };
+                    recorder.OnRecordingComplete += (_, _) => attemptCompleted.TrySetResult(null);
+                    recorder.OnRecordingFailed += (_, e) => attemptCompleted.TrySetResult(string.IsNullOrWhiteSpace(e.Error) ? "不明なエラー" : e.Error);
+                    videoRecorder = recorder;
+                    var starting = recorder; await Task.Run(() => starting.Record(path), token);
+                    var first = await Task.WhenAny(started.Task, completed.Task, Task.Delay(TimeSpan.FromSeconds(20), token));
+                    if (first == started.Task) { note = attempt.Note; break; }
+                    if (first != completed.Task) throw new TimeoutException("録画が20秒以内に始まりませんでした。対象のウィンドウが表示されているか確認してください。");
+                    failures.Add(await completed.Task ?? "開始前に終了しました");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException and not TimeoutException && !IsRecorderMissing(ex)) { failures.Add(ex.Message); }
+                // This attempt did not start: release it and its partial file before the next one.
+                videoRecorder = null;
+                if (recorder is not null) { var failed = recorder; recorder = null; await Task.Run(() => failed.Dispose()); }
+                try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
+            }
+            if (recorder is null) throw new IOException("録画を開始できませんでした: " + string.Join(" / ", failures.Distinct()));
+            var record = recorder;
             long origin = await started.Task;
             if (recordingTranscript is not null) recordingTranscript.Started = origin;
             recordingStarted = origin;
-            Status("録画を開始しました：" + choice.Target.Label + (choice.Transcribe ? "。文字起こしも同時に行います。" : "。"));
+            Status("録画を開始しました：" + choice.Target.Label + (choice.Transcribe ? "。文字起こしも同時に行います。" : "。") + note);
             try { await Task.Delay(Timeout.Infinite, token); } catch (OperationCanceledException) { }
             await Task.Run(() => record.Stop());
             string? error = await completed.Task.WaitAsync(TimeSpan.FromMinutes(2));
@@ -169,7 +217,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             try { if (recorder is not null && recorder.Status is RecorderStatus.Recording or RecorderStatus.Paused) await Task.Run(() => recorder.Stop()); } catch (Exception) { }
-            StatusText.Text = "録画に失敗しました: " + ex.Message; ShowStatusDetails(pin: true);
+            StatusText.Text = "録画に失敗しました: " + VideoErrorText(ex); ShowStatusDetails(pin: true);
         }
         finally
         {
@@ -264,18 +312,19 @@ public sealed partial class MainWindow
         var microphone = Option("マイクの音声を録音", settings.VideoMicrophone);
         var cursor = Option("マウスカーソルを映す", settings.VideoCursor);
         var clicks = Option("クリックした位置を強調", settings.VideoClicks);
-        var countdown = Option("開始前に3秒カウントダウン", settings.VideoCountdown);
+
         var transcribe = Option("録画しながら文字起こし（字幕・検索・聞き直しに使います）", settings.VideoTranscribe);
         var hide = Option("Locaptioの本体ウィンドウを録画に映さない（字幕ウィンドウは映ります）", settings.VideoHideLocaptio);
-        var framerate = new ComboBox { ItemsSource = new[] { "15 fps（ファイル小）", "30 fps（標準）", "60 fps（動きが滑らか）" }, SelectedIndex = settings.VideoFramerate >= 60 ? 2 : settings.VideoFramerate <= 15 ? 0 : 1, Header = "フレームレート", MinWidth = 200 };
-        var quality = new ComboBox { ItemsSource = new[] { "標準", "高画質", "ファイルサイズ優先" }, SelectedIndex = settings.VideoQuality == "high" ? 1 : settings.VideoQuality == "small" ? 2 : 0, Header = "画質", MinWidth = 200 };
+        var framerate = new ComboBox { ItemsSource = new[] { "15 fps（ファイル小）", "30 fps", "60 fps（動きが滑らか・既定）" }, SelectedIndex = settings.VideoFramerate >= 60 ? 2 : settings.VideoFramerate <= 15 ? 0 : 1, Header = "フレームレート", MinWidth = 200 };
+        var countdown = new ComboBox { ItemsSource = CountdownLabels, SelectedIndex = Math.Max(0, Array.IndexOf(CountdownChoices, settings.VideoCountdownSeconds)), Header = "開始前のカウントダウン", MinWidth = 150 };
+        var quality = new ComboBox { ItemsSource = QualityLabels, SelectedIndex = Math.Max(0, Array.IndexOf(QualityKeys, settings.VideoQuality)), Header = "画質", MinWidth = 200 };
         cursor.Click += (_, _) => clicks.IsEnabled = cursor.IsChecked == true; clicks.IsEnabled = cursor.IsChecked == true;
         var options = new StackPanel { Spacing = 4 };
         options.Children.Add(new TextBlock { Text = "プレビュー（選んだ対象を表示しています）", FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         options.Children.Add(previewFrame); options.Children.Add(previewTitle);
-        var selects = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(0, 6, 0, 0) }; selects.Children.Add(framerate); selects.Children.Add(quality);
+        var selects = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(0, 6, 0, 0) }; selects.Children.Add(framerate); selects.Children.Add(quality); selects.Children.Add(countdown);
         options.Children.Add(selects);
-        foreach (var box in new[] { systemAudio, microphone, cursor, clicks, countdown, transcribe, hide }) options.Children.Add(box);
+        foreach (var box in new[] { systemAudio, microphone, cursor, clicks, transcribe, hide }) options.Children.Add(box);
         var layout = new Grid { ColumnSpacing = 18 };
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var left = new StackPanel { Spacing = 6 };
@@ -301,15 +350,17 @@ public sealed partial class MainWindow
             dialog.IsPrimaryButtonEnabled = selected is not null; previewBitmap = null; Refresh();
         };
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) }; timer.Tick += (_, _) => Refresh();
-        list.SelectedIndex = 0; timer.Start();
+        // The display or window recorded last time is chosen again when it is still there.
+        int last = targets.ToList().FindIndex(t => TargetKey(t) == settings.VideoLastTarget);
+        list.SelectedIndex = Math.Max(0, last); timer.Start();
         ContentDialogResult result;
         try { result = await dialog.ShowAsync(); }
         finally { timer.Stop(); }
         if (result != ContentDialogResult.Primary || selected is null) return null;
         settings.VideoSystemAudio = systemAudio.IsChecked == true; settings.VideoMicrophone = microphone.IsChecked == true; settings.VideoCursor = cursor.IsChecked == true;
-        settings.VideoClicks = clicks.IsChecked == true; settings.VideoCountdown = countdown.IsChecked == true; settings.VideoTranscribe = transcribe.IsChecked == true;
+        settings.VideoClicks = clicks.IsChecked == true; settings.VideoCountdownSeconds = CountdownChoices[Math.Max(0, countdown.SelectedIndex)]; settings.VideoCountdown = settings.VideoCountdownSeconds > 0; settings.VideoTranscribe = transcribe.IsChecked == true;
         settings.VideoHideLocaptio = hide.IsChecked == true; settings.VideoFramerate = framerate.SelectedIndex == 2 ? 60 : framerate.SelectedIndex == 0 ? 15 : 30;
-        settings.VideoQuality = quality.SelectedIndex == 1 ? "high" : quality.SelectedIndex == 2 ? "small" : "standard"; settings.Save();
-        return new(selected, settings.VideoSystemAudio, settings.VideoMicrophone, settings.VideoCursor, settings.VideoClicks, settings.VideoFramerate, settings.VideoQuality, settings.VideoCountdown, settings.VideoTranscribe, settings.VideoHideLocaptio);
+        settings.VideoQuality = QualityKeys[Math.Max(0, quality.SelectedIndex)]; settings.VideoLastTarget = TargetKey(selected); settings.Save();
+        return new(selected, settings.VideoSystemAudio, settings.VideoMicrophone, settings.VideoCursor, settings.VideoClicks, settings.VideoFramerate, settings.VideoQuality, settings.VideoCountdownSeconds, settings.VideoTranscribe, settings.VideoHideLocaptio);
     }
 }

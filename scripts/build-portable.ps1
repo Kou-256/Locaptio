@@ -71,6 +71,26 @@ try {
         $null = New-Item -ItemType Directory -Path $legalFolder -Force
         foreach ($notice in $notices) { Copy-Item -LiteralPath $notice.FullName -Destination $legalFolder }
     }
+    # Screen recording (ScreenRecorderLib, C++/CLI) needs the Visual C++ runtime. Ship it app-local
+    # (Microsoft's documented "local deployment") so recording works on PCs without the redistributable.
+    $runtime = @('msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll','concrt140.dll','vcomp140.dll')
+    # Visual Studio's redist keeps OpenMP (vcomp140) in its own folder next to the CRT.
+    $redist = @(Get-ChildItem -Path "${env:ProgramFiles}\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64" -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -Path (Join-Path $_.FullName 'Microsoft.VC14*.CRT') } | Sort-Object FullName -Descending | Select-Object -First 1)
+    $folders = @(if ($redist.Count -gt 0) { @(Get-ChildItem -LiteralPath $redist[0].FullName -Directory | Where-Object Name -match '^Microsoft\.VC14\d*\.(CRT|OpenMP)$' | ForEach-Object FullName) })
+    $folders += Join-Path $env:SystemRoot 'System32'
+    $used = @()
+    foreach ($name in $runtime) {
+        $source = @($folders | ForEach-Object { Join-Path $_ $name } | Where-Object { Test-Path -LiteralPath $_ })[0]
+        if (-not $source) { $source = Join-Path $folders[0] $name }
+        if (-not (Test-Path -LiteralPath $source)) { throw "Visual C++ runtime file not found: $source. Install the Visual C++ Redistributable (x64) or Visual Studio Build Tools." }
+        $signature = Get-AuthenticodeSignature -LiteralPath $source
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "Visual C++ runtime file is not signed by Microsoft: $source" }
+        if ([version](Get-Item -LiteralPath $source).VersionInfo.FileVersion -lt [version]'14.30') { throw "Visual C++ runtime is too old for ScreenRecorderLib: $source" }
+        Copy-Item -LiteralPath $source -Destination (Join-Path $app $name) -Force; $used += Split-Path $source -Parent
+    }
+    Write-Output ("Visual C++ runtime (app-local) from: " + (($used | Select-Object -Unique) -join ", "))
     $archive = Join-Path $distribution "Locaptio-$version-win-x64.zip"
     Compress-Archive -LiteralPath $app -DestinationPath $archive -CompressionLevel Optimal -Force
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()

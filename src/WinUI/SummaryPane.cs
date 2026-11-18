@@ -20,12 +20,12 @@ public sealed partial class MainWindow
     {
         if (prepared is { Llm: { } live, LlmReady.IsCompletedSuccessfully: true }) return live;
         bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu";
-        string key = root + "|" + settings.LlmModelPath + "|" + cpu;
+        string key = root + "|" + LlmModelFile + "|" + cpu;
         if (toolLlm is not null && toolLlmKey == key) return toolLlm;
         toolLlm?.Dispose(); toolLlm = null;
         var llm = new LocalLlmBackend(); var report = BeginPreparation();
         llm.PreparationChanged += p => report(p with { Component = "文脈AI" });
-        try { await llm.StartAsync(root, settings.LlmModelPath, cpu, token); }
+        try { await llm.StartAsync(root, LlmModelFile, cpu, token); }
         catch { llm.Dispose(); throw; }
         toolLlm = llm; toolLlmKey = key; toolLlmUsed = System.Diagnostics.Stopwatch.GetTimestamp();
         if (toolLlmTimer is null)
@@ -61,7 +61,7 @@ public sealed partial class MainWindow
     }
     private void ClearSummary()
     {
-        summaryItems = [];
+        summaryItems = []; ResetLiveSummary();
         if (SummaryPane.Visibility == Visibility.Visible) RenderSummary();
     }
     private void RestoreSummary(RecordingDocument document)
@@ -73,6 +73,7 @@ public sealed partial class MainWindow
     }
     private void RenderSummary(string? message = null)
     {
+        if (message is null && summaryItems.Length == 0 && liveBlocks.Count > 0) { RenderLiveSummary(); return; }
         SummaryContent.Children.Clear();
         SummaryCopyButton.IsEnabled = SummarySaveButton.IsEnabled = summaryItems.Length > 0;
         SummaryRunButton.Content = summaryItems.Length > 0 ? "作り直す" : "作成";
@@ -119,7 +120,7 @@ public sealed partial class MainWindow
         if (rows.Length == 0) { RenderSummary("要約する文字起こしがありません。"); return; }
         if (captionStop is not null || recordingStop is not null) { RenderSummary("文字起こし・録音を停止してから「作成」を押してください。"); return; }
         root = FindRoot();
-        string model = string.IsNullOrWhiteSpace(settings.LlmModelPath) ? Path.Combine(root, "models", "llm", "Qwen3-4B-Q4_K_M.gguf") : settings.LlmModelPath;
+        string model = LlmModelFile;
         if (summaryBackendForVerification is null && root.Length > 0 && LocalLlmPreparation.Required(root, model))
         {
             // Never start a multi-gigabyte download from a single click without saying so.

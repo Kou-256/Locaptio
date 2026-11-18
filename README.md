@@ -1,11 +1,20 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.51/Locaptio-Setup-1.0.51-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><b>日本語</b> · <a href="README.en.md">English</a> · <a href="https://locaptio.vercel.app">公式サイト</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.52/Locaptio-Setup-1.0.52-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Windows 11向けの、ローカル音声認識・英日翻訳・字幕オーバーレイ・録音アプリです。動画や会議の音声を読みながら、必要な文章と音声を保存できます。
 
 > **開発中の個人プロジェクトです。** 現在の画面表示は主に日本語です。英語の利用説明は [English README](README.en.md) を参照してください。精度と速度は音声・モデル・ハードウェアによって変わります。
+
+## v1.0.52：別のPCでの不具合修正・ライブ要約・編集と録画の改善
+
+- **別のPCでの不具合修正**：Visual C++ ランタイムを同梱し、録画とAI補正（llama.cpp）が再頒布可能パッケージのないPCでも動くようにしました。GPUのVulkanドライバーがない場合はCPU版に自動で切り替えます。自動準備でPythonがウイルス対策ソフトに削除された場合の修復と、エラーメッセージの文字化けも直しました。
+- **ライブ要約**：文字起こし中に数分ごとの発話をまとめて、要点・決定事項・TODOを要約欄に追加します。
+- **AI補正**：既定でOFFに。ONのときは補正した箇所に色と「AI」印を付け、補正前に戻せます。語を消す・足す補正は採用しません。
+- **編集**：ダブルクリックでその場で編集、選択してDeleteで削除。録音・録画開始時にテキストを引き継げます。「ホーム」ボタン、見返し中の「クリア」で動画も閉じるように。
+- **録画**：既定を60 fps・最高画質に。前回の設定と対象を引き継ぎ、カウントダウン秒数を選べます。マイクは既定でON。
+- **ローカルLLMのモデル選択**（Qwen3 1.7B／4B／8B／14B）と事前ダウンロード、**用語辞書のCSVインポート・エクスポート**。
 
 ## v1.0.51：録音した音声と文章の照合
 
@@ -103,9 +112,9 @@ Files are decoded in bounded chunks. **Stop** cancels processing and saves compl
 
 Setupは更新時もインストール先の選択画面を表示します。更新ファイルを自動取得する場合でも、**インストールの許可ポップアップ**で「インストールする」を選ぶまでSetupは実行しません。「後で」を選ぶと作業を続けられます。
 
-[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.51/Locaptio-Setup-1.0.51-x64.exe)
+[**公式サイトからダウンロード**](https://locaptio.vercel.app) · [Windows版Setupを直接ダウンロード](https://github.com/Kou-256/Locaptio/releases/download/v1.0.52/Locaptio-Setup-1.0.52-x64.exe)
 
-[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.51-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
+[**最新版のRelease**](https://github.com/Kou-256/Locaptio/releases/latest) から **Locaptio-Setup-1.0.52-x64.exe** を実行してください。管理者権限なしでインストールし、スタートメニューから起動できます。インストール先は既定で `%LOCALAPPDATA%/Programs/Locaptio` です。ZIP版も引き続き利用できます。
 
 ### 録音の検索・聞き直し（v1.0.39）
 
@@ -119,7 +128,7 @@ v1.0.40から再生位置に対応する**発話全体をハイライト**し、
 
 ### ローカルLLMの自動準備
 
-AI補正／文脈LLM翻訳を有効にすると、未準備のPython環境・依存物・既定のQwen3モデルを自動取得します。PowerShellの手動実行は不要です。初回のみネット接続と数GBの空き容量が必要です。進捗は準備工程で表示し、Stop・アプリ終了で中断できます。準備済みモデルは再利用し、推論時に音声・文章を外部送信しません。カスタムモデルのパスを指定した場合は、そのファイルを用意するか設定を既定に戻してください。
+AI補正／文脈LLM翻訳を有効にすると、未準備のPython環境・依存物・既定のQwen3モデルを自動取得します。PowerShellの手動実行は不要です。初回のみネット接続と数GBの空き容量が必要です。進捗は準備工程で表示し、Stop・アプリ終了で中断できます。準備済みモデルは再利用し、推論時に音声・文章を外部送信しません。モデルは設定の「翻訳・ローカルLLM」で Qwen3 の 1.7B／4B（既定）／8B／14B から選べ、「このモデルを今ダウンロード」で事前にダウンロードできます。自分のGGUFファイルを指定することもできます。
 
 ### Windows字幕でマイクを使う（v1.0.40）
 

@@ -42,7 +42,10 @@ public sealed partial class MainWindow
                 else if (item is MenuFlyoutItemBase menu && menu.IsEnabled != enabled) menu.IsEnabled = enabled;
         }
         Set(!busy && (recording || text), BookmarkButton, BookmarkMenuItem);
-        Set(!busy && text, ClearButton, ClearMenuItem, SubtitlesMenuItem, MoreSubtitlesItem, SubtitlesToolButton, CopyMenuItem, MoreCopyItem, ChangesMenuItem, MoreChangesItem, EditMenuItem);
+        // Clear also closes a recording open for review, even one without text.
+        Set(!busy && (text || review), ClearButton, ClearMenuItem);
+        Set(!busy && !recording && !live && (text || review || SummaryPane.Visibility == Visibility.Visible), HomeButton, HomeMenuItem);
+        Set(!busy && text, SubtitlesMenuItem, MoreSubtitlesItem, SubtitlesToolButton, CopyMenuItem, MoreCopyItem, ChangesMenuItem, MoreChangesItem, EditMenuItem);
         // The summary reads a finished transcript; during listening or recording the text is still changing.
         Set(!busy && text && !live && !recording, SummaryMenuItem, MoreSummaryItem, SummaryToolButton);
         Set(!busy && review, RetranscribeButton, RetranscribeMenuItem, SyncButton, SyncMenuItem, VersionsButton, VersionsMenuItem);

@@ -5,17 +5,14 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { throw 'uv is required: https://docs.astral.sh/uv/getting-started/installation/' }
-    if (-not (Test-Path '.venv/Scripts/python.exe')) {
-        uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv
-        if ($LASTEXITCODE) { throw 'Python環境作成に失敗しました' }
-    }
-    uv pip install --python .venv/Scripts/python.exe -r inference/requirements.txt
+    $python = Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv'
+    uv pip install --python $python -r inference/requirements.txt
     if ($LASTEXITCODE) { throw '依存関係インストールに失敗しました' }
-    & .venv/Scripts/python.exe inference/setup_models.py --speech $Speech
+    & $python inference/setup_models.py --speech $Speech
     if ($LASTEXITCODE) { throw 'モデル準備に失敗しました' }
-    & .venv/Scripts/python.exe inference/setup_speech.py --model small
+    & $python inference/setup_speech.py --model small
     if ($LASTEXITCODE) { throw '日本語対応モデルの準備に失敗しました' }
-    & .venv/Scripts/python.exe inference/setup_speech.py --model base
+    & $python inference/setup_speech.py --model base
     if ($LASTEXITCODE) { throw '高速文字起こしモデルの準備に失敗しました' }
     if (-not $SkipBuild) {
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'Building requires .NET SDK. Portable ZIP users can rerun with -SkipBuild.' }

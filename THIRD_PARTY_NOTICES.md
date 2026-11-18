@@ -9,7 +9,7 @@ Locaptio's own code is MIT-licensed. The model weights and optional Python/CUDA/
 
 * STT: [Systran faster-whisper-tiny.en](https://huggingface.co/Systran/faster-whisper-tiny.en), derived from OpenAI Whisper. MIT.
 * Multilingual STT: [Systran faster-whisper-small](https://huggingface.co/Systran/faster-whisper-small) and [dropbox-dash faster-whisper-large-v3-turbo](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo), derived from OpenAI Whisper. MIT. CTranslate2 conversion; per-model manifests record source revision and hashes.
-* Local LLM: [Qwen3-4B-GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF), Qwen, Apache-2.0. Q4_K_M GGUF; source and hashes recorded in models/llm/manifest.json.
+* Local LLM (chosen in Settings, downloaded on request): [Qwen3-1.7B-GGUF](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF) (Q8_0), [Qwen3-4B-GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF) (Q4_K_M, default), [Qwen3-8B-GGUF](https://huggingface.co/Qwen/Qwen3-8B-GGUF) and [Qwen3-14B-GGUF](https://huggingface.co/Qwen/Qwen3-14B-GGUF) (Q4_K_M), Qwen, Apache-2.0. Source, revision and SHA-256 are recorded in models/llm/<model>.manifest.json.
 * AMD NPU STT: [amd/whisper-small-onnx-npu](https://huggingface.co/amd/whisper-small-onnx-npu), AMD, Apache-2.0 model card; derived from OpenAI Whisper-small. Unmodified downloaded ONNX models and tokenizer are local runtime assets; revision and hashes are recorded by setup_amd_speech.py. AMD's Windows ML execution provider is prepared separately and its supplied third-party notices are preserved with the local compiler copy.
 * llama.cpp / llama-cpp-python: https://github.com/ggml-org/llama.cpp and https://github.com/abetlen/llama-cpp-python — MIT.
 * Windows App SDK / WinUI: https://github.com/microsoft/WindowsAppSDK — MIT; bundled SDK/runtime license files also apply.
@@ -18,6 +18,7 @@ Locaptio's own code is MIT-licensed. The model weights and optional Python/CUDA/
 * NAudio: https://github.com/naudio/NAudio — MIT.
 * [ScreenRecorderLib 7.0.1](https://github.com/sskodje/ScreenRecorderLib), Sverre Skodje — MIT. Screen and window recording to MP4 (Windows Graphics Capture / Desktop Duplication and Media Foundation).
 * System.Drawing.Common: https://github.com/dotnet/runtime — MIT. Draws caption images for subtitled video export.
+* Microsoft Visual C++ Runtime (msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll, concrt140.dll, vcomp140.dll), Microsoft Corporation — redistributed app-local under the Visual C++ Redistributable license terms, for ScreenRecorderLib and llama.cpp.
 * Speaker embeddings: [3D-Speaker / CAMPPlus](https://github.com/modelscope/3D-Speaker), Apache-2.0 project; the optional zh/en common advanced ONNX model is downloaded from the [sherpa-onnx speaker-model release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models). Source URL and SHA256 are recorded in models/speakers/manifest.json. Model weights are not redistributed with Locaptio.
 * [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx): Apache-2.0; optional Python/CPU runtime for speaker embedding and VAD. Its ONNX Runtime and dependency notices apply separately.
 * [Silero VAD](https://github.com/snakers4/silero-vad): MIT, optional voice activity model downloaded from the sherpa-onnx release; hash recorded in the speaker manifest.

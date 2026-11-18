@@ -38,9 +38,26 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
         var python = Path.Combine(root, ".venv-llm", "Scripts", "python.exe");
         if (string.IsNullOrWhiteSpace(modelPath)) modelPath = Path.Combine(root, "models", "llm", "Qwen3-4B-Q4_K_M.gguf");
         await LocalLlmPreparation.EnsureAsync(root, modelPath, cpu, p => PreparationChanged?.Invoke(p), token);
+        try { await LaunchAsync(root, python, modelPath, cpu, token); }
+        catch (InvalidOperationException ex) when (LocalLlmPreparation.IsLibraryLoadFailure(ex.Message))
+        {
+            // Usually no Vulkan driver (vulkan-1.dll) on this PC: the CPU build of llama.cpp needs none.
+            // The worker may still hold llama.cpp's DLLs it did load; they must be free before they are replaced.
+            var failed = process; Kill();
+            if (failed is not null) { try { await failed.WaitForExitAsync(token).WaitAsync(TimeSpan.FromSeconds(10), token); } catch (TimeoutException) { } failed.Dispose(); }
+            process = null;
+            PreparationChanged?.Invoke(new("llm", 0, 2, "GPU用のAIライブラリを読み込めないため、CPU版に切り替えています（初回のみ）"));
+            await LocalLlmPreparation.UseCpuLibraryAsync(root, modelPath, p => PreparationChanged?.Invoke(p), token);
+            configuredCpu = true;
+            await LaunchAsync(root, python, modelPath, true, token);
+        }
+    }
+    private async Task LaunchAsync(string root, string python, string modelPath, bool cpu, CancellationToken token)
+    {
         var start = new ProcessStartInfo(python) { WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = new UTF8Encoding(false), StandardInputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
         foreach (string arg in new[] { "-u", Path.Combine(root, "inference", "llm_worker.py"), "--model", modelPath }) start.ArgumentList.Add(arg);
         if (cpu) start.ArgumentList.Add("--cpu");
+        start.Environment["PATH"] = LocalLlmPreparation.RuntimePath(root) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
         process = new() { StartInfo = start }; process.ErrorDataReceived += (_, _) => { }; process.Start(); process.BeginErrorReadLine();
         PreparationChanged?.Invoke(new("llm", 1, 2, "LLMモデルを読み込み中"));
         using var registration = token.Register(Kill);
@@ -51,7 +68,16 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
     }
     public Task<InferenceResult> RefineAsync(string source, CancellationToken token) => RequestAsync(new { mode = "translate", text = source }, token);
     public Task<InferenceResult> RefineAsync(string source, string[] context, string glossary, CancellationToken token) => RequestAsync(new { mode = "translate", text = source, context, glossary }, token);
-    public Task<InferenceResult> CorrectAsync(string source, string[] context, string language, CancellationToken token) => RequestAsync(new { mode = "correct", text = source, context, language, glossary = CorrectionGlossary }, token);
+    /// <summary>Corrections refused because they dropped or invented words (the original is kept).</summary>
+    public int RefusedCorrections { get; private set; }
+    public async Task<InferenceResult> CorrectAsync(string source, string[] context, string language, CancellationToken token)
+    {
+        var result = await RequestAsync(new { mode = "correct", text = source, context, language, glossary = CorrectionGlossary }, token);
+        // The model sometimes drops a clause it found redundant; what was said must stay.
+        if (CorrectionGuard.Accept(source, result.Text.Trim(), out _)) return result;
+        RefusedCorrections++;
+        return result with { Text = source };
+    }
     // A summary reads far more text than one caption, so it gets a longer limit than live requests.
     public Task<InferenceResult> SummarizeAsync(string numberedTranscript, CancellationToken token) => RequestAsync(new { mode = "summarize", text = numberedTranscript }, token, 240);
     private async Task<InferenceResult> RequestAsync(object request, CancellationToken token, int seconds = 30)

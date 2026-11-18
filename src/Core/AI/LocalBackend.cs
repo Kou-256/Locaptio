@@ -77,6 +77,8 @@ public sealed class LocalBackend : ITimedSpeechRecognitionBackend, ITranslationB
             if (fastRecognition) start.ArgumentList.Add("--fast");
             if (draftRecognition) start.ArgumentList.Add("--draft");
         }
+        // Native packages find the Visual C++ runtime shipped with Locaptio on PCs without the redistributable.
+        start.Environment["PATH"] = LocalLlmPreparation.RuntimePath(root) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
         start.Environment["HF_HUB_OFFLINE"] = "1";
         start.Environment["TRANSFORMERS_OFFLINE"] = "1";
         process = new Process { StartInfo = start };

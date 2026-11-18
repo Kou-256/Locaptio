@@ -4,12 +4,11 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
     if (-not (Test-Path models/fugumt-source/pytorch_model.bin)) { throw '先にscripts/setup.ps1でモデルを準備してください' }
-    uv venv --python (Get-LocaptioPython -Root $projectRoot) .venv-dml
-    if ($LASTEXITCODE) { throw 'Python environment failed' }
-    uv pip install --python .venv-dml/Scripts/python.exe -r inference/requirements-directml.txt
+    $python = Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv-dml'
+    uv pip install --python $python -r inference/requirements-directml.txt
     if ($LASTEXITCODE) { throw 'Dependencies failed' }
-    & .venv-dml/Scripts/python.exe inference/export_onnx.py
+    & $python inference/export_onnx.py
     if ($LASTEXITCODE) { throw 'ONNX export failed' }
-    & .venv-dml/Scripts/python.exe inference/smoke_directml.py
+    & $python inference/smoke_directml.py
     if ($LASTEXITCODE) { throw 'DirectML verification failed' }
 } finally { Pop-Location }

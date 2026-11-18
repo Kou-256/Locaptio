@@ -42,7 +42,7 @@ public sealed partial class MainWindow
                 if (live is null)
                 {
                     await SpeechPreparation.EnsureAsync(root, model, translate, cpu ? "cpu" : settings.InferenceDevice, report, token);
-                    own = new PreparedInference(root, japanese, model, prompt, settings.InferenceDevice, cpu, false, correct, settings.LlmModelPath, Status, progress: report);
+                    own = new PreparedInference(root, japanese, model, prompt, settings.InferenceDevice, cpu, false, correct, LlmModelFile, Status, progress: report);
                     await Task.WhenAll(own.Ready, own.AccuracyReady).WaitAsync(token);
                     if (own.LlmReady is { } llmReady) await llmReady.WaitAsync(token);
                 }
