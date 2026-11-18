@@ -95,7 +95,7 @@ public sealed partial class MainWindow
             // Autosave: what a crashed process leaves behind restores rows, edit marks and bookmarks.
             sessionDirty = true; WriteAutosave(); await autosaveWrite;
             var snapshot = SessionAutosave.TryLoad(autosavePath);
-            Check(snapshot is { Rows.Length: 6, Mode: "japanese", RecordingPath: null } && snapshot.Rows[3] is { Edited: true, Original: not null } && snapshot.Bookmarks is { Length: 2 }, "autosave snapshot");
+            Check(snapshot is { Rows.Length: 6, Mode: "ja", RecordingPath: null } && snapshot.Rows[3] is { Edited: true, Original: not null } && snapshot.Bookmarks is { Length: 2 }, "autosave snapshot");
             await CaptureElementAsync(Root, Path.Combine(artifacts, "transcript-tools-live.png"));
             ClearCaptions(); await autosaveWrite;
             Check(history.Count == 0 && bookmarks.Count == 0 && !edits.CanUndo && SessionAutosave.TryLoad(autosavePath) is null, "clear discards tools state and snapshot");

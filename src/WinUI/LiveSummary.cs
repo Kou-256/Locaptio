@@ -82,7 +82,7 @@ public sealed partial class MainWindow
             var items = await Task.Run(() => TranscriptSummary.RunAsync(backend, input, null, timeout.Token), timeout.Token);
             toolLlmUsed = Stopwatch.GetTimestamp();
             liveSummaryNextId = rows[^1].Id + 1;
-            if (items.Length > 0) liveBlocks.Add(new(rows[0].Id, rows[^1].Id, items));
+            if (items.Length > 0) { liveBlocks.Add(new(rows[0].Id, rows[^1].Id, items)); sessionDirty = true; }
             if (liveBlocks.Count > LiveRecentBlocks && !closing) await CondenseLiveSummaryAsync(backend, timeout.Token);
             if (closing) return;
             if (SummaryPane.Visibility != Visibility.Visible) ShowSummaryPane(true);
@@ -124,13 +124,71 @@ public sealed partial class MainWindow
         return card;
     }
 
+    /// <summary>
+    /// 「今までを要約」 while transcribing or recording: turns live summary on if needed and summarizes every
+    /// utterance not yet covered, block by block, without stopping. Older blocks are condensed as usual.
+    /// </summary>
+    private async Task SummarizeSoFarAsync()
+    {
+        if (!settings.LiveSummary) SetLiveSummary(true);
+        ShowSummaryPane(true);
+        SummaryRunButton.IsEnabled = false;
+        try
+        {
+            for (int round = 0; round < 50 && !closing; round++)
+            {
+                while (liveSummaryRunning && !closing) await Task.Delay(200);
+                long before = liveSummaryNextId; int blocks = liveBlocks.Count + liveArchived.Count;
+                bool pending = history.Any(r => r.Id >= liveSummaryNextId && r.Caption.Final && r.English.Trim().Length > 0);
+                if (!pending) break;
+                Status("ライブ要約：ここまでの発話を要約しています…");
+                await LiveSummaryTickAsync(flush: true);
+                if (liveSummaryNextId == before && liveBlocks.Count + liveArchived.Count == blocks) break; // nothing more could be summarized (too short, no model or an error)
+            }
+            RenderLiveSummary();
+            if (liveBlocks.Count + liveArchived.Count > 0) Status("ここまでの発話を要約しました。文字起こしは続いています。以降も数分ごとに自動で追加します。");
+        }
+        finally { SummaryRunButton.IsEnabled = true; }
+    }
+
+    /// <summary>The summary pane for the crash-recovery snapshot; null when there is nothing to keep.</summary>
+    private AutosaveSummary? SummarySnapshot()
+    {
+        if (summaryItems.Length == 0 && liveBlocks.Count == 0 && liveDigest is null) return null;
+        static AutosaveSummaryBlock Block(LiveSummaryBlock b) => new(b.FirstId, b.LastId, b.Items);
+        return new(summaryItems, liveBlocks.Select(Block).ToArray(), liveArchived.Select(Block).ToArray(), liveDigest is null ? null : Block(liveDigest), liveSummaryNextId);
+    }
+    /// <summary>Puts a saved summary pane back after 「前回の作業を復元」; <paramref name="ids"/> maps saved row IDs to the restored ones.</summary>
+    private void RestoreSummarySnapshot(AutosaveSummary saved, IReadOnlyDictionary<long, long> ids)
+    {
+        long Map(long id) => ids.TryGetValue(id, out long mapped) ? mapped : 0;
+        SummaryItem Item(SummaryItem i) => i with { RowIds = (i.RowIds ?? []).Select(Map).Where(id => id != 0).ToArray() };
+        LiveSummaryBlock? Block(AutosaveSummaryBlock? b) => b is null ? null : new(Map(b.FirstId), Map(b.LastId), (b.Items ?? []).Select(Item).ToArray());
+        summaryItems = (saved.Full ?? []).Select(Item).ToArray();
+        liveBlocks.Clear(); liveBlocks.AddRange((saved.Live ?? []).Select(b => Block(b)!));
+        liveArchived.Clear(); liveArchived.AddRange((saved.Archived ?? []).Select(b => Block(b)!));
+        liveDigest = Block(saved.Digest);
+        // Live summary continues with the first row it had not covered (or after the restored rows).
+        long next = ids.Where(p => p.Key >= saved.NextId).OrderBy(p => p.Key).Select(p => p.Value).FirstOrDefault();
+        liveSummaryNextId = next != 0 ? next : (history.LastOrDefault()?.Id ?? 0) + 1;
+        if (summaryItems.Length > 0 || liveBlocks.Count > 0 || liveDigest is not null) { ShowSummaryPane(true); RenderSummary(); }
+    }
+
     private void RenderLiveSummary()
     {
-        if (summaryItems.Length > 0) return; // a full summary made afterwards takes the pane
+        if (summaryItems.Length > 0) { RenderSummary(); return; } // a full summary shows the live summary below it
+        bool listening = captionStop is not null || recordingStop is not null;
+        SummaryRunButton.Content = listening ? "今までを要約" : "作成";
         SummaryContent.Children.Clear();
         SummaryContent.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8,
-            Text = $"ライブ要約：約{LiveBlockTime.TotalMinutes:0.#}分（または約{LiveBlockChars}文字）ごとの発話のまとまりを、ローカルAIが自動で要約します。新しいまとまりが上です。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。" + (captionStop is null ? " 全体の要約は「作成」を押してください。" : "") });
+            Text = $"ライブ要約：約{LiveBlockTime.TotalMinutes:0.#}分（または約{LiveBlockChars}文字）ごとの発話のまとまりを、ローカルAIが自動で要約します。新しいまとまりが上です。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。" + (listening ? " 「今までを要約」を押すと、次のまとまりを待たずにここまでの発話を要約します。" : " 全体の要約は「作成」を押してください。") });
         if (liveBlocks.Count == 0 && liveDigest is null) { SummaryContent.Children.Add(new TextBlock { Text = "最初のまとまりを待っています…", FontSize = 12, Opacity = .65 }); return; }
+        AddLiveSummaryCards();
+    }
+
+    /// <summary>Live blocks (newest first), the "so far" digest and the folded originals.</summary>
+    private void AddLiveSummaryCards()
+    {
         foreach (var block in Enumerable.Reverse(liveBlocks)) SummaryContent.Children.Add(LiveSummaryCard(block));
         if (liveDigest is null) return;
         SummaryContent.Children.Add(LiveSummaryCard(liveDigest, $"ここまでの流れ（古い{liveArchived.Count}まとまりをまとめ直し）"));

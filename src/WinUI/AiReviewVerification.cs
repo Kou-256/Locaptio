@@ -132,6 +132,59 @@ public sealed partial class MainWindow
                 captionStop = null; recordingStop = null; UpdateCommandStates();
             }
             log.Add("PASS: live summary toggles while recording, catches up, and condenses older blocks");
+            // 5b. 「今までを要約」 while transcribing: summarizes short speech at once, without stopping.
+            ClearCaptions(); standIn = new StandInSummary(); liveSummaryBackendForVerification = standIn;
+            settings.LiveSummary = false; LiveSummaryMenuItem.IsChecked = false; LiveSummaryToggle.IsChecked = false;
+            using (var listening = new CancellationTokenSource())
+            {
+                captionStop = listening; UpdateCommandStates();
+                for (int i = 0; i < 4; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, "最後に質疑応答を行い、次回の日程を確認しました。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                Check(SummaryToolButton.IsEnabled && SummaryMenuItem.IsEnabled, "the summary command stays available while transcribing");
+                SummaryClick(SummaryToolButton, new RoutedEventArgs()); RenderLiveSummary();
+                Check((string)SummaryRunButton.Content == "今までを要約", "the pane offers 「今までを要約」 while transcribing");
+                await RunSummaryAsync();
+                Check(settings.LiveSummary && liveBlocks.Count == 1 && liveBlocks[0].LastId == historyIds[^1] && captionStop == listening && SummaryContent.Children.OfType<StackPanel>().Count() == 1,
+                    $"short speech so far is summarized without stopping ({liveBlocks.Count} blocks, live={settings.LiveSummary})");
+                await CaptureComposedAsync(Path.Combine(shots, "summary-so-far.png"));
+                // Turning live summary off and on again, and closing and reopening the pane, keep the earlier results.
+                int kept = liveBlocks.Count;
+                LiveSummaryToggle.IsChecked = false; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                SummaryCloseClick(this, new RoutedEventArgs());
+                LiveSummaryToggle.IsChecked = true; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                Check(liveBlocks.Count == kept && SummaryPane.Visibility == Visibility.Visible && SummaryContent.Children.OfType<StackPanel>().Count() == kept, $"off → on keeps the live summary ({liveBlocks.Count}/{kept}, cards {SummaryContent.Children.OfType<StackPanel>().Count()})");
+                SummaryCloseClick(this, new RoutedEventArgs()); SummaryClick(SummaryToolButton, new RoutedEventArgs());
+                Check(SummaryContent.Children.OfType<StackPanel>().Count() == kept, "closing and reopening the pane keeps the live summary");
+                LiveSummaryToggle.IsChecked = false; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                SummaryCloseClick(this, new RoutedEventArgs()); SummaryClick(SummaryToolButton, new RoutedEventArgs());
+                Check(SummaryContent.Children.OfType<StackPanel>().Count() == kept, $"while off, the pane still shows earlier live summaries (cards {SummaryContent.Children.OfType<StackPanel>().Count()})");
+                for (int i = 0; i < 4; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, "最後に質疑応答を行い、次回の日程を確認しました。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                LiveSummaryToggle.IsChecked = true; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                await RunSummaryAsync();
+                Check(liveBlocks.Count == kept + 1 && liveBlocks[0].LastId < liveBlocks[^1].FirstId, $"after on again, only new speech is added ({liveBlocks.Count} blocks)");
+                // A full summary does not hide or discard the live summaries, and 「今までを要約」 keeps the full one.
+                summaryItems = [new SummaryItem("要点", "全体の要約", [historyIds[0]])]; RenderSummary();
+                bool both = SummaryContent.Children.OfType<TextBlock>().Any(t => t.Text.StartsWith("ライブ要約（")) && SummaryContent.Children.OfType<StackPanel>().Count(p => p.Children.OfType<HyperlinkButton>().Any(h => h.Content is string c && c.Contains('–'))) == liveBlocks.Count;
+                for (int i = 0; i < 4; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, "最後に質疑応答を行い、次回の日程を確認しました。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                await RunSummaryAsync();
+                Check(both && summaryItems.Length == 1 && liveBlocks.Count == kept + 2 && SummaryContent.Children.OfType<TextBlock>().Any(t => t.Text.StartsWith("ライブ要約（")), $"full and live summaries are both kept ({liveBlocks.Count} live blocks)");
+                // 5c. Restart and 「前回の作業を復元」: the full summary and live summary come back with working links.
+                summaryItems = [new SummaryItem("要点", "全体の要約", [historyIds[1]])];
+                int liveCount = liveBlocks.Count; long lastCovered = liveBlocks[^1].LastId;
+                var savedRows = history.Select(row => new AutosaveRow(row.Id, RowSeconds(row.Caption), row.English, row.Japanese, row.Caption.SourceLanguage)).ToArray();
+                string snapshotPath = Path.Combine(work, "session.json");
+                await SessionAutosave.SaveAsync(snapshotPath, new AutosaveSnapshot(1, DateTimeOffset.Now, settings.CaptionMode, null, savedRows, null, SummarySnapshot()));
+                captionStop = null; ClearCaptions();
+                Check(summaryItems.Length == 0 && liveBlocks.Count == 0, "clearing removes the summary from the screen");
+                await RestoreSessionAsync(SessionAutosave.TryLoad(snapshotPath)!);
+                Check(summaryItems.Length == 1 && summaryItems[0].RowIds.Length == 1 && FindCaption(summaryItems[0].RowIds[0]) is not null && liveBlocks.Count == liveCount
+                    && liveBlocks.All(bl => FindCaption(bl.FirstId) is not null && FindCaption(bl.LastId) is not null) && SummaryPane.Visibility == Visibility.Visible
+                    && SummaryContent.Children.OfType<TextBlock>().Any(t => t.Text.StartsWith("ライブ要約（")) && liveSummaryNextId > liveBlocks[^1].LastId,
+                    $"restore brings back the full and live summaries ({summaryItems.Length} / {liveBlocks.Count} of {liveCount})");
+                await CaptureComposedAsync(Path.Combine(shots, "summary-restored.png"));
+                captionStop = listening;
+                summaryItems = [];
+                captionStop = null; UpdateCommandStates();
+            }
             Check(LiveSummaryToggle is CheckBox && LiveSummaryMenuItem.Icon is ImageIcon, "live summary is a toolbar checkbox; its icon is only in the menu bar");
 
             // 6. Toolbar: hide, reorder, settings rows, persistence and reset (the user's own layout is restored afterwards).

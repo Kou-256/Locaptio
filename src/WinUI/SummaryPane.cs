@@ -73,17 +73,17 @@ public sealed partial class MainWindow
     }
     private void RenderSummary(string? message = null)
     {
-        if (message is null && summaryItems.Length == 0 && liveBlocks.Count > 0) { RenderLiveSummary(); return; }
+        if (message is null && summaryItems.Length == 0 && (liveBlocks.Count > 0 || liveDigest is not null)) { RenderLiveSummary(); return; }
         SummaryContent.Children.Clear();
         SummaryCopyButton.IsEnabled = SummarySaveButton.IsEnabled = summaryItems.Length > 0;
-        SummaryRunButton.Content = summaryItems.Length > 0 ? "作り直す" : "作成";
+        SummaryRunButton.Content = captionStop is not null || recordingStop is not null ? "今までを要約" : summaryItems.Length > 0 ? "作り直す" : "作成";
         if (message is not null || summaryItems.Length == 0)
         {
             SummaryContent.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 13, Text = message ?? (history.Count == 0
                 ? "文字起こしが終わったら、ここに要点・決定事項・TODOを作成できます。"
                 : "「作成」を押すと、表示中の文字起こしからローカルAIが要点・決定事項・TODOを抜き出します。") });
             if (message is null) SummaryContent.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8,
-                Text = "・PC内のローカルLLMで処理し、文章は外部へ送信しません。\n・各項目の時刻を押すと、根拠にした発話へ移動します（録音があれば再生）。\n・AIの要約は誤りや抜けを含むことがあります。重要な内容は根拠の発話で確認してください。\n・文字起こし・録音を停止してから実行します。長い文字起こしは数分かかることがあります。" });
+                Text = "・PC内のローカルLLMで処理し、文章は外部へ送信しません。\n・各項目の時刻を押すと、根拠にした発話へ移動します（録音があれば再生）。\n・AIの要約は誤りや抜けを含むことがあります。重要な内容は根拠の発話で確認してください。\n・文字起こし・録音中に押すと、止めずにそこまでの発話を要約します（ライブ要約）。停止後は全体をまとめて要約します。長い文字起こしは数分かかることがあります。" });
             return;
         }
         foreach (string section in TranscriptSummary.Sections)
@@ -109,6 +109,12 @@ public sealed partial class MainWindow
             }
         }
         SummaryContent.Children.Add(new TextBlock { Text = "ローカルAIによる要約です。時刻を押して根拠の発話を確認できます。", TextWrapping = TextWrapping.Wrap, FontSize = 11, Opacity = .65, Margin = new Thickness(0, 8, 0, 0) });
+        // Earlier live summaries stay visible below a full summary (they are never discarded by it).
+        if (liveBlocks.Count > 0 || liveDigest is not null)
+        {
+            SummaryContent.Children.Add(new TextBlock { Text = "ライブ要約（録音・文字起こし中の要約）", FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 10, 0, 0) });
+            AddLiveSummaryCards();
+        }
     }
     private string SummaryMarkdown() => TranscriptSummary.Markdown(summaryItems, id => FindCaption(id) is null ? null : RowTime(id));
 
@@ -118,7 +124,8 @@ public sealed partial class MainWindow
         if (dialogOpen || closing) return;
         var rows = history.Select(row => (row.Id, row.English)).ToArray();
         if (rows.Length == 0) { RenderSummary("要約する文字起こしがありません。"); return; }
-        if (captionStop is not null || recordingStop is not null) { RenderSummary("文字起こし・録音を停止してから「作成」を押してください。"); return; }
+        // While transcribing or recording, summarize what has been said so far without stopping (live summary).
+        if (captionStop is not null || recordingStop is not null) { await SummarizeSoFarAsync(); return; }
         root = FindRoot();
         string model = LlmModelFile;
         if (summaryBackendForVerification is null && root.Length > 0 && LocalLlmPreparation.Required(root, model))
@@ -151,7 +158,7 @@ public sealed partial class MainWindow
         if (closing) return;
         if (created is null) { RenderSummary(summaryItems.Length == 0 ? "要約を作成できませんでした。下の「状態」で理由を確認できます。" : null); if (reviewingRecording) EnsurePlayback(); return; }
         if (created.Length == 0) { RenderSummary("要点・決定事項・TODOとして抜き出せる内容が見つかりませんでした。"); if (reviewingRecording) EnsurePlayback(); return; }
-        summaryItems = created; RenderSummary();
+        summaryItems = created; RenderSummary(); sessionDirty = true;
         if (reviewingRecording && playbackDocument is not null)
         {
             var document = playbackDocument;
