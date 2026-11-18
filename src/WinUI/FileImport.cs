@@ -77,7 +77,7 @@ public sealed partial class MainWindow
             bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu";
             await SpeechPreparation.EnsureAsync(root, settings.SpeechModel, !japanese, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
             using var worker = new PreparedInference(root, japanese, settings.SpeechModel, Terms.SpeechPrompt(settings.SpeechPrompt), settings.InferenceDevice, cpu, false,
-                settings.CorrectTranscriptWithAi, settings.LlmModelPath, Status, progress: BeginPreparation());
+                settings.CorrectTranscriptWithAi, LlmModelFile, Status, progress: BeginPreparation());
             worker.Speech.RequestTimeout = TimeSpan.FromMinutes(5);
             if (worker.Translation is not null) worker.Translation.RequestTimeout = TimeSpan.FromMinutes(5);
             await worker.Ready.WaitAsync(token);

@@ -46,12 +46,17 @@ public sealed partial class MainWindow
             string requested = Path.Combine(work, "画面録画.mp4");
             recordingFilePickerForVerification = () => Task.FromResult<string?>(requested);
             var target = new CaptureTarget(false, "", hwnd, "Locaptio（検証）", size.Width, size.Height);
-            captureChoiceForVerification = () => Task.FromResult<CaptureChoice?>(new(target, false, false, true, true, 30, "standard", true, false, false));
+            captureChoiceForVerification = () => Task.FromResult<CaptureChoice?>(new(target, false, false, true, true, 30, "standard", 3, false, false));
             Check(CaptureTargets.List().Any(t => t.IsDisplay) && CaptureTargets.Snapshot(target, 320) is { Width: 320 }, "targets listed and window preview captured");
 
+            // The first attempt fails as an unusable hardware encoder would; recording must still start (software encoding).
+            videoAttemptsToFailForVerification = 1;
             VideoToggleClick(VideoToggle, new RoutedEventArgs());
             for (int i = 0; i < 200 && !(VideoRecording && recordingTranscript?.Started != long.MaxValue); i++) await Task.Delay(100);
+            videoAttemptsToFailForVerification = 0;
             Check(VideoRecording && recordingTranscript!.Started != long.MaxValue && VideoControls.Visibility == Visibility.Visible && VideoToggle.IsChecked == true && !RecordToggle.IsEnabled, "recording started");
+            Check(StatusText.Text.Contains("ソフトウェアで録画"), "fell back to software encoding after a failed start: " + StatusText.Text);
+            Check(new Locaptio.App.Settings().VideoMicrophone, "microphone on by default for video");
             // Synthetic captions while recording, spoken on the video's clock.
             captionStop = new();
             UpdateCaption(new(1, 1, "画面録画のテストです。最初の発話。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));

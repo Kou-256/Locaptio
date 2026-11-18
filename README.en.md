@@ -1,11 +1,20 @@
 <p align="center"><img src="src/WinUI/Assets/Locaptio.png" width="112" alt="Locaptio icon"></p>
 <h1 align="center">Locaptio</h1>
 <p align="center">Local captions, translation & audio recording for Windows 11</p>
-<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.51/Locaptio-Setup-1.0.51-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
+<p align="center"><a href="README.md">日本語</a> · <b>English</b> · <a href="https://locaptio.vercel.app/en">Official website</a> · <a href="https://github.com/Kou-256/Locaptio/releases/download/v1.0.52/Locaptio-Setup-1.0.52-x64.exe">Download</a> · <a href="https://github.com/Kou-256/Locaptio/issues">Issues</a></p>
 
 Locaptio is a Windows 11 app for local speech recognition, English-to-Japanese translation, floating captions, and recording. Read audio from videos or meetings and save the text and audio you need.
 
 > **Experimental personal project.** The application UI is currently mostly Japanese; this guide explains its controls in English. Accuracy and latency depend on the audio, model and hardware.
+
+## v1.0.52: fixes for other PCs, live summary, editing and recording improvements
+
+- **Fixes for other PCs**: the Visual C++ runtime ships with Locaptio, so recording and AI correction (llama.cpp) work without the redistributable; without a Vulkan driver the CPU build is used automatically. Setup repairs a python.exe removed by security software, and setup errors are no longer garbled.
+- **Live summary**: while transcribing, every few minutes of speech is summarized into key points, decisions and TODOs.
+- **AI correction**: off by default; when on, changed characters are tinted with an "AI" badge and can be reverted; corrections that drop or add words are refused.
+- **Editing**: double-click to edit in place, select and Delete to remove; keep the text when a recording starts; Home button; Clear also closes a reviewed video.
+- **Recording**: 60 fps and best quality by default; the last settings and target are kept; countdown seconds; microphone on by default.
+- **Local LLM choice** (Qwen3 1.7B/4B/8B/14B) with download in Settings, and **term dictionary CSV import/export**.
 
 ## v1.0.51: checking recorded text against the audio
 
@@ -96,7 +105,7 @@ Fresh-profile defaults: Windows captions integration, Japanese transcription, ma
 
 Setup always offers a destination directory, including during updates. Downloaded updates require an explicit **Install** approval popup before Setup runs. Choosing Later keeps the current session running.
 
-Download **Locaptio-Setup-1.0.51-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
+Download **Locaptio-Setup-1.0.52-x64.exe** from the [latest release](https://github.com/Kou-256/Locaptio/releases/latest), install without administrator rights, and launch Locaptio from Start. The default location is `%LOCALAPPDATA%/Programs/Locaptio`. A portable ZIP remains available.
 
 ### Recording search and replay (v1.0.39)
 

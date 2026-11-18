@@ -34,19 +34,14 @@ public static class SpeechPreparation
         progress?.Invoke(new("音声環境の自動準備", 0, 1, "初回のみダウンロードします。ネット接続と数GBの空き容量が必要です。Stopで中止できます。"));
         string tools = await LocalLlmPreparation.EnsureUvAsync(root, token);
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"))
-        { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true,
-            StandardOutputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
+        { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file }.Concat(args)) start.ArgumentList.Add(arg);
         start.Environment["PATH"] = tools + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
         start.Environment["PYTHONIOENCODING"] = "utf-8";
         using var process = Process.Start(start) ?? throw new IOException("モデル準備を開始できません。");
         using var registration = token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
         Queue<string> tail = new(); object sync = new();
-        async Task Drain(StreamReader reader)
-        {
-            while (await reader.ReadLineAsync(token) is { } line)
-                lock (sync) { tail.Enqueue(line); while (tail.Count > 20) tail.Dequeue(); }
-        }
+        Task Drain(StreamReader reader) => ProcessText.ReadLinesAsync(reader.BaseStream, line => { lock (sync) { tail.Enqueue(line); while (tail.Count > 20) tail.Dequeue(); } }, token);
         await Task.WhenAll(Drain(process.StandardOutput), Drain(process.StandardError), process.WaitForExitAsync(token));
         token.ThrowIfCancellationRequested();
         if (process.ExitCode != 0)

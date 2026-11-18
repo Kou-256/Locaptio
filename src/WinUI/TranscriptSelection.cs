@@ -168,6 +168,7 @@ public sealed partial class MainWindow
         for (int column = 0; column < 2; column++)
         {
             var text = (TextBlock)row.Children[column]; text.TextHighlighters.Clear();
+            ApplyAiHighlight(text, entry, column);
             ApplyPlaybackHighlight(text, entry);
             if (textSelection is null || textSelection.Column != column) continue;
             var range = textSelection.Range(entry.Id, text.Text.Length);

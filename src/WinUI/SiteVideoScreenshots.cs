@@ -21,6 +21,8 @@ public sealed partial class MainWindow
     private static async Task<Bitmap> RenderElementAsync(Microsoft.UI.Xaml.UIElement element)
     {
         var target = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap(); await target.RenderAsync(element);
+        // A popup that has not been laid out yet renders nothing; give it an empty layer.
+        if (target.PixelWidth == 0 || target.PixelHeight == 0) return new Bitmap(1, 1, PixelFormat.Format32bppPArgb);
         var buffer = await target.GetPixelsAsync();
         var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(buffer);
         var bitmap = new Bitmap(target.PixelWidth, target.PixelHeight, PixelFormat.Format32bppPArgb);

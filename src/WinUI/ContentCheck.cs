@@ -58,7 +58,7 @@ public sealed partial class MainWindow
         {
             try
             {
-                run.Models = new PreparedInference(root, japanese, model, prompt, "cpu", cpu, false, false, settings.LlmModelPath, _ => { });
+                run.Models = new PreparedInference(root, japanese, model, prompt, "cpu", cpu, false, false, LlmModelFile, _ => { });
                 await Task.WhenAll(run.Models.Ready, run.Models.AccuracyReady).WaitAsync(token);
                 run.Models.Speech.RequestTimeout = TimeSpan.FromMinutes(5);
                 // As for whole-file recognition: earlier text must not steer the next segment.

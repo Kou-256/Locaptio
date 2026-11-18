@@ -83,7 +83,7 @@ public sealed partial class MainWindow : Window
         if (Environment.GetCommandLineArgs().Contains("--verify-correction")) settings.CorrectTranscriptWithAi = true;
         if (Environment.GetCommandLineArgs().Contains("--verify-npu")) { settings.InferenceDevice = "npu"; settings.CpuOnly = false; }
         if (Environment.GetCommandLineArgs().Contains("--verify-cuda")) { settings.InferenceDevice = "cuda"; settings.CpuOnly = false; settings.CaptionMode = "translate"; settings.UseLocalLlm = false; }
-        InitializeComponent(); CaptionList.ItemsSource = history; InitializeTranscriptSelection(); InitializeRecordingPlayback(); InitializeStatusDetails(); InitializeTranscriptTools(); InitializeCommandStates(); followTimer.Tick += FollowHistory; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        InitializeComponent(); CaptionList.ItemsSource = history; InitializeTranscriptSelection(); InitializeInlineEditing(); InitializeLiveSummary(); InitializeRecordingPlayback(); InitializeStatusDetails(); InitializeTranscriptTools(); InitializeCommandStates(); followTimer.Tick += FollowHistory; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
         ExtendsContentIntoTitleBar = false; SystemBackdrop = new TransparentWindowBackdrop(retainSurface: true);
         var presenter = (OverlappedPresenter)AppWindow.Presenter;
@@ -265,7 +265,7 @@ public sealed partial class MainWindow : Window
                 WindowsMicrophoneNotice.IsOpen = false;
                 prepared?.Dispose(); prepared = null; preparedKey = ""; speech = translation = accurateSpeech = null; llm = null;
                 windowsBridgeConnected = false;
-                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, settings.LlmModelPath, Terms.TranslationGlossary(settings.TranslationGlossary), () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed", correctionGlossary: Terms.CorrectionHint());
+                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, LlmModelFile, Terms.TranslationGlossary(settings.TranslationGlossary), () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed", correctionGlossary: Terms.CorrectionHint());
                 windowsSession = live;
                 live.OperationChanged += active => DispatcherQueue.TryEnqueue(() =>
                 {
@@ -333,13 +333,13 @@ public sealed partial class MainWindow : Window
     private PreparedInference PrepareModels(bool japanese, string model, bool cpu)
     {
         string speechPrompt = Terms.SpeechPrompt(settings.SpeechPrompt);
-        string key = System.Text.Json.JsonSerializer.Serialize(new { root, japanese, model, cpu, settings.InferenceDevice, speechPrompt, settings.FastTranscription, settings.RealtimeCaptions, settings.RealtimePreviewOnGpu, settings.RealtimePreviewModel, settings.CorrectTranscriptWithAi, settings.UseLocalLlm, settings.LlmModelPath });
+        string key = System.Text.Json.JsonSerializer.Serialize(new { root, japanese, model, cpu, settings.InferenceDevice, speechPrompt, settings.FastTranscription, settings.RealtimeCaptions, settings.RealtimePreviewOnGpu, settings.RealtimePreviewModel, settings.CorrectTranscriptWithAi, settings.UseLocalLlm, LlmModelFile });
         if (prepared is null || preparedKey != key || !prepared.IsUsable)
         {
             prepared?.Dispose();
             var reportProgress = BeginPreparation();
             preparedModel = (japanese, model, speechPrompt);
-            prepared = new(root, japanese, model, speechPrompt, settings.InferenceDevice, cpu, settings.FastTranscription, settings.CorrectTranscriptWithAi || !japanese && settings.UseLocalLlm, settings.LlmModelPath, Status, realtime: settings.RealtimeCaptions, previewCpu: !settings.RealtimePreviewOnGpu, previewModel: settings.RealtimePreviewModel, progress: reportProgress);
+            prepared = new(root, japanese, model, speechPrompt, settings.InferenceDevice, cpu, settings.FastTranscription, settings.CorrectTranscriptWithAi || !japanese && settings.UseLocalLlm, LlmModelFile, Status, realtime: settings.RealtimeCaptions, previewCpu: !settings.RealtimePreviewOnGpu, previewModel: settings.RealtimePreviewModel, progress: reportProgress);
             preparedKey = key;
         }
         return prepared;
@@ -579,7 +579,8 @@ public sealed partial class MainWindow : Window
             else
             {
                 if (!history[index].Update(update)) return;
-                if (CaptionList.ContainerFromIndex(index) is ListViewItem item && item.ContentTemplateRoot is Grid row) StyleHistoryRow(row, update);
+                if (CaptionList.ContainerFromIndex(index) is ListViewItem item && item.ContentTemplateRoot is Grid row)
+                    StyleHistoryRow(row, update);
             }
         }
         else if (!string.IsNullOrWhiteSpace(update.English))
@@ -675,11 +676,6 @@ public sealed partial class MainWindow : Window
         ((OverlappedPresenter)AppWindow.Presenter).Minimize();
         if (captionStop is null && !Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify"))) _ = StartAsync();
     }
-    private async void ClearClick(object sender, RoutedEventArgs e)
-    {
-        if (dialogOpen || closing || !await ConfirmTranscriptReplacementAsync("表示中のテキストをクリアします。")) return;
-        ClearCaptions(); windowsSession?.ResetTranscript();
-    }
     private async void SaveClick(object sender, RoutedEventArgs e)
     {
         if (saving || transcript.Count == 0 || dialogOpen) return;
@@ -754,11 +750,11 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { StatusText.Text = "コピーできません: " + ex.Message; ShowStatusDetails(pin: true); }
     }
     private Func<Task<bool>>? confirmNewRecordingForVerification;
-    private async Task<bool> ConfirmNewRecordingAsync()
+    private async Task<bool> ConfirmNewRecordingAsync(string action = "新規録音")
     {
-        if (history.Count == 0) return true;
-        if (confirmNewRecordingForVerification is not null) return await confirmNewRecordingForVerification();
-        return await ConfirmTranscriptReplacementAsync("新規録音のため、表示中のテキストをクリアします。");
+        if (history.Count == 0) { keepExistingText = false; return true; }
+        if (confirmNewRecordingForVerification is not null) { keepExistingText = settings.ExistingTextOnRecording == "keep"; return await confirmNewRecordingForVerification(); }
+        return await ChooseExistingTextAsync(action);
     }
     private async void RecordChanged(object sender, RoutedEventArgs e)
     {
@@ -796,7 +792,7 @@ public sealed partial class MainWindow : Window
             if (!keepWindowsConnection) await StopAsync();
             string saveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             path = RecordingLibrary.CreateSessionPath(path);
-            ClearCaptions(); windowsSession?.ResetTranscript();
+            PrepareTextForNewRecording();
             settings.RecordingSaveDirectory = saveDirectory; settings.Save();
             StartRecording(path);
             if (!keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
@@ -925,7 +921,7 @@ public sealed partial class MainWindow : Window
     private void ApplySettings()
     {
         if (settings.SpeakerColors is not { Length: 8 }) settings.SpeakerColors = new Settings().SpeakerColors;
-        AiCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi;
+        AiCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi; LiveSummaryMenuItem.IsChecked = settings.LiveSummary;
         if (settingsCorrectionToggle is not null) settingsCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi;
         settings.CaptionLineGap = Math.Clamp(settings.CaptionLineGap, 0, 30);
         settings.CaptionLineHeight = Math.Clamp(settings.CaptionLineHeight, 1.05, 1.8);
@@ -940,6 +936,9 @@ public sealed partial class MainWindow : Window
         settings.CaptionHideSeconds = Math.Clamp(settings.CaptionHideSeconds, 1, 20); settings.CaptionOpacity = Math.Clamp(settings.CaptionOpacity, 0, 1); settings.CaptionTextOpacity = Math.Clamp(settings.CaptionTextOpacity, 0, 1); settings.CaptionRows = Math.Clamp(settings.CaptionRows, 1, 10); settings.CaptionMaxLines = Math.Clamp(settings.CaptionMaxLines, 1, 20); settings.WindowsCaptionRestartSeconds = Math.Clamp(settings.WindowsCaptionRestartSeconds, 10, 1800);
         if (settings.RecordingFormat is not ("wav" or "mp3" or "m4a")) settings.RecordingFormat = "wav";
         if (settings.ContentCheck is not ("during" or "after" or "off")) settings.ContentCheck = "during";
+        if (settings.ExistingTextOnRecording is not ("ask" or "keep" or "clear")) settings.ExistingTextOnRecording = "ask";
+        if (Array.IndexOf(QualityKeys, settings.VideoQuality) < 0) settings.VideoQuality = "best";
+        if (Array.IndexOf(CountdownChoices, settings.VideoCountdownSeconds) < 0) settings.VideoCountdownSeconds = 3;
         if (settings.MenuBarTheme is not ("white" or "matching")) settings.MenuBarTheme = "white";
         Root.Background = CaptionWindow.BackgroundBrush(settings, settings.BackgroundOpacity);
         Root.RequestedTheme = settings.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark;
@@ -1005,6 +1004,8 @@ public sealed partial class MainWindow : Window
                 return control;
             }
             Slider("フォントサイズ", 14, 40, settings.FontSize, v => settings.FontSize = v); Slider("本体：背景の透過率 (%)", 0, 100, (1 - settings.BackgroundOpacity) * 100, v => settings.BackgroundOpacity = 1 - v / 100); Slider("本体：文字の不透明度 (%)", 0, 100, settings.TextOpacity * 100, v => settings.TextOpacity = v / 100); content.Children.Add(new TextBlock { Text = "本体の履歴：全行を表示（行数制限なし）", TextWrapping = TextWrapping.Wrap });
+            Toggle("文章をダブルクリックで直接編集し、選択して Delete キーで削除する", settings.DirectTextEditing, v => settings.DirectTextEditing = v);
+            content.Children.Add(new TextBlock { Text = "ダブルクリックした発話がその場で入力欄になります（Enterで確定、Escで取り消し）。文字を選んで Delete／BackSpace キーを押すと、その文字だけを削除します。どちらも Ctrl+Z で元に戻せます。OFFのときは右クリック→「この発話を編集…」か F2 で編集します。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             DownwardSelector Choice(string title, string[] labels, int index, Action<int> set)
             {
                 content.Children.Add(new TextBlock { Text = title });
@@ -1103,6 +1104,10 @@ public sealed partial class MainWindow : Window
             settingsCorrectionToggle = Toggle("文字起こしをAIで補正（Windows連携は即時／Whisperは次回Start）", settings.CorrectTranscriptWithAi, SetAiCorrectionEnabled);
             content.Children.Add(new TextBlock { Text = "Windows字幕連携でも日本語・英語の認識原文を先に表示し、確定した発話を直前の最大8発話とともにローカルLLMで補正します。ON/OFFは連携中も即時反映。OFFにすると補正待ちと未反映の結果を破棄し、反映済みの文章は保持します。Windows側の字幕表示自体は変更しません。補正にはLLM環境・モデルの準備が必要です。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "高速でも日本語は選択したモデルを使用します（CPUではsmall）。最初は約400ms分の音声から簡易認識し、確定時は精度を優先します。英語の高速モードはbaseを使います。AI補正は補正済みの直前最大8発話を参照。日本語の補正では文脈を推論するため、数秒〜十数秒後に反映される場合があります。先行字幕はその間も表示します。数字が変わる補正は拒否し、補正後も既定では通常と同じ文字色です。色を変える場合は「補正済みの字幕も通常と同じ文字色にする」をOFFにします。保存テキストに補正ラベルは付けません。", TextWrapping = TextWrapping.Wrap });
+            Toggle("文字起こし中に、数分ごとの発話のまとまりをローカルAIで要約する（ライブ要約）", settings.LiveSummary, v => SetLiveSummary(v));
+            content.Children.Add(new TextBlock { Text = "1文ずつの補正ではなく、約2〜3分（約1500文字）ごとの発話をまとめて、要点・決定事項・TODOを右の要約欄に追加していきます。時刻を押すとその発話へ移動します。AI補正と同時に使うとローカルAIの処理が増えます。ローカルAIのモデルが未準備のときは動作しません。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+            Toggle("AIが補正した箇所に色を付け、「AI」印から補正前の文章を確認・元に戻せるようにする", settings.ShowAiChanges, v => { settings.ShowAiChanges = v; RefreshRowMarks(); foreach (var row in RealizedCaptionRows) ApplyTextSelection(row); });
+            content.Children.Add(new TextBlock { Text = "補正で変わった文字を紫色で示し、行の右に「AI」印を付けます。印にカーソルを合わせると補正前の文章と変更点が表示され、「補正前に戻す」で元に戻せます。AIが話した語を消したり、話していない語を足したりした補正は採用せず、原文のままにします。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             AddTermDictionarySettings(Section, () => content, window);
             Section("話者識別・色分け", "声から話者を区別し、本体・字幕・保存テキストへ反映します。");
             Toggle("音声から話者を識別し、話者ごとに色分け（次回Startから）", settings.SpeakerDiarization, v => settings.SpeakerDiarization = v);
@@ -1121,14 +1126,7 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = "翻訳の用語メモ（次回Startから）" });
             var terminology = new TextBox { Text = settings.TranslationGlossary, MaxLength = 1000, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, PlaceholderText = "例: 32-bit float = 32ビット浮動小数点、subject = 被写体（撮影の話題）" };
             terminology.TextChanged += (_, _) => { settings.TranslationGlossary = terminology.Text; settings.Save(); }; content.Children.Add(terminology);
-            var llmModel = new TextBox { Text = settings.LlmModelPath, PlaceholderText = "空欄: セットアップしたQwen3-4B GGUF", Header = "ローカルLLMのGGUFファイル" };
-            llmModel.TextChanged += (_, _) => { settings.LlmModelPath = llmModel.Text; settings.Save(); }; content.Children.Add(llmModel);
-            var llmBrowse = new Button { Content = "GGUFファイルを選択…" };
-            llmBrowse.Click += async (_, _) =>
-            {
-                try { var picker = new FileOpenPicker(window.AppWindow.Id); picker.FileTypeFilter.Add(".gguf"); var file = await picker.PickSingleFileAsync(); if (file is not null) llmModel.Text = file.Path; }
-                catch (Exception ex) { StatusText.Text = ex.Message; }
-            }; content.Children.Add(llmBrowse);
+            AddLlmModelSettings(content, window);
             void Folder(string label, string value, Action<string> set, bool runtime = false)
             {
                 content.Children.Add(new TextBlock { Text = label }); var path = new TextBox { Text = value, IsReadOnly = true }; content.Children.Add(path);
@@ -1152,6 +1150,25 @@ public sealed partial class MainWindow : Window
             var format = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "WAV（無圧縮）", "MP3", "M4A（AAC）" }, SelectedIndex = settings.RecordingFormat == "mp3" ? 1 : settings.RecordingFormat == "m4a" ? 2 : 0 };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(format, "録音ファイル形式");
             format.SelectionChanged += (_, _) => { settings.RecordingFormat = format.SelectedIndex == 1 ? "mp3" : format.SelectedIndex == 2 ? "m4a" : "wav"; settings.Save(); }; content.Children.Add(format);
+            content.Children.Add(new TextBlock { Text = "録音・録画を始めるときに表示中のテキストがある場合" });
+            var existingText = new DownwardSelector { OwnerWindow = window, HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = new[] { "毎回確認する", "引き継いで、続きに記録する", "クリアする（保存するか確認）" }, SelectedIndex = settings.ExistingTextOnRecording == "keep" ? 1 : settings.ExistingTextOnRecording == "clear" ? 2 : 0 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(existingText, "録音・録画開始時の表示中のテキスト");
+            existingText.SelectionChanged += (_, _) => { settings.ExistingTextOnRecording = existingText.SelectedIndex == 1 ? "keep" : existingText.SelectedIndex == 2 ? "clear" : "ask"; settings.Save(); };
+            content.Children.Add(existingText);
+            content.Children.Add(new TextBlock { Text = "録画（前回の録画で選んだ値を引き継ぎます。ここでも変更できます）", Margin = new Thickness(0, 8, 0, 0) });
+            var videoRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+            int[] rates = [15, 30, 60];
+            var videoRate = new DownwardSelector { OwnerWindow = window, MinWidth = 150, ItemsSource = new[] { "15 fps", "30 fps", "60 fps" }, SelectedIndex = Math.Max(0, Array.IndexOf(rates, settings.VideoFramerate)) };
+            var videoQuality = new DownwardSelector { OwnerWindow = window, MinWidth = 170, ItemsSource = QualityLabels, SelectedIndex = Math.Max(0, Array.IndexOf(QualityKeys, settings.VideoQuality)) };
+            var videoCountdown = new DownwardSelector { OwnerWindow = window, MinWidth = 170, ItemsSource = CountdownLabels.Select(l => "カウントダウン：" + l).ToArray(), SelectedIndex = Math.Max(0, Array.IndexOf(CountdownChoices, settings.VideoCountdownSeconds)) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(videoRate, "録画のフレームレート");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(videoQuality, "録画の画質");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(videoCountdown, "録画開始前のカウントダウン秒数");
+            videoRate.SelectionChanged += (_, _) => { settings.VideoFramerate = rates[Math.Max(0, videoRate.SelectedIndex)]; settings.Save(); };
+            videoQuality.SelectionChanged += (_, _) => { settings.VideoQuality = QualityKeys[Math.Max(0, videoQuality.SelectedIndex)]; settings.Save(); };
+            videoCountdown.SelectionChanged += (_, _) => { settings.VideoCountdownSeconds = CountdownChoices[Math.Max(0, videoCountdown.SelectedIndex)]; settings.VideoCountdown = settings.VideoCountdownSeconds > 0; settings.Save(); };
+            videoRow.Children.Add(videoRate); videoRow.Children.Add(videoQuality); videoRow.Children.Add(videoCountdown);
+            content.Children.Add(videoRow);
             content.Children.Add(new TextBlock { Text = "再生ハイライトの単位" });
             var highlightMode = new DownwardSelector { OwnerWindow = window, ItemsSource = new[] { "発話全体", "単語ごと", "1文字ずつ" }, SelectedIndex = settings.PlaybackHighlightMode == "phrase" ? 0 : settings.PlaybackHighlightMode == "character" ? 2 : 1 };
             highlightMode.SelectionChanged += (_, _) => { settings.PlaybackHighlightMode = highlightMode.SelectedIndex == 0 ? "phrase" : highlightMode.SelectedIndex == 2 ? "character" : "word"; settings.Save(); highlightedPlaybackPhrase = null; UpdatePlaybackPosition(); };

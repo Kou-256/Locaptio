@@ -62,11 +62,20 @@ public sealed class Settings
     public long AudioProcessStarted { get; set; }
     public string PlaybackHighlightMode { get; set; } = "word";
     public string RecordingFormat { get; set; } = "wav";
+    /// <summary>Text on screen when a new recording starts: "ask", "keep" (continue after it) or "clear".</summary>
+    public string ExistingTextOnRecording { get; set; } = "ask";
+    /// <summary>Double-click a sentence to edit it in place; Delete removes selected characters.</summary>
+    public bool DirectTextEditing { get; set; } = true;
+    /// <summary>Tint characters changed by AI correction and show an "AI" badge with the text from before it.</summary>
+    public bool ShowAiChanges { get; set; } = true;
+    /// <summary>While transcribing, summarize each few minutes of speech with the local AI.</summary>
+    public bool LiveSummary { get; set; }
     /// <summary>Check recorded text against the audio with Whisper: "during" the recording, "after" it stops, or "off".</summary>
     public string ContentCheck { get; set; } = "during";
     public bool FastTranscription { get; set; } = true;
     public bool RealtimeCaptions { get; set; } = true;
     public bool RealtimePreviewOnGpu { get; set; }
+    /// <summary>Correct each utterance with the local AI. Off by default (live summary is the lighter way to use the AI).</summary>
     public bool CorrectTranscriptWithAi { get; set; }
     public bool SpeakerDiarization { get; set; }
     public double SpeakerThreshold { get; set; } = .55;
@@ -82,12 +91,17 @@ public sealed class Settings
     public bool AutosaveSession { get; set; } = true;
     public bool SummarizeAfterRecording { get; set; }
     // Screen/window video recording.
-    public int VideoFramerate { get; set; } = 30;
-    public string VideoQuality { get; set; } = "standard";
+    public int VideoFramerate { get; set; } = 60;
+    /// <summary>"best", "high", "standard" or "small".</summary>
+    public string VideoQuality { get; set; } = "best";
+    /// <summary>Seconds counted down before recording starts; 0 = none.</summary>
+    public int VideoCountdownSeconds { get; set; } = 3;
+    /// <summary>The display or window recorded last ("display:" + device, "window:" + title).</summary>
+    public string VideoLastTarget { get; set; } = "";
     public bool VideoCursor { get; set; } = true;
     public bool VideoClicks { get; set; } = true;
     public bool VideoSystemAudio { get; set; } = true;
-    public bool VideoMicrophone { get; set; }
+    public bool VideoMicrophone { get; set; } = true;
     public bool VideoCountdown { get; set; } = true;
     public bool VideoTranscribe { get; set; } = true;
     public bool VideoHideLocaptio { get; set; } = true;
@@ -95,6 +109,8 @@ public sealed class Settings
     public string SubtitleBurnSize { get; set; } = "medium";
     public string RetranscribeModel { get; set; } = "";
     public bool UseLocalLlm { get; set; } = true;
+    /// <summary>Local LLM from the list in Settings ("qwen3-4b", …), or "custom" for LlmModelPath.</summary>
+    public string LlmModel { get; set; } = "qwen3-4b";
     public string LlmModelPath { get; set; } = "";
     public int WinUiWidth { get; set; }
     public int WinUiHeight { get; set; }
@@ -140,9 +156,35 @@ public sealed class Settings
                 if (settings.CaptionPalette == "white") settings.CaptionPalette = "cyan-white";
                 settings.AppearanceVersion = 4;
             }
+            if (settings.AppearanceVersion < 5)
+            {
+                // 1.0.50–1.0.51 recorded video without the microphone by default; it is now on by default.
+                settings.VideoMicrophone = true;
+                settings.AppearanceVersion = 5;
+            }
+            if (settings.AppearanceVersion < 6)
+            {
+                // A GGUF file chosen before the model list existed stays in use.
+                if (!string.IsNullOrWhiteSpace(settings.LlmModelPath)) settings.LlmModel = "custom";
+                settings.AppearanceVersion = 6;
+            }
+            if (settings.AppearanceVersion < 7)
+            {
+                // 60 fps and the best quality are the defaults now; settings still at the old defaults move to them.
+                if (settings.VideoFramerate == 30) settings.VideoFramerate = 60;
+                if (settings.VideoQuality == "standard") settings.VideoQuality = "best";
+                settings.VideoCountdownSeconds = settings.VideoCountdown ? 3 : 0;
+                settings.AppearanceVersion = 7;
+            }
+            if (settings.AppearanceVersion < 8)
+            {
+                // AI correction is off by default from 1.0.52; it can be turned on again from the toolbar.
+                settings.CorrectTranscriptWithAi = false;
+                settings.AppearanceVersion = 8;
+            }
             return settings;
         }
-        catch { return new() { AppearanceVersion = 4 }; }
+        catch { return new() { AppearanceVersion = 8 }; }
     }
     public void Save()
     {

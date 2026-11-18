@@ -13,40 +13,49 @@ public static class LocalLlmPreparation
     public const string UvVersion = "0.13.7";
     public const string UvSha256 = "0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021";
     public static bool Required(string root, string model) => !File.Exists(Path.Combine(root, ".venv-llm", "Scripts", "python.exe")) || !File.Exists(Path.Combine(root, ".venv-llm", "Lib", "site-packages", "llama_cpp", "__init__.py")) || !File.Exists(model);
-    public static async Task EnsureAsync(string root, string model, bool cpu, Action<PreparationProgress>? progress, CancellationToken token)
+    /// <summary>
+    /// Folders that hold the Visual C++ runtime shipped with Locaptio (msvcp140, vcomp140, …). llama.cpp and other
+    /// native Python packages need it, and PCs without the Visual C++ Redistributable do not have it in System32.
+    /// </summary>
+    public static string RuntimePath(string root) => string.Join(Path.PathSeparator, new[] { AppContext.BaseDirectory, root }.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase));
+    /// <summary>The worker could not load llama.cpp's DLLs (a missing Vulkan driver or Visual C++ runtime).</summary>
+    public static bool IsLibraryLoadFailure(string? message) => message is not null
+        && (message.Contains("Failed to load shared library", StringComparison.OrdinalIgnoreCase) || message.Contains("Could not find module", StringComparison.OrdinalIgnoreCase));
+    /// <summary>Reinstalls llama.cpp as the CPU build, which needs no GPU driver. The model is kept.</summary>
+    public static Task UseCpuLibraryAsync(string root, string model, Action<PreparationProgress>? progress, CancellationToken token) => EnsureAsync(root, model, true, progress, token, reinstall: true);
+    public static async Task EnsureAsync(string root, string model, bool cpu, Action<PreparationProgress>? progress, CancellationToken token, bool reinstall = false)
     {
         await gate.WaitAsync(token);
         try
         {
-            if (!Required(root, model)) return;
+            if (!reinstall && !Required(root, model)) return;
             string script = Path.Combine(root, "scripts", "setup-llm.ps1");
             if (!File.Exists(script)) throw new InvalidOperationException("LLM準備用ファイルがありません。Locaptio Setupで再インストールしてください。");
-            string defaultModel = Path.Combine(root, "models", "llm", "Qwen3-4B-Q4_K_M.gguf");
-            if (!Path.GetFullPath(model).Equals(Path.GetFullPath(defaultModel), StringComparison.OrdinalIgnoreCase) && !File.Exists(model))
+            // A model from the list in Settings is downloaded; the user's own GGUF file must already exist.
+            var download = LocalLlmModels.ForPath(root, model);
+            if (download is null && !File.Exists(model))
                 throw new FileNotFoundException("指定したカスタムLLMモデルがありません。設定で既定のモデルに戻すか、ファイルを選び直してください。", model);
             progress?.Invoke(new("llm", 0, 4, "初回のAI環境を自動準備中（インターネット接続が必要）"));
             string tools = await EnsureUvAsync(root, token);
             progress?.Invoke(new("llm", 1, 4, "Python・LLMライブラリを準備中"));
             var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe"))
-            { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true,
-                StandardOutputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false) };
+            { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = root, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Backend", cpu ? "cpu" : "vulkan" }) start.ArgumentList.Add(arg);
-            start.Environment["PATH"] = tools + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
+            if (download is not null) foreach (string arg in new[] { "-Repository", download.Repository, "-File", download.File }) start.ArgumentList.Add(arg);
+            if (reinstall) start.ArgumentList.Add("-Reinstall");
+            start.Environment["PATH"] = tools + Path.PathSeparator + RuntimePath(root) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
             start.Environment["PYTHONIOENCODING"] = "utf-8";
             using var process = Process.Start(start) ?? throw new IOException("AI環境の準備を開始できませんでした。");
             using var cancel = token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
             var tail = new Queue<string>(); object sync = new();
-            async Task ReadAsync(StreamReader reader)
+            Task ReadAsync(StreamReader reader) => ProcessText.ReadLinesAsync(reader.BaseStream, line =>
             {
-                while (await reader.ReadLineAsync(token) is { } line)
-                {
-                    lock (sync) { tail.Enqueue(line); while (tail.Count > 12) tail.Dequeue(); }
-                    if (line.Contains("LOCAPTIO_MODEL_DOWNLOAD")) progress?.Invoke(new("llm", 2, 4, "AIモデルをダウンロード中（約2.5GB・初回のみ）"));
-                }
-            }
+                lock (sync) { tail.Enqueue(line); while (tail.Count > 12) tail.Dequeue(); }
+                if (line.Contains("LOCAPTIO_MODEL_DOWNLOAD")) progress?.Invoke(new("llm", 2, 4, download is null ? "AIモデルを準備中" : $"AIモデル（{download.Name}）をダウンロード中（約{download.Gigabytes:0.#}GB・初回のみ）"));
+            }, token);
             await Task.WhenAll(ReadAsync(process.StandardOutput), ReadAsync(process.StandardError), process.WaitForExitAsync(token));
             token.ThrowIfCancellationRequested();
-            if (process.ExitCode != 0 || Required(root, model)) throw new IOException("AI環境の自動準備に失敗しました。ネット接続と空き容量を確認し、Stop→Startで再試行してください。\n" + string.Join("\n", tail));
+            if (process.ExitCode != 0 || Required(root, model)) throw new IOException((reinstall ? "AIライブラリをCPU版に切り替えられませんでした。" : "") + "AI環境の自動準備に失敗しました。ネット接続と空き容量を確認し、Stop→Startで再試行してください。\n" + string.Join("\n", tail));
             progress?.Invoke(new("llm", 3, 4, "AIモデルの準備完了・読み込み中"));
         }
         finally { gate.Release(); }

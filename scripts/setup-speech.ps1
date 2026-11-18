@@ -4,13 +4,15 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
-    Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv'
-    uv pip install --python .venv/Scripts/python.exe -r inference/requirements.txt
-    if ($LASTEXITCODE) { throw 'Speech dependencies installation failed' }
-    & .venv/Scripts/python.exe inference/setup_speech.py --model $Model
+    $python = Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv'
+    uv pip install --python $python -r inference/requirements.txt
+    if ($LASTEXITCODE) { throw '音声認識の依存関係をインストールできませんでした。ネット接続と空き容量を確認してください。' }
+    # Installing large packages can take minutes; security software may scan or remove files meanwhile.
+    if (-not (Test-LocaptioPython $python)) { $python = Initialize-LocaptioEnvironment -Root $projectRoot -Name '.venv' }
+    & $python inference/setup_speech.py --model $Model
     if ($LASTEXITCODE) { throw '音声認識モデルを準備できませんでした' }
     if ($Translation -and -not (Test-Path 'models/translation/model.bin')) {
-        & .venv/Scripts/python.exe inference/setup_models.py
+        & $python inference/setup_models.py
         if ($LASTEXITCODE) { throw 'Translation preparation failed' }
     }
     Set-Content -LiteralPath '.venv/.locaptio-speech-v2' -Value 'ready' -Encoding utf8

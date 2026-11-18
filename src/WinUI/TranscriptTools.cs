@@ -89,6 +89,9 @@ public sealed partial class MainWindow
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-real-tools")) await VerifyRealToolsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-content-check")) await VerifyContentCheckAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-live-recording")) await VerifyLiveRecordingAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-llm-models")) await VerifyLlmModelsAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-session-home")) await VerifySessionHomeAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-ai-review")) await VerifyAiReviewAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-site-screenshots")) await VerifySiteScreenshotsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-video")) await VerifyVideoAsync(); };
     }
@@ -319,6 +322,9 @@ public sealed partial class MainWindow
     {
         SettingsClick(sender, e); settingsNavigation?.Select("用語辞書");
     }
+    /// <summary>Self-checks answer the file pickers and the add/replace question.</summary>
+    private Func<string?>? termImportPickerForVerification, termExportPickerForVerification;
+    private bool? termImportReplaceForVerification;
     private void AddTermDictionarySettings(Action<string, string> section, Func<StackPanel> page, Window owner)
     {
         section("用語辞書", "人名・製品名・研究用語の正しい表記を登録します。認識のヒント、誤表記の置き換え、AI補正、英日翻訳で共通して使います。");
@@ -363,7 +369,59 @@ public sealed partial class MainWindow
         var add = new Button { Content = "＋ 用語を追加" }; add.Click += (_, _) => AddRow(null, true);
         var applyNow = new Button { Content = "表示中の文章に適用" };
         applyNow.Click += (_, _) => { int replaced = ApplyTermsToTranscript(); Status(replaced > 0 ? $"用語辞書を表示中の {replaced} 件の発話に適用しました。Ctrl+Zで元に戻せます。" : "置き換える表記はありませんでした。"); count.Text = replaced > 0 ? $"{replaced} 件の発話に適用しました。" : "置き換える表記はありませんでした。"; };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; buttons.Children.Add(add); buttons.Children.Add(applyNow);
+        void Reload(TermDictionary dictionary) { rows.Children.Clear(); foreach (var entry in dictionary.Entries) AddRow(entry); Store(); }
+        var import = new Button { Content = "インポート…" };
+        ToolTipService.SetToolTip(import, "CSV（Excel可）・タブ区切り・Locaptioの辞書テキストから読み込みます。");
+        import.Click += async (_, _) =>
+        {
+            try
+            {
+                var picker = new Microsoft.Windows.Storage.Pickers.FileOpenPicker(owner.AppWindow.Id);
+                foreach (string type in new[] { ".csv", ".tsv", ".txt" }) picker.FileTypeFilter.Add(type);
+                var file = termImportPickerForVerification is not null ? termImportPickerForVerification() : (await picker.PickSingleFileAsync())?.Path;
+                if (file is null) return;
+                var imported = TermDictionaryFiles.Parse(TermDictionaryFiles.Decode(await File.ReadAllBytesAsync(file)));
+                if (imported.Length == 0) { count.Text = "読み込める用語がありませんでした。1列目に表記、2列目に誤表記（、区切り）、3列目に訳語を書いてください。"; return; }
+                bool replace = false;
+                if (Terms.Entries.Length > 0)
+                {
+                    if (termImportReplaceForVerification is { } answer) replace = answer;
+                    else
+                    {
+                        var choice = new ContentDialog { XamlRoot = content.XamlRoot, Title = "用語辞書をインポート", RequestedTheme = ElementTheme.Dark,
+                            Content = $"{Path.GetFileName(file)} から {imported.Length} 件を読み込みました。今の辞書（{Terms.Entries.Length} 件）にどう反映しますか？\n「追加」は同じ表記の誤表記をまとめ、新しい表記を加えます。",
+                            PrimaryButtonText = "追加", SecondaryButtonText = "置き換え", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Primary };
+                        var result = await choice.ShowAsync();
+                        if (result == ContentDialogResult.None) return;
+                        replace = result == ContentDialogResult.Secondary;
+                    }
+                }
+                var dictionary = replace ? new TermDictionary(imported) : TermDictionaryFiles.Merge(Terms, imported);
+                Reload(dictionary);
+                Status($"用語辞書に {Path.GetFileName(file)} を{(replace ? "読み込みました（置き換え）" : "追加しました")}。登録数 {dictionary.Entries.Length} 件" + (dictionary.Entries.Length >= TermDictionaryFiles.MaxEntries ? $"（上限 {TermDictionaryFiles.MaxEntries} 件）" : "") + "。");
+            }
+            catch (Exception ex) { count.Text = "インポートできません: " + ex.Message; }
+        };
+        var export = new Button { Content = "エクスポート…" };
+        ToolTipService.SetToolTip(export, "CSV（UTF-8）で保存します。Excelで開いて編集し、インポートし直せます。");
+        export.Click += async (_, _) =>
+        {
+            try
+            {
+                string? file = termExportPickerForVerification?.Invoke();
+                if (file is null)
+                {
+                    var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(owner.AppWindow.Id) { SuggestedFileName = "Locaptio用語辞書" };
+                    picker.FileTypeChoices.Add("CSV（Excel）", new List<string> { ".csv" });
+                    file = (await picker.PickSaveFileAsync())?.Path;
+                }
+                if (file is null) return;
+                await File.WriteAllBytesAsync(file, TermDictionaryFiles.ToCsv(Terms));
+                Status($"用語辞書（{Terms.Entries.Length} 件）を保存しました: {file}");
+            }
+            catch (Exception ex) { count.Text = "エクスポートできません: " + ex.Message; }
+        };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; buttons.Children.Add(add); buttons.Children.Add(applyNow); buttons.Children.Add(import); buttons.Children.Add(export);
         content.Children.Add(buttons); content.Children.Add(count);
         content.Children.Add(new TextBlock { Text = "・誤認識されやすい表記は、文字起こしに現れたときに正しい表記へ置き換えます。Windows字幕連携・Whisper・ファイル文字起こしのすべてで、登録した直後から働きます。\n・正しい表記はWhisperの認識ヒントとAI補正にも渡します（次回の開始から）。ヒントは約500文字までのため、多い場合は上の行が優先されます。\n・日本語訳を入れた用語は、ローカルLLMの英日翻訳で訳語として使います。\n・本体の文章を選択して右クリック →「選択した語句を用語辞書に登録」からも追加できます。置き換え前の認識結果は「変更された発話・補正前の原文と比較」で確認できます。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         Store();
@@ -473,6 +531,7 @@ public sealed partial class MainWindow
         bool low = match is double value && value < TimingAlignment.LowMatch;
         row.Children[4].Visibility = low ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(row.Children[4], low ? $"音声との一致 {match:P0}：この発話の文字の多くが、その時刻の音声から聞き取れませんでした。聞き直して確認してください。" : null);
+        StyleAiMark(row, caption);
     }
     private RecordingDocument? matchSource; private Dictionary<long, double>? matches;
     /// <summary>Share of the utterance heard in the audio, from the last content check of the open recording.</summary>

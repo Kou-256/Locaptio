@@ -71,6 +71,22 @@ try {
         $null = New-Item -ItemType Directory -Path $legalFolder -Force
         foreach ($notice in $notices) { Copy-Item -LiteralPath $notice.FullName -Destination $legalFolder }
     }
+    # Screen recording (ScreenRecorderLib, C++/CLI) needs the Visual C++ runtime. Ship it app-local
+    # (Microsoft's documented "local deployment") so recording works on PCs without the redistributable.
+    $runtime = @('msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll','concrt140.dll','vcomp140.dll')
+    $redist = @(Get-ChildItem -Path "${env:ProgramFiles}\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT",
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC14*.CRT" -Directory -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1)
+    $runtimeSource = if ($redist.Count -gt 0) { $redist[0].FullName } else { Join-Path $env:SystemRoot 'System32' }
+    foreach ($name in $runtime) {
+        $source = Join-Path $runtimeSource $name
+        if (-not (Test-Path -LiteralPath $source)) { throw "Visual C++ runtime file not found: $source. Install the Visual C++ Redistributable (x64) or Visual Studio Build Tools." }
+        $signature = Get-AuthenticodeSignature -LiteralPath $source
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "Visual C++ runtime file is not signed by Microsoft: $source" }
+        if ([version](Get-Item -LiteralPath $source).VersionInfo.FileVersion -lt [version]'14.30') { throw "Visual C++ runtime is too old for ScreenRecorderLib: $source" }
+        Copy-Item -LiteralPath $source -Destination (Join-Path $app $name) -Force
+    }
+    Write-Output "Visual C++ runtime (app-local) from: $runtimeSource"
     $archive = Join-Path $distribution "Locaptio-$version-win-x64.zip"
     Compress-Archive -LiteralPath $app -DestinationPath $archive -CompressionLevel Optimal -Force
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
