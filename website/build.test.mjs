@@ -67,12 +67,28 @@ test('every explanation section shows a real screenshot with alt text and a capt
 test('sharing metadata uses a readable landscape image for each language', async()=>{
   for(const [lang,file] of [['ja','dist/index.html'],['en','dist/en/index.html']]){
     const html=await readFile(new URL(file,import.meta.url),'utf8');
-    const image=`https://locaptio.vercel.app/assets/share-${lang}-v1.png`;
+    const image=`https://locaptio.vercel.app/assets/share-${lang}-v2.png`;
     assert.ok(html.includes(`<meta property="og:image" content="${image}">`));
     assert.ok(html.includes(`<meta name="twitter:image" content="${image}">`));
     assert.ok(html.includes('<meta name="twitter:card" content="summary_large_image">'));
     assert.ok(html.includes('<meta property="og:image:alt"'));
-    const png=await readFile(new URL(`public/assets/share-${lang}-v1.png`,import.meta.url));
+    const png=await readFile(new URL(`public/assets/share-${lang}-v2.png`,import.meta.url));
     assert.equal(png.readUInt32BE(16),1200); assert.equal(png.readUInt32BE(20),630);
+  }
+});
+
+test('search title and description repeat the hero text, and Locaptio icons are declared', async()=>{
+  const {languages}=await import('./content.mjs');
+  for(const [lang,file] of [['ja','dist/index.html'],['en','dist/en/index.html']]){
+    const html=await readFile(new URL(file,import.meta.url),'utf8'), c=languages[lang];
+    const plain=c.intro.replace(/\*\*/g,'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    assert.ok(html.includes(`<title>Locaptio — ${c.eyebrow}</title>`));
+    assert.ok(html.includes(`<p class="eyebrow">${c.eyebrow}</p>`));
+    assert.ok(html.includes(`<meta name="description" content="${plain}">`));
+    for(const tag of ['<link rel="icon" href="/favicon.ico" sizes="48x48">','<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192">','<link rel="apple-touch-icon" href="/apple-touch-icon.png">']) assert.ok(html.includes(tag),tag);
+  }
+  for(const [name,size] of [['icon-192.png',192],['icon-512.png',512],['apple-touch-icon.png',180]]){
+    const png=await readFile(new URL('public/'+name,import.meta.url));
+    assert.equal(png.readUInt32BE(16),size); assert.equal(png.readUInt32BE(20),size);
   }
 });
