@@ -100,6 +100,9 @@ public sealed class DownwardSelector : UserControl
     private void UpdateLabel() => label.Text = SelectedItem?.ToString() ?? "選択してください";
     private void WindowChanged(AppWindow sender, AppWindowChangedEventArgs args) => popup.IsOpen = false;
     private void ParentScrolled(object? sender, ScrollViewerViewChangedEventArgs args) => popup.IsOpen = false;
+    /// <summary>Website screenshots only.</summary>
+    internal void OpenForScreenshot() => Open();
+    internal void CloseForScreenshot() => popup.IsOpen = false;
     private void Open()
     {
         DropDownOpened?.Invoke(this, EventArgs.Empty);

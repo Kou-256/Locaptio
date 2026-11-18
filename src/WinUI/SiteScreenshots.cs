@@ -105,7 +105,7 @@ public sealed partial class MainWindow
             ClearCaptions(); reviewingRecording = false; playbackDocument = null; playbackPath = "";
             PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = RecordingIndicator.Visibility = TaskPanel.Visibility = Visibility.Collapsed;
             RecoveryNotice.IsOpen = false; SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; StopButton.IsEnabled = false; StartButton.IsEnabled = true;
-            if (settings.CaptionMode != mode) { modeChanging = true; settings.CaptionMode = mode; ModeSelector.SelectedIndex = mode == "japanese" ? 1 : 0; modeChanging = false; }
+            if (settings.CaptionMode != mode) { modeChanging = true; settings.CaptionMode = mode; modeChanging = false; }
             ApplySettings();
         }
         void Feed(IEnumerable<(string Text, string? Translation)> rows, string language, bool refined = false)
@@ -139,6 +139,10 @@ public sealed partial class MainWindow
             AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1280 * scale), (int)(780 * scale)));
             var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
             AppWindow.Move(new Windows.Graphics.PointInt32(area.X + 40, area.Y + 20));
+
+            // Four languages and live summary (v1.0.54–1.0.56).
+            await CaptureFeatureScreensAsync(shots, (name, settle) => Shot(name, settle), Reset, (rows, language) => Feed(rows, language), captured);
+            if (Environment.GetCommandLineArgs().Contains("--only-new")) return;
 
             // English lecture with Japanese translation.
             Reset("translate"); Feed(SiteLecture.Select(r => (r.English, (string?)r.Japanese)), "en", true);
