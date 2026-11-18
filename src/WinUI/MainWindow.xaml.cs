@@ -110,6 +110,8 @@ public sealed partial class MainWindow : Window
             if (!Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify")) && settings.CheckUpdatesOnStartup) _ = CheckForUpdatesAsync(false);
             if (Environment.GetCommandLineArgs().Contains("--verify-winui")) await VerifyAsync();
             else if (!Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify")) && settings.PreloadCudaModels && settings.InferenceDevice == "cuda") await PreloadAsync();
+            // AI features left on last time: download a missing model now rather than after Start.
+            if (!Environment.GetCommandLineArgs().Any(a => a.StartsWith("--verify"))) PrepareAiInBackground(loadNow: false);
         };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-lifecycle")) await VerifyLifecycleAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-stop-options")) await VerifyStopOptionsAsync(); };
@@ -205,6 +207,7 @@ public sealed partial class MainWindow : Window
     {
         SetAiCorrectionEnabled(AiCorrectionToggle.IsChecked == true);
         ApplySettings();
+        PrepareAiInBackground();
     }
     private void SetAiCorrectionEnabled(bool enabled)
     {
@@ -230,6 +233,7 @@ public sealed partial class MainWindow : Window
         if (captionWindow is not null) captionWindow.Playback = false;
         if (root.Length == 0 && (!UseWindowsCaptionEngine || !TranscriptionOnly)) { StatusText.Text = "Settingsでモデル・推論環境のフォルダーを指定してください。"; ShowStatusDetails(pin: true); ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); return; }
         WindowsCaptionWarning.IsOpen = false; WindowsLanguageWarning.IsOpen = false; correctionChecked = false; captionStop = new(); transcriptClock.Start(); StartButton.IsEnabled = false; StopButton.IsEnabled = true;
+        liveSummaryDismissed = false; SyncLiveSummaryPane(); PrepareAiInBackground();
         RenderCaptions();
         SessionTitle.Text = recordingStop is null ? "文字起こし（録音なし）" : "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(recordingPath));
         StatusText.Text = "ローカルモデルを読み込み中…"; captionTask = RunCaptionsAsync(captionStop.Token); await Task.Yield();
@@ -329,6 +333,7 @@ public sealed partial class MainWindow : Window
             speech = null; accurateSpeech = null; translation = null; pipeline = null; llm = null; llmReady = null;
             captionWindow?.Update([]);
             captionStop?.Dispose(); captionStop = null; StartButton.IsEnabled = true; StopButton.IsEnabled = recordingStop is not null;
+            SyncLiveSummaryPane();
         }
     }
     private PreparedInference PrepareModels(bool japanese, string model, bool cpu, TranslationRoute? route = null)
@@ -881,13 +886,14 @@ public sealed partial class MainWindow : Window
         BeginRecordingIndex(path);
         SetRecordingChecked(true); RecordToggleText.Text = "録音中"; SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path)); StopButton.IsEnabled = true; RecordingText.Text = path; RecordingIndicator.Visibility = Visibility.Visible; UpdateDiagnostics(); recordingTask = RecordAsync(path, recordingStop.Token);
         BeginLiveContentCheck(path);
+        liveSummaryDismissed = false; SyncLiveSummaryPane(); PrepareAiInBackground();
     }
     private async Task RecordAsync(string path, CancellationToken token)
     {
         var recorder = new AudioRecording(SelectedAudio()); recorder.Status += Status;
         try { await Task.Run(() => recorder.RunAsync(path, token)); StatusText.Text = "録音を保存しました: " + path; }
         catch (Exception ex) { StatusText.Text = "録音に失敗しました: " + ex.Message; ShowStatusDetails(pin: true); }
-        finally { recordingStop?.Dispose(); recordingStop = null; await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
+        finally { recordingStop?.Dispose(); recordingStop = null; SyncLiveSummaryPane(); await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
     }
     private async Task StopRecordingAsync()
     {

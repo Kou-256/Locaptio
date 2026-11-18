@@ -8,6 +8,9 @@ export const updates = {
     latest: '最新',
     all: 'すべての変更履歴を見る（GitHub）',
     items: [
+      ['1.0.58', '要約欄の表示をそろえ、AIの準備を早めに', [
+        'ライブ要約がONなら、開始と同時に要約欄を表示。クリアやOFFで内容がなくなれば閉じます。',
+        '「AI補正」「ライブ要約」にチェックを付けた時点で、AIモデルの準備を始めます。']],
       ['1.0.57', '要約欄のボタン表示を修正', [
         '要約欄が狭いときに「ライブ要約をクリア」が切れる問題を修正しました。']],
       ['1.0.56', 'ライブ要約を自分好みに、ウィンドウの重なりも切り替え', [
@@ -59,6 +62,9 @@ export const updates = {
     latest: 'Latest',
     all: 'See the full changelog (GitHub)',
     items: [
+      ['1.0.58', 'Consistent summary pane; AI prepared earlier', [
+        'With live summary on, the summary pane opens when listening starts and closes when clearing or turning it off leaves nothing to show.',
+        'Checking "AI補正" or "ライブ要約" starts preparing the local AI model right away.']],
       ['1.0.57', 'Summary pane button fix', [
         'The summary pane buttons wrap instead of clipping "ライブ要約をクリア".']],
       ['1.0.56', 'Tune live summaries; switch "always on top"', [

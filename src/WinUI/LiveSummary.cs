@@ -52,10 +52,13 @@ public sealed partial class MainWindow
     private void SetLiveSummary(bool on)
     {
         settings.LiveSummary = on; settings.Save(); LiveSummaryMenuItem.IsChecked = on; LiveSummaryToggle.IsChecked = on; liveSummaryNoModelShown = false;
-        if (!on) { Status("ライブ要約をOFFにしました。作成済みの要約は残ります。"); return; }
+        if (!on) { PrepareAiInBackground(); SyncLiveSummaryPane(); Status("ライブ要約をOFFにしました。作成済みの要約は残ります。"); return; }
         // Turned on mid-session (also while recording): what was said before is caught up, block by block.
-        if (liveBlocks.Count == 0 && liveDigest is null) liveSummaryNextId = history.FirstOrDefault()?.Id ?? 0;
-        if (summaryItems.Length == 0) { ShowSummaryPane(true); RenderLiveSummary(); }
+        // (Not after 「ライブ要約をクリア」: cleared speech is not summarized again.)
+        if (liveBlocks.Count == 0 && liveDigest is null && liveSummaryNextId == 0) liveSummaryNextId = history.FirstOrDefault()?.Id ?? 0;
+        liveSummaryDismissed = false;
+        if (!SummaryShown) { ShowSummaryPane(true); liveSummaryAutoShown = !HasSummaryContent; }
+        RenderSummary(); PrepareAiInBackground();
         Status("ライブ要約をONにしました。録音・文字起こし中、数分ごとの発話を要約して右の欄に追加します（これまでの発話もさかのぼって要約します）。");
     }
 
@@ -95,6 +98,7 @@ public sealed partial class MainWindow
             if (items.Length > 0) { liveBlocks.Add(new(rows[0].Id, rows[^1].Id, items)); sessionDirty = true; }
             if (liveBlocks.Count > LiveRecentBlocks && !closing) await CondenseLiveSummaryAsync(backend, timeout.Token);
             if (closing) return;
+            liveSummaryDismissed = false; liveSummaryAutoShown = false;
             if (!SummaryShown) ShowSummaryPane(true);
             RenderLiveSummary();
         }
@@ -210,7 +214,9 @@ public sealed partial class MainWindow
         liveBlocks.Clear(); liveArchived.Clear(); liveDigest = null;
         liveSummaryNextId = (history.LastOrDefault()?.Id ?? 0) + 1;
         sessionDirty = true;
-        if (summaryItems.Length > 0) RenderSummary(); else RenderLiveSummary();
+        // With nothing left to show, clearing also closes the pane; the next summary opens it again.
+        if (summaryItems.Length > 0) RenderSummary();
+        else { liveSummaryDismissed = captionStop is not null || recordingStop is not null; liveSummaryAutoShown = false; ShowSummaryPane(false); }
         UpdateLiveSummaryClear();
         Status("ライブ要約をクリアしました。これ以降の発話から要約します。");
     }

@@ -285,6 +285,58 @@ public sealed partial class MainWindow
                 settings.KeepOnTopHotkey = savedHotkey; RegisterKeepOnTopHotkey(); UpdateKeepOnTopMenuText(); SetKeepOnTop(savedTop);
                 liveSummaryClearConfirmForVerification = null; captionStop = null; settings.Save();
             }
+
+            // 8. The pane follows live summary: shown when listening starts with it already on, closed by clearing
+            //    or turning it off when nothing else is shown; checking an AI feature starts the model download at once.
+            bool savedLive = settings.LiveSummary, savedCorrection = settings.CorrectTranscriptWithAi;
+            try
+            {
+                ClearCaptions(); ShowSummaryPane(false); standIn = new StandInSummary(); liveSummaryBackendForVerification = standIn;
+                settings.LiveSummary = true; LiveSummaryToggle.IsChecked = true; LiveSummaryMenuItem.IsChecked = true;
+                using (var listening = new CancellationTokenSource())
+                {
+                    captionStop = listening; liveSummaryDismissed = false; SyncLiveSummaryPane();
+                    Check(SummaryShown && SummaryContent.Children.OfType<TextBlock>().Any(t => t.Text.StartsWith("最初のまとまり")), "live summary already on: the pane opens when listening starts");
+                    for (int i = 0; i < 40; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, sentence, null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    await LiveSummaryTickAsync();
+                    Check(liveBlocks.Count >= 1 && SummaryShown, "a summary appears in the open pane");
+                    liveSummaryClearConfirmForVerification = () => true; LiveSummaryClearClick(this, new RoutedEventArgs());
+                    Check(!SummaryShown && liveBlocks.Count == 0, "clearing with nothing else to show closes the pane");
+                    SyncLiveSummaryPane();
+                    Check(!SummaryShown, "the cleared pane stays closed while listening continues");
+                    for (int i = 0; i < 40; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, sentence, null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    await LiveSummaryTickAsync();
+                    Check(SummaryShown && liveBlocks.Count == 1, "the next summary opens the pane again");
+                    liveSummaryClearConfirmForVerification = () => true; LiveSummaryClearClick(this, new RoutedEventArgs());
+                    LiveSummaryToggle.IsChecked = true; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                    Check(SummaryShown, "turning live summary on opens the pane");
+                    LiveSummaryToggle.IsChecked = false; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                    Check(!SummaryShown, "turning it off with nothing to show closes the pane");
+                    LiveSummaryToggle.IsChecked = true; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                    captionStop = null; SyncLiveSummaryPane();
+                    Check(!SummaryShown, "when listening stops with nothing summarized, the automatic pane closes");
+                }
+
+                // Checking an AI feature starts the download right away (a stand-in replaces the real download).
+                int downloads = 0;
+                aiPreparationForVerification = async token => { downloads++; await Task.Delay(100, token); };
+                settings.LiveSummary = false; LiveSummaryToggle.IsChecked = false; settings.CorrectTranscriptWithAi = false;
+                AiCorrectionToggle.IsChecked = true; AiCorrectionChanged(AiCorrectionToggle, new RoutedEventArgs());
+                Check(downloads == 1 && !aiPreparationTask.IsCompleted, "checking AI補正 starts the model download immediately");
+                await aiPreparationTask;
+                AiCorrectionToggle.IsChecked = false; AiCorrectionChanged(AiCorrectionToggle, new RoutedEventArgs());
+                LiveSummaryToggle.IsChecked = true; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                Check(downloads == 2, "checking ライブ要約 starts it too");
+                LiveSummaryToggle.IsChecked = false; LiveSummaryToggleClick(LiveSummaryToggle, new RoutedEventArgs());
+                try { await aiPreparationTask; } catch (OperationCanceledException) { }
+                Check(aiPreparation?.IsCancellationRequested == true, "unchecking both stops the preparation");
+            }
+            finally
+            {
+                aiPreparationForVerification = null; liveSummaryClearConfirmForVerification = null; captionStop = null;
+                settings.LiveSummary = savedLive; settings.CorrectTranscriptWithAi = savedCorrection;
+                LiveSummaryToggle.IsChecked = savedLive; LiveSummaryMenuItem.IsChecked = savedLive; AiCorrectionToggle.IsChecked = savedCorrection; settings.Save();
+            }
         }
         catch (Exception ex) { failures.Add(ex.Message); log.Add(ex.ToString()); }
         finally

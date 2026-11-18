@@ -49,7 +49,11 @@ public sealed partial class MainWindow
         ShowSummaryPane(true);
         if (summaryItems.Length == 0) RenderSummary();
     }
-    private void SummaryCloseClick(object sender, RoutedEventArgs e) { if (summaryWindow is not null) summaryWindow.Close(); else ShowSummaryPane(false); }
+    private void SummaryCloseClick(object sender, RoutedEventArgs e)
+    {
+        liveSummaryDismissed = captionStop is not null || recordingStop is not null; liveSummaryAutoShown = false;
+        if (summaryWindow is not null) summaryWindow.Close(); else ShowSummaryPane(false);
+    }
     /// <summary>The summary is on screen, beside the transcript or in its own window.</summary>
     private bool SummaryShown => summaryWindow is not null || SummaryPane.Visibility == Visibility.Visible;
     private void ShowSummaryPane(bool visible)
@@ -80,7 +84,8 @@ public sealed partial class MainWindow
     private void RenderSummary(string? message = null)
     {
         UpdateLiveSummaryClear();
-        if (message is null && summaryItems.Length == 0 && (liveBlocks.Count > 0 || liveDigest is not null)) { RenderLiveSummary(); return; }
+        bool liveWaiting = settings.LiveSummary && (captionStop is not null || recordingStop is not null);
+        if (message is null && summaryItems.Length == 0 && (liveBlocks.Count > 0 || liveDigest is not null || liveWaiting)) { RenderLiveSummary(); return; }
         SummaryContent.Children.Clear();
         SummaryCopyButton.IsEnabled = SummarySaveButton.IsEnabled = summaryItems.Length > 0;
         SummaryRunButton.Content = captionStop is not null || recordingStop is not null ? "今までを要約" : summaryItems.Length > 0 ? "作り直す" : "作成";
