@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory)][string]$AppSource, [string]$Destination = 'artifacts/setup', [string]$Compiler = '')
+﻿param([Parameter(Mandatory)][string]$AppSource, [string]$Destination = 'artifacts/setup', [string]$Compiler = '', [switch]$Sign)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $source = (Resolve-Path -LiteralPath $AppSource).Path
@@ -21,6 +21,7 @@ $null = New-Item -ItemType Directory -Path $compileRoot
 try {
     & $Compiler "/DAppSource=$source" "/DAppVersion=$version" "/O$compileRoot" (Join-Path $projectRoot 'installer/Locaptio.iss')
     if ($LASTEXITCODE) { throw 'Setup compilation failed' }
+    if ($Sign) { & (Join-Path $PSScriptRoot 'sign-files.ps1') -Path (Join-Path $compileRoot $name); if (-not $?) { throw 'Signing failed' } }
     Copy-Item -LiteralPath (Join-Path $compileRoot $name) -Destination $setup -Force
 } finally {
     $resolvedCompile = [IO.Path]::GetFullPath($compileRoot)

@@ -20,6 +20,8 @@ public sealed class LocalBackend : ITimedSpeechRecognitionBackend, ITranslationB
     private bool cpuOnly;
     private string language = "en", speechModel = "legacy", speechPrompt = "";
     private string accelerator = "auto";
+    /// <summary>Target language of a translation worker started with a pack (StartAsync model = pack key).</summary>
+    public string TranslationTarget { get; set; } = "ja";
     private bool fastRecognition;
     private bool draftRecognition;
     private int resetSpeechContext;
@@ -71,6 +73,8 @@ public sealed class LocalBackend : ITimedSpeechRecognitionBackend, ITranslationB
         }
         else foreach (var arg in new[] { "-u", Path.Combine(root, "inference", "worker.py"), "--kind", kind, "--models", Path.Combine(root, "models"), "--device", cpu ? "cpu" : accelerator == "cuda" ? "cuda" : "auto" }) start.ArgumentList.Add(arg);
         if (windowsMl) start.ArgumentList.Add("--prefer-npu");
+        if (kind == "translation" && speechModel is TranslationPacks.JapaneseEnglish or TranslationPacks.Multilingual)
+            foreach (var arg in new[] { "--pack", speechModel, "--source", language, "--target", TranslationTarget }) start.ArgumentList.Add(arg);
         if (kind == "speech" && !npuSpeech)
         {
             foreach (var arg in new[] { "--language", language, "--speech-model", speechModel }) start.ArgumentList.Add(arg);

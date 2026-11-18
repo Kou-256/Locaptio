@@ -51,6 +51,14 @@ internal static class TextToolsChecks
         Check(own.Length == 3 && own[1].Aliases.SequenceEqual(["議時録"]), "Locaptio's own format");
         var merged = TermDictionaryFiles.Merge(dictionary, [new("議事録", ["ぎじろく"], "minutes"), new("新語", ["しんご"], "")]);
         Check(merged.Entries.Length == 4 && merged.Entries.First(e => e.Term == "議事録").Aliases.SequenceEqual(["議時録", "ぎじろく"]) && merged.Entries.First(e => e.Term == "議事録").Translation == "minutes", "merge keeps and adds misrecognitions");
+        // Translation routes.
+        Check(Locaptio.Core.AI.TranslationPacks.Route("en", "ja") is { BuiltIn: true }, "English → Japanese is built in");
+        Check(Locaptio.Core.AI.TranslationPacks.Route("ja", "en")?.Pack == "ja-en" && Locaptio.Core.AI.TranslationPacks.Route("ja", "zh")?.Pack == "multi"
+            && Locaptio.Core.AI.TranslationPacks.Route("en", "ko")?.Pack == "multi", "other directions use the downloadable packs");
+        Check(Locaptio.Core.AI.TranslationPacks.Route("ja", "ja") is null && Locaptio.Core.AI.TranslationPacks.Route("ja", "xx") is null, "no route to the same or an unknown language");
+        Check(Locaptio.Core.AI.TranslationPacks.Missing(Path.GetTempPath(), Locaptio.Core.AI.TranslationPacks.Route("ja", "en")!)?.Key == "ja-en"
+            && Locaptio.Core.AI.TranslationPacks.Missing(Path.GetTempPath(), Locaptio.Core.AI.TranslationPacks.Route("en", "ja")!) is null, "missing pack reported; built-in never missing");
+        Console.WriteLine("PASS: translation routes (built-in en→ja, ja-en and multilingual packs, missing pack);");
         Console.WriteLine("PASS: text diff ranges; AI-correction guard keeps 5 fixes and refuses 4 lossy/invented corrections; term dictionary CSV (BOM, quoting), Excel Shift-JIS CSV, TSV, own format and merge");
     }
 }

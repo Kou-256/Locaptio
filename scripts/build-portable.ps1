@@ -1,4 +1,6 @@
-﻿param([string]$BuildOutputDirectory = 'artifacts/portable-build', [string]$Destination = 'artifacts/distribution', [switch]$NoBuild)
+﻿param([string]$BuildOutputDirectory = 'artifacts/portable-build', [string]$Destination = 'artifacts/distribution', [switch]$NoBuild,
+    # Sign Locaptio's own executables with the self-signed CN=Locaptio certificate (scripts/sign-files.ps1).
+    [switch]$Sign)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 function FullPath([string]$path) {
@@ -91,6 +93,11 @@ try {
         Copy-Item -LiteralPath $source -Destination (Join-Path $app $name) -Force; $used += Split-Path $source -Parent
     }
     Write-Output ("Visual C++ runtime (app-local) from: " + (($used | Select-Object -Unique) -join ", "))
+    if ($Sign) {
+        $own = @(Get-ChildItem -LiteralPath $app -Recurse -File | Where-Object Name -match '^Locaptio.*\.(exe|dll)$' | ForEach-Object FullName)
+        & (Join-Path $PSScriptRoot 'sign-files.ps1') -Path $own
+        if (-not $?) { throw 'Signing failed' }
+    }
     $archive = Join-Path $distribution "Locaptio-$version-win-x64.zip"
     Compress-Archive -LiteralPath $app -DestinationPath $archive -CompressionLevel Optimal -Force
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -7,9 +7,11 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "") : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "", TranslationRoute? route = null) : IDisposable
 {
     private Process? worker;
+    /// <summary>What is translated: the given route, or English → Japanese for English captions.</summary>
+    private TranslationRoute? Route { get; } = route ?? (japanese ? null : new TranslationRoute("en", "ja", TranslationPacks.EnglishJapanese));
     private readonly LocalBackend translation = new();
     private readonly LocalLlmBackend llm = new();
     private StreamingSpeechCorrection? correction;
@@ -70,9 +72,10 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         {
             translation.PreparationChanged += p => PreparationChanged?.Invoke(p with { Component = "翻訳モデル" });
             translation.Status += s => Status?.Invoke(s);
-            await SpeechPreparation.EnsureAsync(root, "base", true, cpu ? "cpu" : device == "cuda" ? "cuda" : "auto", p => PreparationChanged?.Invoke(p), linked.Token);
-            await translation.StartAsync(root, "translation", cpu || device == "cpu", linked.Token, false, device: device == "cuda" ? "cuda" : "auto");
-            Status?.Invoke("速報翻訳の準備完了。英文表示と並行して日本語訳を更新します。");
+            await SpeechPreparation.EnsureAsync(root, "base", Route!.BuiltIn, cpu ? "cpu" : device == "cuda" ? "cuda" : "auto", p => PreparationChanged?.Invoke(p), linked.Token);
+            translation.TranslationTarget = Route.Target;
+            await translation.StartAsync(root, "translation", cpu || device == "cpu", linked.Token, false, Route.Source, Route.BuiltIn ? "legacy" : Route.Pack, device: device == "cuda" ? "cuda" : "auto");
+            Status?.Invoke($"速報翻訳の準備完了。{TranslationPacks.Name(Route.Source)}の表示と並行して{TranslationPacks.Name(Route.Target)}訳を更新します。");
         }
         async Task InitializeLlmAsync()
         {
@@ -81,12 +84,12 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
             await llm.StartAsync(root, llmPath, cpu || device == "cpu", linked.Token);
             Status?.Invoke("文脈AI（補正・翻訳）の準備完了: " + llm.Backend);
         }
-        var fastReady = japanese ? Task.CompletedTask : InitializeTranslationAsync();
+        var fastReady = Route is null ? Task.CompletedTask : InitializeTranslationAsync();
         // Observe initialization even if no sentence is finalized before Stop.
         async Task ObserveAsync(Task task, string label) { try { await task; } catch (OperationCanceledException) { } catch (Exception ex) { Status?.Invoke(label + "準備失敗: " + ex.Message); PreparationChanged?.Invoke(new(label, 0, 1, ex.Message, true)); } }
         var fastObserver = ObserveAsync(fastReady, "速報翻訳"); Task qualityObserver = Task.CompletedTask;
         var llmReady = new Lazy<Task>(() => { var task = InitializeLlmAsync(); qualityObserver = ObserveAsync(task, "文脈AI"); return task; });
-        var translator = japanese ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), useLlm ? new ReadyLocalLlm(llm, llmReady.Value) : null, glossary);
+        var translator = Route is null ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), useLlm && Route.BuiltIn ? new ReadyLocalLlm(llm, llmReady.Value) : null, glossary);
         if (translator is not null) { translator.Caption += update => Caption?.Invoke(update); translator.Status += s => Status?.Invoke(s); }
         var translating = translator?.RunAsync(linked.Token) ?? Task.CompletedTask;
         correction = new StreamingSpeechCorrection(new LazyCorrection(llm, () => llmReady.Value), japanese ? "ja" : "en");

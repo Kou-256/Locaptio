@@ -10,7 +10,7 @@ public sealed record CaptionUpdate(long Id, int Revision, string English, string
 internal sealed record SpeechJob(long Id, int Revision, float[] Samples, bool Final, long Started, long AudioThrough);
 internal sealed record TranslationJob(CaptionUpdate Caption);
 
-public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBackend? translation, bool japaneseOnly = false, ITranslationRefinementBackend? refiner = null, AudioInputSelection? input = null, bool fast = false, ISpeechCorrectionBackend? corrector = null, ISpeechRecognitionBackend? accurateSpeech = null, string translationGlossary = "")
+public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBackend? translation, bool japaneseOnly = false, ITranslationRefinementBackend? refiner = null, AudioInputSelection? input = null, bool fast = false, ISpeechCorrectionBackend? corrector = null, ISpeechRecognitionBackend? accurateSpeech = null, string translationGlossary = "", string? sourceLanguage = null)
 {
     private readonly Channel<SpeechJob> finalSpeechQueue = Channel.CreateBounded<SpeechJob>(16);
     private readonly Channel<bool> speechWake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest });
@@ -133,7 +133,7 @@ public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBacke
                         if (job.Final) { revisions.TryRemove(job.Id, out _); Caption?.Invoke(new(job.Id, job.Revision, "", "", true, job.Started, result.Milliseconds, 0)); }
                         continue;
                     }
-                    var caption = new CaptionUpdate(job.Id, job.Revision, result.Text, null, job.Final, job.Started, result.Milliseconds, 0, japaneseOnly ? "ja" : "en", AudioThrough: job.AudioThrough);
+                    var caption = new CaptionUpdate(job.Id, job.Revision, result.Text, null, job.Final, job.Started, result.Milliseconds, 0, sourceLanguage ?? (japaneseOnly ? "ja" : "en"), AudioThrough: job.AudioThrough);
                     revisions[job.Id] = job.Revision;
                     Caption?.Invoke(caption);
                     if (job.Final)
@@ -238,7 +238,7 @@ public sealed class Pipeline(ISpeechRecognitionBackend speech, ITranslationBacke
                 {
                     Status?.Invoke("AI補正中（直前の最大8発話を参照）…");
                     var previous = context.Where(c => c.Key < job.Caption.Id).OrderBy(c => c.Key).Select(c => c.Value).TakeLast(8).ToArray();
-                    var result = await corrector.CorrectAsync(job.Caption.English, previous.Length > 0 ? previous : job.Context, japaneseOnly ? "ja" : "en", token);
+                    var result = await corrector.CorrectAsync(job.Caption.English, previous.Length > 0 ? previous : job.Context, sourceLanguage ?? (japaneseOnly ? "ja" : "en"), token);
                     if (string.IsNullOrWhiteSpace(result.Text) || result.Text == job.Caption.English) { Status?.Invoke("AI確認済み：修正不要。文字起こしを継続します。"); continue; }
                     var corrected = job.Caption with { Revision = job.Caption.Revision + 1, English = result.Text, Japanese = null, SourceCorrected = true, AiCorrected = true, TranslationRefined = false };
                     revisions[corrected.Id] = corrected.Revision;

@@ -50,7 +50,7 @@ public sealed partial class MainWindow
         if (!ContentCheckModelReady(model)) model = settings.SpeechModel;
         if (!ContentCheckModelReady(model)) return;
         string wav = Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase) ? path : path + ".recording.wav";
-        bool japanese = settings.CaptionMode == "japanese";
+        bool japanese = SpeechJapanese;
         const bool cpu = true;
         var run = new LiveContentCheck(Path.GetFullPath(path)); liveContentCheck = run;
         var token = run.Stop.Token; var normalize = Terms.Apply; string prompt = Terms.SpeechPrompt(settings.SpeechPrompt);

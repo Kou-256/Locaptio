@@ -102,8 +102,8 @@ public sealed partial class MainWindow : Window
             args.Cancel = true;
             await ShutdownAsync();
         };
-        ModeSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; ModeSelector.ItemsSource = new[] { "英語 → 日本語 翻訳", "日本語の文字起こし" };
-        root = FindRoot(); ModeSelector.SelectedIndex = settings.CaptionMode == "japanese" ? 1 : 0; RefreshAudioInputs(); ApplySettings(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
+        ModeSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; RefreshModeLabels();
+        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
         Root.Loaded += async (_, _) =>
         {
             ApplyMainTextOpacity(Root);
@@ -186,7 +186,7 @@ public sealed partial class MainWindow : Window
         return IsRuntime(previous) ? previous : "";
     }
     private static bool IsRuntime(string path) => !string.IsNullOrEmpty(path) && File.Exists(Path.Combine(path, "inference", "worker.py"));
-    private string WindowsBackendDescription(bool japanese) => "Windowsライブキャプション連携（Windows側の認識結果）" + (!japanese ? " · FuguMT速報翻訳" + (settings.UseLocalLlm ? " → Qwen文脈翻訳: ON" : " · 文脈LLM翻訳: OFF") : "") + (settings.CorrectTranscriptWithAi ? " · 文章AI補正: ON" : " · 文章AI補正: OFF");
+    private string WindowsBackendDescription(TranslationRoute? route) => "Windowsライブキャプション連携（Windows側の認識結果）" + (route is { } r ? " · " + (r.BuiltIn ? "FuguMT速報翻訳" + (settings.UseLocalLlm ? " → Qwen文脈翻訳: ON" : " · 文脈LLM翻訳: OFF") : $"翻訳: {TranslationPacks.Name(r.Source)}→{TranslationPacks.Name(r.Target)}") : "") + (settings.CorrectTranscriptWithAi ? " · 文章AI補正: ON" : " · 文章AI補正: OFF");
     private void Status(string text) => DispatcherQueue.TryEnqueue(() => { if (!closing) { if (text.StartsWith("Windowsライブキャプション接続済み")) windowsBridgeConnected = true; StatusText.Text = text; if (text.StartsWith("AI確認済み") || text.StartsWith("AI文脈補正を反映")) correctionChecked = true; } });
     private void WindowsConnectionChanged(bool connected, string message)
     {
@@ -212,7 +212,7 @@ public sealed partial class MainWindow : Window
         if (windowsSession is not null)
         {
             windowsSession.SetCorrectionEnabled(enabled);
-            BackendText.Text = WindowsBackendDescription(settings.CaptionMode == "japanese");
+            BackendText.Text = WindowsBackendDescription(Route);
         }
         else if (captionStop is not null) Status("AI補正の変更は、次回Startから反映されます。");
     }
@@ -242,7 +242,8 @@ public sealed partial class MainWindow : Window
         try
         {
             if (captionsForVerification is not null) { await captionsForVerification(token, sessionIdOffset); return; }
-            bool japanese = settings.CaptionMode == "japanese";
+            bool japanese = SpeechJapanese; var route = Route is { } chosen ? TranslationPacks.Route(chosen.Source, chosen.Target, root) : null;
+            if (MissingTranslationPack(root) is { } missing) { StatusText.Text = missing; ShowStatusDetails(pin: true); return; }
             SpeakerStatusText.Visibility = settings.SpeakerDiarization ? Visibility.Visible : Visibility.Collapsed;
             if (settings.SpeakerDiarization)
             {
@@ -265,7 +266,7 @@ public sealed partial class MainWindow : Window
                 WindowsMicrophoneNotice.IsOpen = false;
                 prepared?.Dispose(); prepared = null; preparedKey = ""; speech = translation = accurateSpeech = null; llm = null;
                 windowsBridgeConnected = false;
-                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, LlmModelFile, Terms.TranslationGlossary(settings.TranslationGlossary), () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed", correctionGlossary: Terms.CorrectionHint());
+                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, LlmModelFile, Terms.TranslationGlossary(settings.TranslationGlossary), () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed", correctionGlossary: Terms.CorrectionHint(), route: route);
                 windowsSession = live;
                 live.OperationChanged += active => DispatcherQueue.TryEnqueue(() =>
                 {
@@ -283,14 +284,14 @@ public sealed partial class MainWindow : Window
                     if (!closing && !token.IsCancellationRequested) WindowsConnectionChanged(connected, message);
                 });
                 sttMs = translationMs = totalMs = 0;
-                BackendText.Text = WindowsBackendDescription(japanese);
+                BackendText.Text = WindowsBackendDescription(route);
                 StatusText.Text = settings.AutoSwitchWindowsCaptionLanguage ? "Windows字幕の言語を本体のモードに合わせて接続します。" : "Windowsの認識言語を本アプリのモードと合わせてください。接続前の履歴は保存しません。";
                 await live.RunAsync(token); return;
             }
             bool cpu = settings.CpuOnly || settings.InferenceDevice == "cpu" || Environment.GetCommandLineArgs().Contains("--cpu");
             string model = settings.FastTranscription && !settings.RealtimeCaptions && !japanese ? (File.Exists(Path.Combine(root, "models", "speech-base", "model.bin")) ? "base" : "small") : settings.SpeechModel;
-            await SpeechPreparation.EnsureAsync(root, model, !japanese, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
-            var session = PrepareModels(japanese, model, cpu);
+            await SpeechPreparation.EnsureAsync(root, model, route is { BuiltIn: true }, cpu ? "cpu" : settings.InferenceDevice, BeginPreparation(), token);
+            var session = PrepareModels(japanese, model, cpu, route);
             await session.Ready.WaitAsync(token);
             speech = session.LiveSpeech; translation = session.Translation;
             accurateSpeech = session.Preview is not null ? session.Speech : null;
@@ -301,9 +302,9 @@ public sealed partial class MainWindow : Window
             if (llm is not null) llm.CorrectionGlossary = Terms.CorrectionHint();
             ReadyLocalLlm? readyLlm = llm is not null && llmReady is not null ? new(llm, llmReady) : null;
             Status(settings.CorrectTranscriptWithAi ? "文脈AI補正はONです。準備後、確定した発話を補正します。" : "文脈AI補正はOFFです。設定でONにできます。");
-            pipeline = new(speech, translation, japanese, !japanese && settings.UseLocalLlm ? readyLlm : null, SelectedAudio(), settings.FastTranscription, settings.CorrectTranscriptWithAi ? readyLlm : null, accurateSpeech is null ? null : new ReadySpeechBackend(accurateSpeech, session.AccuracyReady), translationGlossary: Terms.TranslationGlossary(settings.TranslationGlossary)); pipeline.Status += Status; pipeline.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); });
+            pipeline = new(speech, translation, route is null, route is { BuiltIn: true } && settings.UseLocalLlm ? readyLlm : null, SelectedAudio(), settings.FastTranscription, settings.CorrectTranscriptWithAi ? readyLlm : null, accurateSpeech is null ? null : new ReadySpeechBackend(accurateSpeech, session.AccuracyReady), translationGlossary: Terms.TranslationGlossary(settings.TranslationGlossary), sourceLanguage: japanese ? "ja" : "en"); pipeline.Status += Status; pipeline.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); });
             if (speakerSession is { } speaker) pipeline.AudioFrameCaptured += speaker.Submit;
-            StatusText.Text = japanese ? "日本語音声を待っています…" : "英語音声を待っています…"; await Task.Run(() => pipeline.RunAsync(token), token);
+            StatusText.Text = (japanese ? "日本語" : "英語") + "音声を待っています…" + (route is { } shown ? $"（{TranslationPacks.Name(shown.Target)}に翻訳）" : ""); await Task.Run(() => pipeline.RunAsync(token), token);
         }
         catch (OperationCanceledException) { StatusText.Text = token.IsCancellationRequested ? "停止しました。" : "モデル初期化がタイムアウトしました。"; }
         catch (Exception ex) { StatusText.Text = ex.Message; ShowStatusDetails(pin: true); if (!closing && captionWindow is not null) { ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); } }
@@ -330,16 +331,16 @@ public sealed partial class MainWindow : Window
             captionStop?.Dispose(); captionStop = null; StartButton.IsEnabled = true; StopButton.IsEnabled = recordingStop is not null;
         }
     }
-    private PreparedInference PrepareModels(bool japanese, string model, bool cpu)
+    private PreparedInference PrepareModels(bool japanese, string model, bool cpu, TranslationRoute? route = null)
     {
         string speechPrompt = Terms.SpeechPrompt(settings.SpeechPrompt);
-        string key = System.Text.Json.JsonSerializer.Serialize(new { root, japanese, model, cpu, settings.InferenceDevice, speechPrompt, settings.FastTranscription, settings.RealtimeCaptions, settings.RealtimePreviewOnGpu, settings.RealtimePreviewModel, settings.CorrectTranscriptWithAi, settings.UseLocalLlm, LlmModelFile });
+        string key = System.Text.Json.JsonSerializer.Serialize(new { root, japanese, route, model, cpu, settings.InferenceDevice, speechPrompt, settings.FastTranscription, settings.RealtimeCaptions, settings.RealtimePreviewOnGpu, settings.RealtimePreviewModel, settings.CorrectTranscriptWithAi, settings.UseLocalLlm, LlmModelFile });
         if (prepared is null || preparedKey != key || !prepared.IsUsable)
         {
             prepared?.Dispose();
             var reportProgress = BeginPreparation();
             preparedModel = (japanese, model, speechPrompt);
-            prepared = new(root, japanese, model, speechPrompt, settings.InferenceDevice, cpu, settings.FastTranscription, settings.CorrectTranscriptWithAi || !japanese && settings.UseLocalLlm, LlmModelFile, Status, realtime: settings.RealtimeCaptions, previewCpu: !settings.RealtimePreviewOnGpu, previewModel: settings.RealtimePreviewModel, progress: reportProgress);
+            prepared = new(root, japanese, model, speechPrompt, settings.InferenceDevice, cpu, settings.FastTranscription, settings.CorrectTranscriptWithAi || route is { BuiltIn: true } && settings.UseLocalLlm, LlmModelFile, Status, realtime: settings.RealtimeCaptions, previewCpu: !settings.RealtimePreviewOnGpu, previewModel: settings.RealtimePreviewModel, progress: reportProgress);
             preparedKey = key;
         }
         return prepared;
@@ -374,13 +375,14 @@ public sealed partial class MainWindow : Window
         if (closing || captionStop is not null) return;
         root = FindRoot(); if (root.Length == 0) return;
         if (!File.Exists(Path.Combine(root, ".venv", ".locaptio-speech-v2"))) { Status("音声環境の初回準備・修復はStartから実行します。"); return; }
-        bool japanese = settings.CaptionMode == "japanese";
+        bool japanese = SpeechJapanese; var route = Route is { } chosen ? TranslationPacks.Route(chosen.Source, chosen.Target, root) : null;
         string model = settings.FastTranscription && !settings.RealtimeCaptions && !japanese ? "base" : settings.SpeechModel;
         if (!File.Exists(Path.Combine(root, "models", "speech-" + model, "model.bin"))) { Status("選択モデルは未準備です。Startで自動ダウンロードします（初回のみ）。"); return; }
+        if (MissingTranslationPack(root) is { } missing) { Status(missing); return; }
         try
         {
             Status("モデルを準備中…（音声の取得は開始しません）");
-            await PrepareModels(japanese, model, settings.CpuOnly || settings.InferenceDevice == "cpu").Ready;
+            await PrepareModels(japanese, model, settings.CpuOnly || settings.InferenceDevice == "cpu", route).Ready;
             if (!closing && captionStop is null) Status("モデル準備完了。Start／字幕ですぐに聞き取りを開始できます。");
         }
         catch (Exception ex) { if (!closing) Status("モデル準備失敗: " + ex.Message); }
@@ -643,8 +645,9 @@ public sealed partial class MainWindow : Window
     {
         bool review = reviewingRecording && captionStop is null && playbackDocument is not null;
         bool japanese = review ? !playbackDocument!.Phrases.Any(p => p.Language != "ja" || !string.IsNullOrWhiteSpace(p.Translation)) : settings.CaptionMode == "japanese";
-        EnglishHeader.Text = review ? "文字起こし" : japanese ? "日本語" : "English";
-        JapaneseHeader.Text = review ? "翻訳" : "日本語";
+        var headerRoute = Route;
+        EnglishHeader.Text = review ? "文字起こし" : japanese ? "日本語" : headerRoute is { Source: "ja" } ? "日本語" : "English";
+        JapaneseHeader.Text = review ? "翻訳" : headerRoute is { } target ? TranslationPacks.Name(target.Target) : "日本語";
         Header.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0);
         Header.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
         EnglishHeader.Visibility = japanese || settings.English ? Visibility.Visible : Visibility.Collapsed;
@@ -925,7 +928,10 @@ public sealed partial class MainWindow : Window
         if (settingsCorrectionToggle is not null) settingsCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi;
         settings.CaptionLineGap = Math.Clamp(settings.CaptionLineGap, 0, 30);
         settings.CaptionLineHeight = Math.Clamp(settings.CaptionLineHeight, 1.05, 1.8);
-        if (settings.CaptionMode is not ("translate" or "japanese")) settings.CaptionMode = "translate";
+        if (settings.CaptionMode is not ("translate" or "japanese" or "ja-translate")) settings.CaptionMode = "translate";
+        if (TranslationPacks.Languages.All(l => l.Code != settings.EnglishTranslationTarget) || settings.EnglishTranslationTarget == "en") settings.EnglishTranslationTarget = "ja";
+        if (TranslationPacks.Languages.All(l => l.Code != settings.JapaneseTranslationTarget) || settings.JapaneseTranslationTarget == "ja") settings.JapaneseTranslationTarget = "en";
+        if (initialized) RefreshModeLabels();
         if (settings.SpeechModel is not ("tiny" or "base" or "small" or "medium" or "large-v3-turbo")) settings.SpeechModel = "large-v3-turbo";
         if (settings.InferenceDevice is not ("gpu" or "cuda" or "npu" or "cpu")) settings.InferenceDevice = "gpu";
         if (settings.CaptionLayout is not ("english-top" or "japanese-top" or "side-by-side")) settings.CaptionLayout = "english-top";
@@ -1127,6 +1133,7 @@ public sealed partial class MainWindow : Window
             var terminology = new TextBox { Text = settings.TranslationGlossary, MaxLength = 1000, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, PlaceholderText = "例: 32-bit float = 32ビット浮動小数点、subject = 被写体（撮影の話題）" };
             terminology.TextChanged += (_, _) => { settings.TranslationGlossary = terminology.Text; settings.Save(); }; content.Children.Add(terminology);
             AddLlmModelSettings(content, window);
+            AddTranslationSettings(content, window);
             void Folder(string label, string value, Action<string> set, bool runtime = false)
             {
                 content.Children.Add(new TextBlock { Text = label }); var path = new TextBox { Text = value, IsReadOnly = true }; content.Children.Add(path);
@@ -1547,9 +1554,9 @@ public sealed partial class MainWindow : Window
         try
         {
             if (!await ConfirmTranscriptReplacementAsync("文字起こしモードを切り替えます。"))
-            { ModeSelector.SelectedIndex = settings.CaptionMode == "japanese" ? 1 : 0; return; }
+            { ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); return; }
             bool restart = captionStop is not null; await StopAsync();
-            settings.CaptionMode = ModeSelector.SelectedIndex == 1 ? "japanese" : "translate";
+            settings.CaptionMode = ModeAt(ModeSelector.SelectedIndex);
             ClearCaptions(); ApplySettings(); BackendText.Text = "";
             if (restart) await StartAsync(); else StatusText.Text = "モードを切り替えました。Startで開始します。";
         }

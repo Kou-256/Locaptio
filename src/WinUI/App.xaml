@@ -10,7 +10,10 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here -->
+            <!-- Static check mark: the animated one can stay on its dash frame ("—"). See CheckBoxGlyph. -->
+            <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
+                <Setter Property="local:CheckBoxGlyph.Static" Value="True"/>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

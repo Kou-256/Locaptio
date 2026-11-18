@@ -76,6 +76,23 @@ class MarianBackend(ITranslationBackend):
         result = self.model.translate_batch([tokens], beam_size=2, max_decoding_length=256)[0].hypotheses[0]
         return self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(result), skip_special_tokens=True)
 
+class M2M100Backend(ITranslationBackend):
+    """Multilingual translation (M2M100): one model for many language pairs."""
+    def __init__(self, path, device, source, target):
+        from transformers import M2M100Tokenizer
+        self.tokenizer = M2M100Tokenizer.from_pretrained(str(path), local_files_only=True)
+        self.tokenizer.src_lang = source
+        self.target = self.tokenizer.get_lang_token(target)
+        self.model = ctranslate2.Translator(str(path), device=device, compute_type='int8_float16' if device == 'cuda' else 'int8',
+                                           inter_threads=1, intra_threads=max(1, min(8, (os.cpu_count() or 4) // 2)))
+        self.model_name = 'm2m100 ' + source + '-' + target
+    def translate(self, text):
+        tokens = self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(text, truncation=True, max_length=256))
+        result = self.model.translate_batch([tokens], target_prefix=[[self.target]], beam_size=2, max_decoding_length=256)[0].hypotheses[0]
+        if result and result[0] == self.target:
+            result = result[1:]
+        return self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(result), skip_special_tokens=True)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--kind', choices=['speech', 'translation'], required=True)
@@ -86,8 +103,14 @@ def main():
     parser.add_argument('--draft', action='store_true')
     parser.add_argument('--language', choices=['en', 'ja'], default='en')
     parser.add_argument('--speech-model', choices=['legacy', 'tiny', 'base', 'small', 'medium', 'large-v3-turbo'], default='legacy')
+    # Translation packs other than the built-in English → Japanese model, downloaded from Settings.
+    parser.add_argument('--pack', choices=['en-ja', 'ja-en', 'multi'], default='en-ja')
+    parser.add_argument('--source', default='en')
+    parser.add_argument('--target', default='ja')
     args = parser.parse_args()
     path = args.models / args.kind
+    if args.kind == 'translation' and args.pack != 'en-ja':
+        path = args.models / ('translation-ja-en' if args.pack == 'ja-en' else 'translation-m2m100')
     if args.kind == 'speech' and args.speech_model != 'legacy':
         path = args.models / ('speech-' + args.speech_model)
     if not (path / 'model.bin').exists():
@@ -109,6 +132,8 @@ def main():
             result = WhisperBackend(path, device, args.language)
             result.model_name = actual_model
             return result
+        if args.pack == 'multi':
+            return M2M100Backend(path, device, args.source, args.target)
         return MarianBackend(path, device)
     emit({'type': 'progress', 'completed': 1, 'total': 3, 'stage': '実行デバイス確認・モデル読み込み中'})
     try:
@@ -122,13 +147,13 @@ def main():
             emit({'type': 'error', 'message': 'NVIDIA CUDA GPUを検出できません。NVIDIAドライバーとCUDA推論環境を確認するか、GPU自動／CPUを選んでください。'})
             return 2
         device = 'cuda'
-    if args.prefer_npu and args.device == 'auto' and args.kind == 'translation':
+    if args.prefer_npu and args.device == 'auto' and args.kind == 'translation' and args.pack == 'en-ja':
         try:
             backend = factory(path, 'npu')
             device = 'npu'
         except Exception as exc:
             emit({'type': 'status', 'message': 'NPU利用不可、GPU/CPUへ切替: ' + str(exc)})
-    if device != 'npu' and args.kind == 'translation' and args.device == 'auto' and (args.models / 'translation-onnx' / 'encoder_model.onnx').exists():
+    if device != 'npu' and args.kind == 'translation' and args.pack == 'en-ja' and args.device == 'auto' and (args.models / 'translation-onnx' / 'encoder_model.onnx').exists():
         import onnxruntime
         if 'DmlExecutionProvider' in onnxruntime.get_available_providers():
             device = 'dml'
@@ -139,7 +164,7 @@ def main():
         if args.kind == 'speech':
             backend.recognize(np.zeros(16000, dtype=np.float32), vad=False, final=False)
         else:
-            backend.translate('This is a test.')
+            backend.translate('これはテストです。' if args.source == 'ja' else 'This is a test.')
     except Exception as exc:
         if args.device == 'cuda':
             emit({'type': 'error', 'message': 'CUDA初期化に失敗しました。CUDA 12・cuDNN 9の推論環境を確認してください: ' + str(exc)})
