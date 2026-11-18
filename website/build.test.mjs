@@ -92,3 +92,16 @@ test('search title and description repeat the hero text, and Locaptio icons are 
     assert.equal(png.readUInt32BE(16),size); assert.equal(png.readUInt32BE(20),size);
   }
 });
+
+test('major updates list names every big release, newest first, starting with the current version', async()=>{
+  const {updates}=await import('./updates.mjs');
+  const release=JSON.parse(await readFile(new URL('release.json',import.meta.url),'utf8'));
+  for(const [lang,file] of [['ja','dist/index.html'],['en','dist/en/index.html']]){
+    const html=await readFile(new URL(file,import.meta.url),'utf8'), items=updates[lang].items;
+    assert.equal(items[0][0],release.version);
+    const versions=items.map(i=>i[0].split('.').map(Number)), sorted=[...versions].sort((a,b)=>b[2]-a[2]);
+    assert.deepEqual(versions,sorted);
+    assert.ok(html.includes('id="updates"') && html.includes('href="#updates"'));
+    for(const [version,title] of items) assert.ok(html.includes(`v${version}`) && html.includes(title));
+  }
+});
