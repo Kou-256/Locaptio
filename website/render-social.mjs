@@ -20,7 +20,7 @@ try {
   await page.evaluate(()=>document.fonts.ready);
   const clipped = await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>1200||e.getBoundingClientRect().bottom>630).map(e=>e.tagName));
   if(clipped.length) throw new Error('Social image overflow: '+clipped.join(','));
-  await page.screenshot({path:`public/assets/share-${lang}-v1.png`});
+  await page.screenshot({path:`public/assets/share-${lang}-v2.png`});
   console.log(`Rendered ${lang}: 1200 x 630`); await page.close();
  }
 } finally { await browser.close(); }
