@@ -173,12 +173,12 @@
      <Button Click="SummaryCloseClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を閉じる"><FontIcon Glyph="&#xE711;" FontSize="11"/></Button></StackPanel>
     </Grid>
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0"><StackPanel x:Name="SummaryContent" Spacing="6"/></ScrollViewer>
-    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+    <local:ToolbarPanel Grid.Row="2">
      <Button x:Name="SummaryRunButton" Content="作成" Click="SummaryRunClick" Padding="8,3" FontSize="12"/>
      <Button x:Name="SummaryCopyButton" Content="コピー" Click="SummaryCopyClick" Padding="8,3" FontSize="12" IsEnabled="False"/>
      <Button x:Name="SummarySaveButton" Content="Markdown保存…" Click="SummarySaveClick" Padding="8,3" FontSize="12" IsEnabled="False"/>
      <Button x:Name="SummaryLiveClearButton" Content="ライブ要約をクリア" Click="LiveSummaryClearClick" Padding="8,3" FontSize="12" Visibility="Collapsed" ToolTipService.ToolTip="ライブ要約（「ここまでの流れ」を含む）を消します。文章と全体の要約は残ります。"/>
-    </StackPanel>
+    </local:ToolbarPanel>
    </Grid>
   </Border>
   <StackPanel Grid.Row="5" Spacing="3">
