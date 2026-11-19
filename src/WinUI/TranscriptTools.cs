@@ -123,7 +123,8 @@ public sealed partial class MainWindow
     {
         if (reviewingRecording && playbackDocument is not null) return playbackDocument;
         var phrases = history.Select(row => new RecordingPhrase(row.Id, row.Caption.Started, RowSeconds(row.Caption), row.English, row.Japanese, row.Caption.Revision, row.Caption.SourceLanguage,
-            Original: edits.Original(row.Id) is { } original && original != row.English ? original : null, Edited: edits.IsEdited(row.Id))).ToArray();
+            Original: edits.Original(row.Id) is { } original && original != row.English ? original : null, Edited: edits.IsEdited(row.Id),
+            AiCorrected: row.Caption.AiCorrected, TranslationRefined: row.Caption.TranslationRefined)).ToArray();
         return new(1, Path.GetFileName(recordingPath), DateTimeOffset.Now, true, phrases, bookmarks.Count == 0 ? null : bookmarks.OrderBy(b => b.Seconds).ToArray());
     }
 
@@ -661,19 +662,27 @@ public sealed partial class MainWindow
         catch (Exception ex) { Status("復元できません: " + ex.Message + " 自動保存データは残してあります。"); ShowStatusDetails(pin: true); }
         finally { dialogOpen = false; }
     }
-    /// <summary>Snapshot row → shown row: the same text in order first, then the nearest time.</summary>
+    /// <summary>
+    /// Snapshot row → shown row, walking both lists forward together: the same text within the next few rows first,
+    /// otherwise the nearest time (within 5 s). Linear in the number of rows.
+    /// </summary>
     private Dictionary<long, long> MatchRestoredRows(AutosaveRow[] rows)
     {
+        const int window = 40;
         var map = new Dictionary<long, long>(); int from = 0;
         var shown = history.ToList();
         foreach (var row in rows)
         {
-            int index = shown.FindIndex(from, h => h.English == row.Text || edits.Original(h.Id) == row.Text || (row.Original is not null && h.English == row.Original));
+            int end = Math.Min(shown.Count, from + window), index = -1;
+            for (int i = from; i < end && index < 0; i++)
+            {
+                var h = shown[i];
+                if (h.English == row.Text || (row.Original is not null && h.English == row.Original) || edits.Original(h.Id) == row.Text) index = i;
+            }
             if (index < 0)
             {
-                // Nearest time when the text was changed after the recording's file was last written.
-                index = shown.Select((h, i) => (i, distance: Math.Abs(RowSeconds(h.Caption) - row.Seconds))).Where(p => p.i >= from).OrderBy(p => p.distance).Select(p => p.i).DefaultIfEmpty(-1).First();
-                if (index >= 0 && Math.Abs(RowSeconds(shown[index].Caption) - row.Seconds) > 5) index = -1;
+                double best = 5;
+                for (int i = from; i < end; i++) { double distance = Math.Abs(RowSeconds(shown[i].Caption) - row.Seconds); if (distance <= best) { best = distance; index = i; } }
             }
             if (index < 0) continue;
             map[row.Id] = shown[index].Id; from = index + 1;
@@ -700,6 +709,14 @@ public sealed partial class MainWindow
                     UpdateHistory(shown with { AiCorrected = row.AiCorrected || shown.AiCorrected, SourceCorrected = row.SourceCorrected || shown.SourceCorrected, TranslationRefined = row.TranslationRefined || shown.TranslationRefined });
             }
             if (snapshot.Summary is { } saved) RestoreSummarySnapshot(saved, byRow);
+            // Keep what was put back in the recording's own files, so reopening it later shows the same.
+            if (playbackDocument is { } restoredDocument)
+            {
+                playbackDocument = restoredDocument with { Phrases = restoredDocument.Phrases.Select(p => FindCaption(p.Id) is { } c
+                    ? p with { Text = c.English, Translation = c.Japanese, Original = edits.Original(p.Id) is { } o && o != c.English ? o : p.Original, Edited = edits.IsEdited(p.Id) || p.Edited, AiCorrected = c.AiCorrected, TranslationRefined = c.TranslationRefined }
+                    : p).ToArray() };
+                SaveReviewDocument();
+            }
             RenderCaptions();
             Status("中断された録音と文字起こしを復元しました: " + audio); return;
         }

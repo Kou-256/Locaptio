@@ -5,7 +5,10 @@ namespace Locaptio.Core;
 
 public sealed record RecordingWord(int StartIndex, int Length, double Start, double End);
 // Original keeps the recognized text from before AI correction or a manual edit.
-public sealed record RecordingPhrase(long Id, long Started, double Seconds, string Text, string? Translation, int Revision, string Language = "ja", double? EndSeconds = null, RecordingWord[]? Words = null, string? Original = null, bool Edited = false, double? Match = null);
+/// <param name="AiCorrected">The text was changed by AI correction (the mark and the text before it are shown).</param>
+/// <param name="TranslationRefined">The translation was finished by the local AI.</param>
+public sealed record RecordingPhrase(long Id, long Started, double Seconds, string Text, string? Translation, int Revision, string Language = "ja", double? EndSeconds = null, RecordingWord[]? Words = null, string? Original = null, bool Edited = false, double? Match = null,
+    bool AiCorrected = false, bool TranslationRefined = false);
 public sealed record RecordingBookmark(double Seconds, string Label, long PhraseId = 0, string? Text = null);
 /// <summary>Evidence is stored as phrase onsets so it survives the row IDs of a later session.</summary>
 public sealed record RecordingSummaryItem(string Section, string Text, double[] Evidence);
@@ -57,7 +60,8 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
         if (InPause(update.Started)) return false;
         if (string.IsNullOrWhiteSpace(update.English)) return phrases.Remove(key);
         double seconds = Math.Max(0, Offset(update.Started) - (approximateTiming ? 1.0 : 0));
-        var phrase = new RecordingPhrase(update.Id, update.Started, seconds, update.English, update.Japanese, update.Revision, update.SourceLanguage, Original: previous?.Original, Edited: previous?.Edited ?? false);
+        var phrase = new RecordingPhrase(update.Id, update.Started, seconds, update.English, update.Japanese, update.Revision, update.SourceLanguage, Original: previous?.Original, Edited: previous?.Edited ?? false,
+            AiCorrected: update.AiCorrected || (previous?.AiCorrected ?? false), TranslationRefined: update.TranslationRefined || (previous?.TranslationRefined ?? false));
         if (update.Appeared is { } times && times.Length == update.English.Length) appeared[key] = times; else appeared.Remove(key);
         if (previous == phrase) return false;
         phrases[key] = phrase; return true;

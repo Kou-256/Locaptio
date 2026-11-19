@@ -23,7 +23,7 @@ public sealed partial class MainWindow
                 // Theme switches with nothing else going on; "bare-rows" adds transcript rows first.
                 string bareTrail = Path.Combine(root, "artifacts", "appearance-stress-trail.txt"); File.WriteAllText(bareTrail, "");
                 if (early == "bare-rows") { captionStop = new(); for (int i = 1; i <= 20; i++) UpdateCaption(new CaptionUpdate(i, 1, "Row " + i, "行 " + i, true, Stopwatch.GetTimestamp(), 0, 0, "en")); captionStop.Dispose(); captionStop = null; }
-                for (int i = 0; i < 60; i++) { File.AppendAllText(bareTrail, "theme " + i + Environment.NewLine); CheckBoxGlyph.SetTheme(Root, i % 2 == 0 ? ElementTheme.Light : ElementTheme.Dark); await Task.Delay(60); }
+                for (int i = 0; i < 60; i++) { File.AppendAllText(bareTrail, "theme " + i + Environment.NewLine); WindowAppearance.SetTheme(Root, i % 2 == 0 ? ElementTheme.Light : ElementTheme.Dark); await Task.Delay(60); }
                 log.Add("PASS: bare theme switching"); return;
             }
             ClearCaptions(); settings.CaptionMode = "en>ja"; ApplySettings();
@@ -53,7 +53,7 @@ public sealed partial class MainWindow
                 // Drag-like slider changes, palette and background switches, a layout switch now and then.
                 if (part is "all" or "sliders") foreach (var slider in sliders) { Mark("slider " + Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(slider) + " " + Array.IndexOf(sliders, slider)); slider.Value = slider.Minimum + random.NextDouble() * (slider.Maximum - slider.Minimum); changes++; await Task.Delay(15); }
                 if (part is "all" or "selectors") foreach (var selector in selectors) { Mark("selector " + Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(selector)); int count = ((System.Collections.IEnumerable)selector.ItemsSource!).Cast<object>().Count(); selector.SelectedIndex = random.Next(count); changes++; await Task.Delay(25); }
-                if (part is "theme" or "theme-nofeed") { Mark("theme"); CheckBoxGlyph.SetTheme(Root, Root.RequestedTheme == ElementTheme.Light ? ElementTheme.Dark : ElementTheme.Light); changes++; }
+                if (part is "theme" or "theme-nofeed") { Mark("theme"); WindowAppearance.SetTheme(Root, Root.RequestedTheme == ElementTheme.Light ? ElementTheme.Dark : ElementTheme.Light); changes++; }
                 if (part == "theme-nofeed") feed.Stop();
                 if (part == "caption-theme") { Mark("caption window only"); settings.CaptionBackground = settings.CaptionBackground == "light" ? "live" : "light"; captionWindow?.ApplyAppearance(); changes++; }
                 if (part is "all" or "background") { Mark("background"); settings.CaptionBackground = random.Next(3) == 0 ? "light" : "live"; ApplySettings(); changes++; }

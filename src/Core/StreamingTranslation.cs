@@ -77,9 +77,9 @@ public sealed class StreamingTranslation(ITranslationBackend fast, ITranslationR
         while (await wake.Reader.WaitToReadAsync(token))
         {
             while (wake.Reader.TryRead(out _)) { }
-            while (Next(refine) is { } job)
+            // While the context translation is off, its rows stay pending and are refined once it is on again.
+            while ((!refine || QualityEnabled?.Invoke() != false) && Next(refine) is { } job)
             {
-                if (refine && QualityEnabled?.Invoke() == false) continue;
                 try
                 {
                     var result = refine ? await quality!.RefineAsync(job.Source.English, job.Context, glossary, token) : await fast.TranslateAsync(job.Source.English, token, job.Source.Final);

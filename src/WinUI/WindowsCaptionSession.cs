@@ -7,7 +7,7 @@ using Locaptio.Core;
 using Locaptio.Core.AI;
 
 namespace Locaptio.WinUI;
-internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, bool useLlm = true, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "", TranslationRoute? route = null, string? language = null) : IDisposable
+internal sealed class WindowsCaptionSession(string directory, bool japanese, string root, string device, bool cpu, string llmPath = "", string glossary = "", Func<bool>? autoRecovery = null, Func<bool>? readSystemAudio = null, bool verifyBlockedBridge = false, bool correctTranscript = false, bool autoSwitchLanguage = false, Func<int>? restartSeconds = null, bool includeMicrophone = false, string correctionGlossary = "", TranslationRoute? route = null, string? language = null) : IDisposable
 {
     private Process? worker;
     /// <summary>What is translated: the given route, or English → Japanese for English captions.</summary>
@@ -92,7 +92,7 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         var fastObserver = ObserveAsync(fastReady, "速報翻訳"); Task qualityObserver = Task.CompletedTask;
         var llmReady = new Lazy<Task>(() => { var task = InitializeLlmAsync(); qualityObserver = ObserveAsync(task, "文脈AI"); return task; });
         // The context translation follows 「AI補正」 while connected; the model loads only when it is first needed.
-        var translator = Route is null ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), Route.BuiltIn ? new LazyRefinement(llm, () => llmReady.Value) : null, glossary) { QualityEnabled = () => useLlm && correctionEnabled };
+        var translator = Route is null ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), Route.BuiltIn ? new LazyRefinement(llm, () => llmReady.Value) : null, glossary) { QualityEnabled = () => correctionEnabled };
         if (translator is not null) { translator.Caption += update => Caption?.Invoke(update); translator.Status += s => Status?.Invoke(s); }
         var translating = translator?.RunAsync(linked.Token) ?? Task.CompletedTask;
         correction = new StreamingSpeechCorrection(new LazyCorrection(llm, () => llmReady.Value), speechLanguage);

@@ -29,7 +29,8 @@ public sealed partial class MainWindow
         {
             // The first use downloads the small speaker model (CAMPPlus + Silero VAD, CPU only).
             if (VerificationRun && !SpeechPreparation.SpeakersReady(root)) throw new InvalidOperationException("（自己チェックでは話者識別モデルをダウンロードしません）");
-            await SpeechPreparation.EnsureSpeakersAsync(root, p => DispatcherQueue.TryEnqueue(() => { if (ReferenceEquals(speakerSession, recognition)) SpeakerStatusText.Text = "話者識別: " + p.Stage; }), stop.Token);
+            try { await SpeechPreparation.EnsureSpeakersAsync(root, p => DispatcherQueue.TryEnqueue(() => { if (ReferenceEquals(speakerSession, recognition)) SpeakerStatusText.Text = "話者識別: " + p.Stage; }), stop.Token); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { throw new SpeakerSetupException(ex.Message); }
             var worker = recognition.RunAsync(stop.Token);
             if (windows) await Task.WhenAll(worker, MonitorWindowsSpeakersAsync(recognition, worker, input, stop.Token));
             else await worker;
@@ -41,6 +42,18 @@ public sealed partial class MainWindow
     {
         try { await work; }
         catch (OperationCanceledException) { }
+        catch (SpeakerSetupException ex) when (!VerificationRun)
+        {
+            // Speaker colors are on by default; when the model cannot be prepared (offline, blocked), turn them off
+            // instead of trying again at every Start. They can be turned on again in Settings or the 聞き取り menu.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (closing) return;
+                settings.SpeakerDiarization = false; settings.Save(); SpeakerMenuItem.IsChecked = false;
+                SpeakerStatusText.Text = "話者識別: OFF（モデルを準備できませんでした）";
+                Status("話者識別モデルを準備できなかったため、話者の色分けをOFFにしました（ネット接続を確認して、設定か「聞き取り」メニューでONに戻せます）: " + ex.Message);
+            });
+        }
         catch (Exception ex) { DispatcherQueue.TryEnqueue(() => { if (!closing && ReferenceEquals(speakerSession, recognition)) SpeakerStatusText.Text = "話者識別を開始できません: " + ex.Message; }); }
     }
     /// <summary>Stops speaker recognition; the colors already assigned stay on the rows.</summary>
@@ -68,3 +81,6 @@ public sealed partial class MainWindow
     }
     private void SpeakerMenuClick(object sender, RoutedEventArgs e) => SetSpeakerDiarization(SpeakerMenuItem.IsChecked);
 }
+
+/// <summary>The speaker model could not be prepared (download or install failed).</summary>
+internal sealed class SpeakerSetupException(string message) : Exception(message);

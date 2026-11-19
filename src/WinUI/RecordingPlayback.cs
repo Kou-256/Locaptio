@@ -366,7 +366,8 @@ public sealed partial class MainWindow
             if (document is not null)
                 foreach (var phrase in document.Phrases)
                 {
-                    var caption = new CaptionUpdate(history.Count + 1, phrase.Revision, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, !string.IsNullOrWhiteSpace(phrase.Translation) ? "en" : phrase.Language);
+                    var caption = new CaptionUpdate(history.Count + 1, phrase.Revision, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, !string.IsNullOrWhiteSpace(phrase.Translation) ? "en" : phrase.Language,
+                        TranslationRefined: phrase.TranslationRefined, SourceCorrected: phrase.AiCorrected, AiCorrected: phrase.AiCorrected);
                     UpdateHistory(caption); transcript.Update(caption);
                 }
             // Rebind IDs to visible rows after resolving any reused session IDs.

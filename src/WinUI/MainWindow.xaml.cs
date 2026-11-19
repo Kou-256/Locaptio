@@ -69,6 +69,8 @@ public sealed partial class MainWindow : Window
     /// <summary>The main window's look (its own palette, background and spacing over the shared settings).</summary>
     private Settings mainView = new();
     private string? originalMainPaletteForStyle;
+    private bool captionRedrawQueued;
+    private readonly DispatcherTimer settingsSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private CaptionWindow? captionWindow;
     private Window? modelHelpWindow;
     [DllImport("user32.dll")] private static extern int GetWindowLongW(nint window, int index);
@@ -106,6 +108,7 @@ public sealed partial class MainWindow : Window
             await ShutdownAsync();
         };
         ModeSelector.OwnerWindow = this; TargetSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; RefreshModeLabels();
+        settingsSaveTimer.Tick += (_, _) => { settingsSaveTimer.Stop(); settings.Save(); }; Closed += (_, _) => { if (settingsSaveTimer.IsEnabled) { settingsSaveTimer.Stop(); settings.Save(); } };
         root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeKeepOnTop(); ShowCrashNoticeIfAny(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
         Root.Loaded += async (_, _) =>
         {
@@ -260,7 +263,7 @@ public sealed partial class MainWindow : Window
                 WindowsMicrophoneNotice.IsOpen = false;
                 prepared?.Dispose(); prepared = null; preparedKey = ""; speech = translation = accurateSpeech = null; llm = null;
                 windowsBridgeConnected = false;
-                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, settings.UseLocalLlm, LlmModelFile, Terms.TranslationGlossary(settings.TranslationGlossary), () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed", correctionGlossary: Terms.CorrectionHint(), route: route, language: SpeechLanguage);
+                using var live = new WindowsCaptionSession(AppContext.BaseDirectory, japanese, root, settings.InferenceDevice, settings.CpuOnly, LlmModelFile, Terms.TranslationGlossary(settings.TranslationGlossary), () => settings.AutoRestartWindowsCaptions, readSystemAudio: settings.AudioInputKind == "mixed" ? () => WindowsCaptionRecovery.ReadSystemAudio() || ReadDefaultMicrophoneLevel() : null, correctTranscript: settings.CorrectTranscriptWithAi, autoSwitchLanguage: settings.AutoSwitchWindowsCaptionLanguage, restartSeconds: () => settings.WindowsCaptionRestartSeconds, includeMicrophone: settings.AudioInputKind == "mixed", correctionGlossary: Terms.CorrectionHint(), route: route, language: SpeechLanguage);
                 windowsSession = live;
                 live.OperationChanged += active => DispatcherQueue.TryEnqueue(() =>
                 {
@@ -949,22 +952,28 @@ public sealed partial class MainWindow : Window
         if (settings.MenuBarTheme is not ("white" or "matching")) settings.MenuBarTheme = "white";
         mainView = settings.MainView();
         Root.Background = CaptionWindow.BackgroundBrush(mainView, settings.BackgroundOpacity);
-        CheckBoxGlyph.SetTheme(Root, mainView.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark);
-        if (settingsWindow?.Content is Grid settingsRoot) { settingsRoot.Background = CaptionWindow.SurfaceBrush(mainView); CheckBoxGlyph.SetTheme(settingsRoot, Root.RequestedTheme); }
+        WindowAppearance.SetTheme(Root, mainView.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark);
+        if (settingsWindow?.Content is Grid settingsRoot) { settingsRoot.Background = CaptionWindow.SurfaceBrush(mainView); WindowAppearance.SetTheme(settingsRoot, Root.RequestedTheme); }
         SummaryPane.Background = CaptionWindow.SurfaceBrush(mainView);
         if (summaryWindow?.Content is Grid summaryHost) summaryHost.Background = CaptionWindow.SurfaceBrush(mainView);
         if (string.IsNullOrWhiteSpace(settings.BookmarkLabels)) settings.BookmarkLabels = new Settings().BookmarkLabels;
         RefreshBookmarkLabels();
         bool matchingMenu = settings.MenuBarTheme == "matching";
-        CheckBoxGlyph.SetTheme(HeaderMenu, matchingMenu ? Root.RequestedTheme : ElementTheme.Light);
+        WindowAppearance.SetTheme(HeaderMenu, matchingMenu ? Root.RequestedTheme : ElementTheme.Light);
         HeaderMenu.Background = matchingMenu ? new SolidColorBrush(Microsoft.UI.Colors.Transparent) : new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 245, 247, 250));
         settings.FontSize = Math.Clamp(settings.FontSize, 14, 40); settings.BackgroundOpacity = Math.Clamp(settings.BackgroundOpacity, 0, 1); settings.TextOpacity = Math.Clamp(settings.TextOpacity, 0, 1);
         if (!settings.English && !settings.Japanese) settings.Japanese = true;
         WindowAppearance.SetOpacity(hwnd, 1); ApplyMainTextOpacity(Root); WindowAppearance.SetBorder(hwnd, settings.CaptionBorderColor);
         MetricsText.Visibility = settings.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
         while (captions.Count > settings.CaptionRows) captions.Remove(captions.Keys.First()); RenderCaptions();
-        // The caption window redraws only when its text changes; a new look must show at once.
-        captionWindow?.ApplyAppearance(); settings.Save();
+        // The caption window redraws only when its text changes; a new look must show at once. A slider drag calls
+        // this many times a second, so the redraw runs once per UI turn and the file is written after a short pause.
+        if (!captionRedrawQueued && captionWindow is not null)
+        {
+            captionRedrawQueued = true;
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => { captionRedrawQueued = false; if (!closing) captionWindow?.ApplyAppearance(); });
+        }
+        settingsSaveTimer.Stop(); settingsSaveTimer.Start();
     }
     private void SettingsClick(object sender, RoutedEventArgs e)
     {
@@ -1459,7 +1468,7 @@ public sealed partial class MainWindow : Window
             string before = transcript.Export(true);
             var messages = new List<string>();
             var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var live = new WindowsCaptionSession(AppContext.BaseDirectory, true, root, "cpu", true, false, autoRecovery: () => true, readSystemAudio: () => true, verifyBlockedBridge: true, restartSeconds: () => 20);
+            using var live = new WindowsCaptionSession(AppContext.BaseDirectory, true, root, "cpu", true, autoRecovery: () => true, readSystemAudio: () => true, verifyBlockedBridge: true, restartSeconds: () => 20);
             live.ConnectionChanged += (ready, text) => { WindowsConnectionChanged(ready, text); if (ready) connected.TrySetResult(); };
             live.Status += messages.Add;
             var elapsed = Stopwatch.StartNew();

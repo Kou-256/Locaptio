@@ -19,8 +19,11 @@ public sealed partial class MainWindow
     private long inlineEditId; private int inlineEditColumn;
 
     private TextBlock? inlineEditTarget;
+    /// <summary>When the user last pressed in the transcript (a click elsewhere ends an edit; updates do not).</summary>
+    private long transcriptPressed;
     private void InitializeInlineEditing()
     {
+        CaptionList.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => { if (inlineEditor is not null) transcriptPressed = System.Diagnostics.Stopwatch.GetTimestamp(); }), true);
         // While the right-click menu is open, new speech must not scroll its row away (that closes the menu).
         transcriptSelectionMenu.Opening += (_, _) => PauseHistoryFollowing();
         CaptionList.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler(BeginInlineEdit), true);
@@ -74,7 +77,8 @@ public sealed partial class MainWindow
             if (!ReferenceEquals(inlineEditBox, box)) return;
             var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
             bool listOrNothing = focused is null || focused is ListViewBase || focused is ListViewItem || ReferenceEquals(focused, box);
-            if (listOrNothing) box.Focus(FocusState.Programmatic); else FinishInlineEdit(true);
+            bool clicked = System.Diagnostics.Stopwatch.GetElapsedTime(transcriptPressed).TotalMilliseconds < 600;
+            if (listOrNothing && !clicked) box.Focus(FocusState.Programmatic); else FinishInlineEdit(true);
         });
         if (historyScroll is not null) historyScroll.ViewChanged += ScrolledWhileEditing;
         popup.IsOpen = true;

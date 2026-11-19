@@ -27,6 +27,10 @@ internal static class TextToolsChecks
         foreach (string normal in new[] { "キラキラした光が見えます。", "どんどん進めましょう。ますます便利になります。", "はい、はい、わかりました。", "Thank you very much for coming today.", "今日の会議では来期の予算について話し合います。" })
             Check(!RepetitionGuard.HasLoop(normal) && RepetitionGuard.Clean(normal, normal) == normal, "ordinary text is untouched: " + normal);
         Check(!RepetitionGuard.IsRunaway("これはチップです", "This is a chip."), "a normal translation is accepted");
+        Check(!RepetitionGuard.HasLoop("予算は1,000,000,000,000円です") && RepetitionGuard.Collapse("予算は1,000,000,000,000円です") == "予算は1,000,000,000,000円です", "large numbers are not loops");
+        string japanese = "今日の会議では来期の予算と人員配置について話し合います。";
+        string spanish = "En la reunión de hoy hablaremos del presupuesto y de la asignación de personal para el próximo período fiscal de la empresa.";
+        Check(!RepetitionGuard.IsRunaway(japanese, spanish) && RepetitionGuard.Clean(japanese, spanish) == spanish, "a long but correct Japanese → Spanish translation is kept whole");
         Console.WriteLine("PASS: repetition guard (looping translation detected and cut to: " + cleaned + "; Whisper repeats collapsed; ordinary text untouched)");
     }
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
