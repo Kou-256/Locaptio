@@ -54,7 +54,7 @@ public sealed partial class MainWindow
             Width = Math.Max(160, target.ActualWidth + 18), MinHeight = target.ActualHeight + 10, Padding = new Thickness(8, 4, 8, 4)
         };
         // The theme's text box background is translucent; the sentence underneath would show through.
-        uint rgb = CaptionWindow.ParseColor(settings.CaptionSurfaceColor, 0x363636);
+        uint rgb = CaptionWindow.ParseColor(settings.MainSurfaceColor, 0x363636);
         var surface = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
         foreach (string key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused" }) box.Resources[key] = surface;
         box.RequestedTheme = Root.RequestedTheme;

@@ -95,7 +95,7 @@ public sealed partial class MainWindow
         if (SummaryPane.Child is not FrameworkElement inner) return;
         ShowSummaryPane(false);
         SummaryPane.Child = null;
-        var host = new Grid { Padding = new Thickness(12, 10, 8, 10), Background = CaptionWindow.SurfaceBrush(settings), RequestedTheme = ElementTheme.Dark };
+        var host = new Grid { Padding = new Thickness(12, 10, 8, 10), Background = CaptionWindow.SurfaceBrush(settings.MainView()), RequestedTheme = settings.MainBackground == "light" ? ElementTheme.Light : ElementTheme.Dark };
         host.Children.Add(inner);
         var window = new Window { Title = "AI要約 — Locaptio", Content = host, SystemBackdrop = null };
         summaryWindow = window;

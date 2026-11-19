@@ -66,6 +66,8 @@ public sealed partial class MainWindow : Window
     private readonly nint hwnd;
     private Window? settingsWindow;
     private FeatureSwitch? settingsCorrectionToggle;
+    /// <summary>The main window's look (its own palette, background and spacing over the shared settings).</summary>
+    private Settings mainView = new();
     private CaptionWindow? captionWindow;
     private Window? modelHelpWindow;
     [DllImport("user32.dll")] private static extern int GetWindowLongW(nint window, int index);
@@ -609,7 +611,8 @@ public sealed partial class MainWindow : Window
     {
         // "Transcription only": a reviewed recording without a translation, or the current mode without a target.
         bool japanese = playbackDocument is not null && captionStop is null ? string.IsNullOrWhiteSpace(caption.Japanese) : TranscriptionOnly;
-        row.Margin = new Thickness(0, 0, 0, settings.CaptionLineGap);
+        var look = mainView;
+        row.Margin = new Thickness(0, 0, 0, look.CaptionLineGap);
         row.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0);
         row.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
         var en = (TextBlock)row.Children[0]; var ja = (TextBlock)row.Children[1];
@@ -618,12 +621,12 @@ public sealed partial class MainWindow : Window
         en.SelectionFlyout = ja.SelectionFlyout = null;
         en.Opacity = ja.Opacity = settings.TextOpacity;
         en.FontSize = ja.FontSize = settings.FontSize;
-        en.LineHeight = ja.LineHeight = settings.FontSize * settings.CaptionLineHeight;
+        en.LineHeight = ja.LineHeight = settings.FontSize * look.CaptionLineHeight;
         en.LineStackingStrategy = ja.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         en.Visibility = japanese || settings.English ? Visibility.Visible : Visibility.Collapsed;
         ja.Visibility = !japanese && settings.Japanese ? Visibility.Visible : Visibility.Collapsed;
-        en.Foreground = !settings.CaptionCorrectedSameColor && caption.SourceCorrected ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.RoleBrush(settings, japanese, false);
-        ja.Foreground = !settings.CaptionCorrectedSameColor && (caption.SourceCorrected || caption.TranslationRefined) ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.OrdinaryBrush(settings, true);
+        en.Foreground = !settings.CaptionCorrectedSameColor && caption.SourceCorrected ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.RoleBrush(look, japanese, false);
+        ja.Foreground = !settings.CaptionCorrectedSameColor && (caption.SourceCorrected || caption.TranslationRefined) ? CaptionWindow.CorrectedBrush(settings) : CaptionWindow.OrdinaryBrush(look, true);
         if (settings.SpeakerDiarization && caption.SpeakerId > 0) en.Foreground = ja.Foreground = CaptionWindow.SpeakerBrush(settings, caption.SpeakerId);
         ToolTipService.SetToolTip(en, caption.SpeakerId > 0 ? $"話者{caption.SpeakerId}（音声から推定）" : caption.SourceCorrected ? "高精度モデルまたはAIで更新した文字起こし" : null);
         ToolTipService.SetToolTip(ja, caption.TranslationRefined ? "ローカルLLMによる翻訳" : null);
@@ -931,6 +934,9 @@ public sealed partial class MainWindow : Window
         if (settings.CaptionLayout is not ("english-top" or "japanese-top" or "side-by-side")) settings.CaptionLayout = "english-top";
         if (settings.CaptionPalette is not ("white-cyan" or "yellow-white" or "white-yellow" or "white" or "cyan-white" or "custom")) settings.CaptionPalette = "white-cyan";
         if (settings.CaptionBackground is not ("dark" or "black" or "light" or "live")) settings.CaptionBackground = "live";
+        if (settings.MainBackground is not ("dark" or "black" or "light" or "live")) settings.MainBackground = "live";
+        if (Array.IndexOf(TranslationPalettes, settings.MainPalette) < 0) settings.MainPalette = "white-cyan";
+        settings.MainLineGap = Math.Clamp(settings.MainLineGap, 0, 30); settings.MainLineHeight = Math.Clamp(settings.MainLineHeight, 1.05, 1.8);
         if (settings.CaptionAlignment is not ("left" or "center" or "right")) settings.CaptionAlignment = "center";
         settings.CaptionEnglishSize = Math.Clamp(settings.CaptionEnglishSize, 14, 64); settings.CaptionJapaneseSize = Math.Clamp(settings.CaptionJapaneseSize, 14, 64);
         settings.CaptionHideSeconds = Math.Clamp(settings.CaptionHideSeconds, 1, 20); settings.CaptionOpacity = Math.Clamp(settings.CaptionOpacity, 0, 1); settings.CaptionTextOpacity = Math.Clamp(settings.CaptionTextOpacity, 0, 1); settings.CaptionRows = Math.Clamp(settings.CaptionRows, 1, 10); settings.CaptionMaxLines = Math.Clamp(settings.CaptionMaxLines, 1, 20); settings.WindowsCaptionRestartSeconds = Math.Clamp(settings.WindowsCaptionRestartSeconds, 10, 1800);
@@ -940,10 +946,12 @@ public sealed partial class MainWindow : Window
         if (Array.IndexOf(QualityKeys, settings.VideoQuality) < 0) settings.VideoQuality = "best";
         if (Array.IndexOf(CountdownChoices, settings.VideoCountdownSeconds) < 0) settings.VideoCountdownSeconds = 3;
         if (settings.MenuBarTheme is not ("white" or "matching")) settings.MenuBarTheme = "white";
-        Root.Background = CaptionWindow.BackgroundBrush(settings, settings.BackgroundOpacity);
-        CheckBoxGlyph.SetTheme(Root, settings.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark);
-        if (settingsWindow?.Content is Grid settingsRoot) { settingsRoot.Background = CaptionWindow.SurfaceBrush(settings); CheckBoxGlyph.SetTheme(settingsRoot, Root.RequestedTheme); }
-        SummaryPane.Background = CaptionWindow.SurfaceBrush(settings);
+        mainView = settings.MainView();
+        Root.Background = CaptionWindow.BackgroundBrush(mainView, settings.BackgroundOpacity);
+        CheckBoxGlyph.SetTheme(Root, mainView.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark);
+        if (settingsWindow?.Content is Grid settingsRoot) { settingsRoot.Background = CaptionWindow.SurfaceBrush(mainView); CheckBoxGlyph.SetTheme(settingsRoot, Root.RequestedTheme); }
+        SummaryPane.Background = CaptionWindow.SurfaceBrush(mainView);
+        if (summaryWindow?.Content is Grid summaryHost) summaryHost.Background = CaptionWindow.SurfaceBrush(mainView);
         if (string.IsNullOrWhiteSpace(settings.BookmarkLabels)) settings.BookmarkLabels = new Settings().BookmarkLabels;
         RefreshBookmarkLabels();
         bool matchingMenu = settings.MenuBarTheme == "matching";
@@ -1008,6 +1016,14 @@ public sealed partial class MainWindow : Window
             }
             Slider("フォントサイズ", 14, 40, settings.FontSize, v => settings.FontSize = v); Slider("本体：背景の透過率 (%)", 0, 100, (1 - settings.BackgroundOpacity) * 100, v => settings.BackgroundOpacity = 1 - v / 100); Slider("本体：文字の不透明度 (%)", 0, 100, settings.TextOpacity * 100, v => settings.TextOpacity = v / 100); content.Children.Add(new TextBlock { Text = "本体の履歴：全行を表示（行数制限なし）", TextWrapping = TextWrapping.Wrap });
             Toggle("文章をダブルクリックで直接編集し、選択して Delete キーで削除する", settings.DirectTextEditing, v => settings.DirectTextEditing = v);
+            content.Children.Add(new TextBlock { Text = "本体の文字と背景（字幕ウィンドウとは別に設定）", Margin = new Thickness(0, 8, 0, 0) });
+            Choice("本体：翻訳時の文字色", TranslationPaletteLabels, Math.Max(0, Array.IndexOf(TranslationPalettes, settings.MainPalette)), i => settings.MainPalette = TranslationPalettes[i]);
+            Choice("本体：文字起こしのみのときの文字色", ["白（既定）", "水色", "黄色"], settings.MainTranscriptColor switch { "cyan" => 1, "yellow" => 2, _ => 0 }, i => settings.MainTranscriptColor = i switch { 1 => "cyan", 2 => "yellow", _ => "white" });
+            Choice("本体の背景", ["従来の暗い背景", "黒", "白（文字は濃色）", "指定した背景色"], settings.MainBackground == "live" ? 3 : settings.MainBackground == "black" ? 1 : settings.MainBackground == "light" ? 2 : 0, i => settings.MainBackground = i == 1 ? "black" : i == 2 ? "light" : i == 3 ? "live" : "dark");
+            ColorSetting("本体の背景色（「指定した背景色」のとき）", settings.MainSurfaceColor, v => { settings.MainSurfaceColor = v; settings.MainBackground = "live"; });
+            ColorSetting("本体：「指定した文字色」の色", settings.MainTextColor, v => { settings.MainTextColor = v; settings.MainPalette = "custom"; });
+            Slider("本体：行と行の間隔", 0, 30, settings.MainLineGap, v => settings.MainLineGap = v);
+            Slider("本体：折り返し行の高さ (%)", 105, 180, settings.MainLineHeight * 100, v => settings.MainLineHeight = v / 100);
             AddKeepOnTopSettings(content, Choice);
             AddToolbarSettings(content);
             content.Children.Add(new TextBlock { Text = "ダブルクリックした発話がその場で入力欄になります（Enterで確定、Escで取り消し）。文字を選んで Delete／BackSpace キーを押すと、その文字だけを削除します。どちらも Ctrl+Z で元に戻せます。OFFのときは右クリック→「この発話を編集…」か F2 で編集します。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
@@ -1044,7 +1060,7 @@ public sealed partial class MainWindow : Window
                 content.Children.Add(input); content.Children.Add(new Expander { Header = label + "を選択", Content = picker, HorizontalAlignment = HorizontalAlignment.Stretch });
             }
             ColorSetting("通常の文字色", settings.CaptionTextColor, v => { settings.CaptionTextColor = v; settings.CaptionPalette = "custom"; if (textPaletteSelector is not null) textPaletteSelector.SelectedIndex = Array.IndexOf(TranslationPalettes, "custom"); });
-            ColorSetting("アプリと字幕の背景色", settings.CaptionSurfaceColor, v => { settings.CaptionSurfaceColor = v; settings.CaptionBackground = "live"; if (surfaceSelector is not null) surfaceSelector.SelectedIndex = 3; });
+            ColorSetting("字幕の背景色", settings.CaptionSurfaceColor, v => { settings.CaptionSurfaceColor = v; settings.CaptionBackground = "live"; if (surfaceSelector is not null) surfaceSelector.SelectedIndex = 3; });
             ColorSetting("字幕とウィンドウの枠色", settings.CaptionBorderColor, v => settings.CaptionBorderColor = v);
             var correctedColor = new TextBox { Header = "補正済みの文字色（#RRGGBB）", Text = settings.CaptionCorrectedColor, PlaceholderText = "#70E1C4" };
             var colorPicker = new ColorPicker { Color = CaptionWindow.CorrectedBrush(settings).Color, IsAlphaEnabled = false, IsMoreButtonVisible = false };
@@ -1223,7 +1239,7 @@ public sealed partial class MainWindow : Window
             Section("診断", "問題が起きたときの処理時間や実行デバイスを表示します。");
             Toggle("診断情報を表示", settings.Diagnostics, v => settings.Diagnostics = v);
             content.Children.Add(new TextBlock { Text = "設定は自動で記憶します。保存・録音は操作したときだけ行います。", TextWrapping = TextWrapping.Wrap });
-            settingsNavigation = new SettingsNavigation(sections, Root.RequestedTheme, CaptionWindow.SurfaceBrush(settings));
+            settingsNavigation = new SettingsNavigation(sections, Root.RequestedTheme, CaptionWindow.SurfaceBrush(mainView));
             window.Content = settingsNavigation.Root;
             window.AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Locaptio.ico"));
             var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
@@ -1260,7 +1276,7 @@ public sealed partial class MainWindow : Window
         Explain("NVIDIA GPU（CUDA）", "対応するNVIDIA GPU・ドライバーとCUDA 12／cuDNN 9の推論ライブラリが必要です。本アプリの準備用スクリプトはscripts/setup-cuda.ps1です。CUDAを明示選択した場合、利用できなければ理由を表示します。CPUへ自動で切り替えたい場合はGPU自動を選んでください。");
         content.Children.Add(new HyperlinkButton { Content = "Whisperの公式モデル説明", NavigateUri = new Uri("https://github.com/openai/whisper") });
         content.Children.Add(new HyperlinkButton { Content = "faster-whisperの公式GPU要件", NavigateUri = new Uri("https://github.com/SYSTRAN/faster-whisper") });
-        window.Content = new ScrollViewer { Content = content, RequestedTheme = Root.RequestedTheme, Background = CaptionWindow.SurfaceBrush(settings), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        window.Content = new ScrollViewer { Content = content, RequestedTheme = Root.RequestedTheme, Background = CaptionWindow.SurfaceBrush(mainView), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         double scale = GetDpiForWindow(hwnd) / 96.0;
         int width = Math.Min((int)(760 * scale), work.Width - 32), height = Math.Min((int)(850 * scale), work.Height - 32);
