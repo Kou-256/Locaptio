@@ -352,6 +352,30 @@ public sealed partial class MainWindow
                 ClearCaptions();
             }
 
+            // 12. A recording keeps its live summary: saved into the recording's files and back when it is opened again.
+            {
+                string recordingFolder = Path.Combine(work, "live-summary-recording"); Directory.CreateDirectory(recordingFolder);
+                string audio = Path.Combine(recordingFolder, "会議.wav");
+                using (var writer = new NAudio.Wave.WaveFileWriter(audio, new NAudio.Wave.WaveFormat(16000, 16, 1))) writer.Write(new byte[32000 * 20], 0, 32000 * 20);
+                string[] lines = ["それでは定例会議を始めます。", "リリースは来月の十五日にしましょう。", "佐藤さんは金曜日までにテスト結果を共有してください。"];
+                var phrases = lines.Select((text, i) => new RecordingPhrase(i + 1, i + 1, 1 + i * 5, text, null, 1, "ja", 4 + i * 5)).ToArray();
+                await RecordingTranscript.SaveAsync(audio, new(1, "会議.wav", DateTimeOffset.Now, false, phrases));
+                await LoadRecordingAsync(audio);
+                var ids = history.Select(h => h.Id).ToArray();
+                liveBlocks.Clear(); liveArchived.Clear(); liveDigest = null;
+                liveBlocks.Add(new(ids[0], ids[2], [new SummaryItem("決定事項", "リリースは来月15日", [ids[1]]), new SummaryItem("TODO", "佐藤さん：テスト結果を金曜までに共有", [ids[2]])]));
+                PersistLiveSummary(); await reviewWrite;
+                var reopenedFile = await RecordingTranscript.LoadAsync(audio);
+                Check(reopenedFile?.LiveSummary is { Blocks.Length: 1 } fileLive && fileLive.Blocks[0].Items.Length == 2 && fileLive.Blocks[0].Items[0].Evidence.SequenceEqual([6.0]), "the live summary is saved in the recording's file (with the times it is based on)");
+                ClearCaptions(); ShowSummaryPane(false);
+                Check(liveBlocks.Count == 0, "closing the recording clears the pane");
+                await LoadRecordingAsync(audio);
+                Check(liveBlocks.Count == 1 && liveBlocks[0].Items[0].RowIds.Length == 1 && FindCaption(liveBlocks[0].Items[0].RowIds[0])?.English == lines[1] && SummaryShown,
+                    "opening the recording again shows its live summary, linked to the right sentences");
+                await CaptureComposedAsync(Path.Combine(shots, "recording-live-summary.png"));
+                ClearCaptions(); ShowSummaryPane(false); ClosePlayback();
+            }
+
             // 8. The pane follows live summary: shown when listening starts with it already on, closed by clearing
             //    or turning it off when nothing else is shown; checking an AI feature starts the model download at once.
             bool savedLive = settings.LiveSummary, savedCorrection = settings.CorrectTranscriptWithAi;

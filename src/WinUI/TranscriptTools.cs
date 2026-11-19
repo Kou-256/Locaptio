@@ -576,7 +576,7 @@ public sealed partial class MainWindow
         foreach (var bookmark in document.Bookmarks ?? [])
             bookmarks.Add(bookmark with { PhraseId = (RecordingTranscript.At(document, bookmark.Seconds + .0005) ?? document.Phrases.FirstOrDefault())?.Id ?? 0 });
         playbackDocument = document with { Bookmarks = bookmarks.Count == 0 ? null : bookmarks.ToArray() };
-        RefreshBookmarks(); RestoreSummary(document);
+        RefreshBookmarks(); RestoreLiveSummary(document); RestoreSummary(document);
         foreach (var row in RealizedCaptionRows) if (row.DataContext is CaptionHistoryEntry entry) StyleRowMarks(row, entry.Caption);
     }
 

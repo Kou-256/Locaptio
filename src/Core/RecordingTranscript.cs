@@ -13,7 +13,12 @@ public sealed record RecordingBookmark(double Seconds, string Label, long Phrase
 /// <summary>Evidence is stored as phrase onsets so it survives the row IDs of a later session.</summary>
 public sealed record RecordingSummaryItem(string Section, string Text, double[] Evidence);
 // Optional members are appended so files written by older versions still load.
-public sealed record RecordingDocument(int Version, string AudioFile, DateTimeOffset RecordedAt, bool ApproximateTiming, RecordingPhrase[] Phrases, RecordingBookmark[]? Bookmarks = null, RecordingSummaryItem[]? Summary = null, string? Model = null);
+/// <summary>One live-summary block: the time span it covers and its lines (evidence as times in the recording).</summary>
+public sealed record RecordingLiveBlock(double FirstSeconds, double LastSeconds, RecordingSummaryItem[] Items);
+/// <summary>The live summary made while recording: recent blocks, folded older blocks and the "so far" digest.</summary>
+public sealed record RecordingLiveSummary(RecordingLiveBlock[] Blocks, RecordingLiveBlock[] Archived, RecordingLiveBlock? Digest);
+public sealed record RecordingDocument(int Version, string AudioFile, DateTimeOffset RecordedAt, bool ApproximateTiming, RecordingPhrase[] Phrases, RecordingBookmark[]? Bookmarks = null, RecordingSummaryItem[]? Summary = null, string? Model = null,
+    RecordingLiveSummary? LiveSummary = null);
 
 /// <summary>Only text and media offsets are persisted. No audio is held in memory.</summary>
 public sealed class RecordingTranscript(string audioPath, long started, bool approximateTiming)
