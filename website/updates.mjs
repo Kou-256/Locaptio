@@ -8,6 +8,11 @@ export const updates = {
     latest: '最新',
     all: 'すべての変更履歴を見る（GitHub）',
     items: [
+      ['1.0.61', '編集が解除されない・見た目を個別に・復元を強化', [
+        '文字起こし中に始めた編集は、新しい文章が来ても解除されません。AIが同じ言葉を繰り返す問題も防ぎました。',
+        '**本体と字幕の見た目を別々に**設定できます。文字起こし中に見た目を変えると終了する問題を修正し、クラッシュレポートを追加しました。',
+        '復元や録音を開いたときに、**編集箇所・AIの補正/翻訳箇所・ライブ要約**も戻ります。録音を停止するとライブ要約も保存されます。',
+        '字幕の「1文ごとに表示」、話者の色分けの途中切り替え、要約ウィンドウの「常に手前に表示」を追加しました。']],
       ['1.0.60', '字幕の文字色の既定を変更', [
         '翻訳時の既定を「原文: 白／翻訳: 水色」にし、「原文: 黄色／翻訳: 白」を追加しました。']],
       ['1.0.59', '字幕の文字色を「原文」「翻訳」で設定', [
@@ -66,6 +71,11 @@ export const updates = {
     latest: 'Latest',
     all: 'See the full changelog (GitHub)',
     items: [
+      ['1.0.61', 'Edits stay open, separate looks, fuller restore', [
+        'An edit started during transcription stays open as new text arrives. AI output no longer loops on the same words.',
+        '**The main window and the captions have separate appearance settings.** Changing the appearance during transcription no longer closes the app, and a crash report is saved if it ever does.',
+        'Restoring a session or opening a recording brings back **manual edits, AI-corrected/translated marks and the live summary**; stopping a recording saves its live summary.',
+        'Also new: one sentence per caption bubble, speaker colors switchable mid-session, and keep-on-top for the summary window.']],
       ['1.0.60', 'New default caption colors', [
         'While translating, the default is now original white / translation cyan; original yellow / translation white was added.']],
       ['1.0.59', 'Caption colors by role', [
