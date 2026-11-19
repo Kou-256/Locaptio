@@ -4,6 +4,18 @@ using Locaptio.Core;
 /// <summary>--text-tools: the text diff, the AI-correction guard and term dictionary files.</summary>
 internal static class TextToolsChecks
 {
+    private static void Sentences()
+    {
+        var caption = new CaptionUpdate(1, 1, "We start at 3.5 p.m. today. Please join early! Any questions?", "今日は午後3時半に始めます。早めに参加してください！質問はありますか？", true, 0, 0, 0, "en");
+        var pieces = CaptionSentences.Expand(caption).ToArray();
+        Check(pieces.Length == 3 && pieces[0].English == "We start at 3.5 p.m. today." && pieces[2].Japanese == "質問はありますか？", "sentences and paired translations: " + string.Join(" | ", pieces.Select(p => p.English + "=" + p.Japanese)));
+        var japanese = CaptionSentences.Expand(caption with { English = "それでは始めます。資料は共有しました", Japanese = null }).ToArray();
+        Check(japanese.Length == 2 && japanese[1].English == "資料は共有しました", "Japanese sentences split at 。");
+        var uneven = CaptionSentences.Expand(caption with { Japanese = "全部まとめた訳です。" }).ToArray();
+        Check(uneven.Length == 3 && uneven[0].Japanese is null && uneven[2].Japanese == "全部まとめた訳です。", "an unpaired translation stays with the last sentence");
+        Check(CaptionSentences.Expand(caption with { English = "One sentence only" }).Count() == 1, "a single sentence is unchanged");
+        Console.WriteLine("PASS: one sentence per caption bubble (decimals and abbreviations kept, translations paired when they match)");
+    }
     private static void Repetition()
     {
         string source = "You will see a shiny ch shiny ch out of it";
@@ -22,6 +34,7 @@ internal static class TextToolsChecks
     public static void Run()
     {
         Repetition();
+        Sentences();
         // Diff: what was added, where.
         var ranges = TextDiff.AddedRanges("議時録を保存します", "議事録を保存します。");
         Check(ranges.SequenceEqual([(1, 1), (9, 1)]), "added ranges: " + string.Join(",", ranges));

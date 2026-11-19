@@ -24,6 +24,8 @@ public sealed class Settings
     public int CaptionRows { get; set; } = 2;
     public int CaptionMaxLines { get; set; } = 4;
     public bool CaptionSentenceMode { get; set; }
+    /// <summary>Caption window: show each sentence in its own bubble (split at 。！？ and sentence-ending periods).</summary>
+    public bool CaptionSplitSentences { get; set; } = true;
     public double CaptionLineGap { get; set; } = 2;
     public double CaptionLineHeight { get; set; } = 1.15;
     public int AppearanceVersion { get; set; }

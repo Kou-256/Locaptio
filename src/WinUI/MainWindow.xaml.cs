@@ -68,6 +68,7 @@ public sealed partial class MainWindow : Window
     private FeatureSwitch? settingsCorrectionToggle;
     /// <summary>The main window's look (its own palette, background and spacing over the shared settings).</summary>
     private Settings mainView = new();
+    private string? originalMainPaletteForStyle;
     private CaptionWindow? captionWindow;
     private Window? modelHelpWindow;
     [DllImport("user32.dll")] private static extern int GetWindowLongW(nint window, int index);
@@ -961,7 +962,9 @@ public sealed partial class MainWindow : Window
         if (!settings.English && !settings.Japanese) settings.Japanese = true;
         WindowAppearance.SetOpacity(hwnd, 1); ApplyMainTextOpacity(Root); WindowAppearance.SetBorder(hwnd, settings.CaptionBorderColor);
         MetricsText.Visibility = settings.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
-        while (captions.Count > settings.CaptionRows) captions.Remove(captions.Keys.First()); RenderCaptions(); settings.Save();
+        while (captions.Count > settings.CaptionRows) captions.Remove(captions.Keys.First()); RenderCaptions();
+        // The caption window redraws only when its text changes; a new look must show at once.
+        captionWindow?.ApplyAppearance(); settings.Save();
     }
     private void SettingsClick(object sender, RoutedEventArgs e)
     {
@@ -1078,7 +1081,8 @@ public sealed partial class MainWindow : Window
             Slider("字幕の幅・折り返し位置", 240, 1800, settings.CaptionWrapWidth, v => settings.CaptionWrapWidth = v);
             Slider("字幕：文字の不透明度 (%)", 0, 100, settings.CaptionTextOpacity * 100, v => settings.CaptionTextOpacity = v / 100);
             Slider("字幕の最大表示行数", 1, 20, settings.CaptionMaxLines, v => settings.CaptionMaxLines = (int)v);
-            Toggle("文章の塊で字幕を表示（最新の発話だけを表示）", settings.CaptionSentenceMode, v => settings.CaptionSentenceMode = v);
+            Toggle("1文ずつ分けて表示（文の区切りごとに吹き出しを分ける）", settings.CaptionSplitSentences, v => settings.CaptionSplitSentences = v);
+            Toggle("最新の1文（発話）だけを表示", settings.CaptionSentenceMode, v => settings.CaptionSentenceMode = v);
             content.Children.Add(new TextBlock { Text = "行数を超える古い発話は非表示にします。1つの発話が長い場合は最新の部分を表示し、本体には全文を残します。", TextWrapping = TextWrapping.Wrap });
             Slider("字幕に表示する発話数", 1, 10, settings.CaptionRows, v => settings.CaptionRows = (int)v);
             Slider("字幕を消すまでの秒数（認識更新が止まった後）", 1, 20, settings.CaptionHideSeconds, v => settings.CaptionHideSeconds = v);
@@ -1371,7 +1375,8 @@ public sealed partial class MainWindow : Window
         try
         {
             settings.CaptionMode = "translate"; settings.CaptionLayout = "english-top"; settings.English = settings.Japanese = true;
-            settings.CaptionLineGap = 2; settings.CaptionPalette = "white"; ApplySettings();
+            originalMainPaletteForStyle = settings.MainPalette; settings.MainPalette = "white";
+            settings.CaptionLineGap = 2; settings.CaptionPalette = "white"; settings.CaptionSplitSentences = false; ApplySettings();
             CaptionClick(CaptionButton, new RoutedEventArgs());
             var sample = new CaptionUpdate(1, 1, "Captions appear around the text.", null, false, Stopwatch.GetTimestamp(), 0, 0);
             captionWindow!.Update([sample]);
@@ -1394,23 +1399,25 @@ public sealed partial class MainWindow : Window
             var mainTexts = RealizedCaptionRows.SelectMany(g => g.Children.OfType<TextBlock>()).Where(t => t.Visibility == Visibility.Visible).ToArray();
             bool mirrored = captionWindow.RenderedPositions().All(p => mainTexts.Any(t => t.Text == p.Text)) && mainTexts.Length == 2 && CaptionList.Visibility == Visibility.Visible && Header.Visibility == Visibility.Visible
                 && mainTexts.All(t => ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color == CaptionWindow.OrdinaryBrush(settings, false).Color);
-            bool liveDefaults = CaptionWindow.SurfaceBrush(new Settings()).Color == Windows.UI.Color.FromArgb(255, 54, 54, 54) && CaptionWindow.OrdinaryBrush(new Settings(), true).Color == Windows.UI.Color.FromArgb(255, 255, 255, 255);
+            bool liveDefaults = CaptionWindow.SurfaceBrush(new Settings()).Color == Windows.UI.Color.FromArgb(255, 54, 54, 54) && CaptionWindow.OrdinaryBrush(new Settings(), false).Color == Windows.UI.Color.FromArgb(255, 255, 255, 255) && CaptionWindow.OrdinaryBrush(new Settings(), true).Color == Windows.UI.Color.FromArgb(255, 0x7D, 0xE3, 0xFF);
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(200);
             var navigation = settingsNavigation!;
             navigation.Select("字幕の見た目"); await Task.Delay(300);
             var settingItems = navigation.Categories.SelectMany(title => navigation.Page(title).Children).ToArray();
-            var normalInput = settingItems.OfType<TextBox>().Single(t => (string)t.Header == "通常の文字色（#RRGGBB）");
-            var surfaceInput = settingItems.OfType<TextBox>().Single(t => (string)t.Header == "アプリと字幕の背景色（#RRGGBB）");
+            var normalInput = settingItems.OfType<TextBox>().First(t => (string)t.Header == "通常の文字色（#RRGGBB）");
+            var surfaceInput = settingItems.OfType<TextBox>().Single(t => (string)t.Header == "字幕の背景色（#RRGGBB）");
+            var mainBackgroundBefore = ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color;
             normalInput.StartBringIntoView(); await Task.Delay(150); normalInput.ApplyTemplate(); surfaceInput.ApplyTemplate();
             normalInput.Text = "#AADDEE"; await Task.Delay(100);
             surfaceInput.StartBringIntoView(); await Task.Delay(200); surfaceInput.ApplyTemplate();
             surfaceInput.Text = "#444444"; await Task.Delay(150);
-            string colorDebug = $"palette={settings.CaptionPalette}, text={settings.CaptionTextColor}, surface={settings.CaptionSurfaceColor}, bg={((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color}, ordinary={captionWindow.UsesOrdinaryColors()}";
+            string colorDebug = $"palette={settings.CaptionPalette}, text={settings.CaptionTextColor}, surface={settings.CaptionSurfaceColor}, bg={((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color}, ordinary={captionWindow.UsesOrdinaryColors()} [{captionWindow.ColorDiagnostic()}]";
             bool customColors = settings.CaptionPalette == "custom" && settings.CaptionTextColor == "#AADDEE" && settings.CaptionSurfaceColor == "#444444" && captionWindow.UsesOrdinaryColors()
-                && ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color == Windows.UI.Color.FromArgb(255, 68, 68, 68);
+                // The caption window's background no longer changes the main window (it has its own in 本体の表示).
+                && ((Microsoft.UI.Xaml.Media.SolidColorBrush)Root.Background).Color == mainBackgroundBefore;
             var paletteSelector = settingItems.OfType<DownwardSelector>().Single(c => Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(c) == "翻訳時の文字色");
             colorDebug += $"; selector={paletteSelector.SelectedIndex}"; customColors &= paletteSelector.SelectedIndex == Array.IndexOf(TranslationPalettes, "custom");
-            paletteSelector.SelectedIndex = Array.IndexOf(TranslationPalettes, "white"); await Task.Delay(100); customColors &= settings.CaptionPalette == "white" && captionWindow.UsesOrdinaryColors(); colorDebug += $"; preset={settings.CaptionPalette}, ordinary={captionWindow.UsesOrdinaryColors()}";
+            paletteSelector.SelectedIndex = Array.IndexOf(TranslationPalettes, "white"); await Task.Delay(100); customColors &= settings.CaptionPalette == "white" && captionWindow.UsesOrdinaryColors(); colorDebug += $"; preset={settings.CaptionPalette}, ordinary={captionWindow.UsesOrdinaryColors()} [{captionWindow.ColorDiagnostic()}]";
             settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; ApplySettings(); settingsWindow?.Close();
             bool noMarker = captionWindow.RenderedPositions().All(t => !t.Text.Contains("AI補正"));
             await captionWindow.CaptureAsync(Path.Combine(root, "artifacts", "caption-text-bubbles.png"));
@@ -1437,7 +1444,7 @@ public sealed partial class MainWindow : Window
             }
         }
         catch (Exception ex) { File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), ex.ToString()); }
-        finally { settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; settings.CaptionCorrectedSameColor = sameColor; settings.CaptionMode = mode; settings.CaptionCorrectedColor = color; settings.CaptionLineGap = gap; settings.CaptionLayout = layout; settings.English = english; settings.Japanese = japanese; settings.Save(); Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync(); }
+        finally { settings.MainPalette = originalMainPaletteForStyle ?? settings.MainPalette; settings.CaptionSplitSentences = new Settings().CaptionSplitSentences; settings.CaptionTextColor = originalText; settings.CaptionSurfaceColor = originalSurface; settings.CaptionPalette = originalPalette; settings.CaptionBackground = originalBackground; settings.CaptionCorrectedSameColor = sameColor; settings.CaptionMode = mode; settings.CaptionCorrectedColor = color; settings.CaptionLineGap = gap; settings.CaptionLayout = layout; settings.English = english; settings.Japanese = japanese; settings.Save(); Environment.ExitCode = passed ? 0 : 1; await ShutdownAsync(); }
     }
     private async Task VerifyWindowsRecoveryAsync()
     {
