@@ -36,6 +36,21 @@ public sealed partial class MainWindow
             for (int i = 0; i < 6; i++) { settings.CaptionBackground = i % 2 == 0 ? "light" : "live"; ApplySettings(); await Task.Delay(150); }
             Check(!closing, "light/dark theme changes with switches and checkboxes on screen");
             settingsWindow?.Close(); await Task.Delay(300);
+
+            // Crash report: written with the trail of recent actions, shown once on the next launch (the user's own report is kept).
+            string existing = File.Exists(CrashReport.FilePath) ? File.ReadAllText(CrashReport.FilePath) : "";
+            try
+            {
+                Status("見た目を変更しました（テスト）");
+                await Task.Delay(100);
+                CrashReport.Write(new System.Runtime.InteropServices.COMException("テストの例外", unchecked((int)0x8000FFFF)), "UI");
+                string written = File.ReadAllText(CrashReport.FilePath);
+                Check(written.Contains("0x8000FFFF") && written.Contains("見た目を変更しました（テスト）") && written.Contains("Version:"), "crash report has the error, version and recent actions");
+                Check(CrashReport.Unseen() is not null, "a new report is shown on the next launch");
+                CrashReport.MarkSeen();
+                Check(CrashReport.Unseen() is null, "and only once");
+            }
+            finally { if (existing.Length > 0) File.WriteAllText(CrashReport.FilePath, existing); else File.Delete(CrashReport.FilePath); CrashReport.MarkSeen(); }
         }
         catch (Exception ex) { failures.Add(ex.Message); log.Add(ex.ToString()); }
         finally

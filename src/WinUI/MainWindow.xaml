@@ -49,6 +49,9 @@
     <MenuFlyoutItem Text="モデルの説明" Click="ModelHelpClick"/>
     <MenuFlyoutItem Text="更新を確認" Click="CheckUpdatesClick"/>
     <MenuFlyoutItem Text="このアプリについて" Click="AboutClick"/>
+    <MenuFlyoutSeparator/>
+    <MenuFlyoutItem Text="問題を報告（GitHub）…" Click="ReportIssueClick"/>
+    <MenuFlyoutItem Text="クラッシュレポートを表示…" Click="CrashReportClick"/>
    </MenuBarItem>
   </MenuBar>
   <StackPanel Grid.Row="1" Spacing="6">
@@ -183,6 +186,7 @@
   </Border>
   <StackPanel Grid.Row="5" Spacing="3">
    <TextBlock x:Name="WindowsOperationText" Text="ライブキャプション操作中" Visibility="Collapsed" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
+   <InfoBar x:Name="CrashNotice" Severity="Warning" IsOpen="False" IsClosable="True" Title="前回、Locaptio が予期せず終了しました" Message="原因の調査に使う情報（クラッシュレポート）を保存しました。内容はPC内にだけあり、自動で送信はしません。"><InfoBar.ActionButton><Button Content="レポートを表示…" Click="CrashReportClick"/></InfoBar.ActionButton></InfoBar>
    <InfoBar x:Name="RecoveryNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="前回の未保存の文字起こしがあります"><InfoBar.ActionButton><Button Content="内容を確認して復元…" Click="RecoverSessionClick"/></InfoBar.ActionButton></InfoBar>
    <InfoBar x:Name="UpdateNotice" Severity="Informational" IsOpen="False" IsClosable="True" Title="アプリの更新"/>
    <InfoBar x:Name="WindowsCaptionWarning" Severity="Warning" IsOpen="False" IsClosable="False" Title="Windowsライブキャプションとの接続が切れました"/>

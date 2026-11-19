@@ -286,6 +286,25 @@ public sealed partial class MainWindow
                 liveSummaryClearConfirmForVerification = null; captionStop = null; settings.Save();
             }
 
+            // 9. Editing stays open while new speech arrives (the editor follows its row; Enter saves what was typed).
+            ClearCaptions();
+            using (var listening = new CancellationTokenSource())
+            {
+                captionStop = listening;
+                for (int i = 0; i < 12; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, $"会議のメモ その{i + 1}。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                await Task.Delay(400); CaptionList.UpdateLayout();
+                var target = RealizedCaptionRows.SelectMany(r => r.Children.OfType<TextBlock>()).First(t => t.DataContext is CaptionHistoryEntry && Grid.GetColumn(t) == 0 && t.Visibility == Visibility.Visible);
+                long editedId = ((CaptionHistoryEntry)target.DataContext).Id;
+                BeginInlineEdit(target, editedId, 0, 0); await Task.Delay(200);
+                inlineEditBox!.Text = "編集中の文章";
+                for (int i = 0; i < 25; i++) { UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, $"新しい発話 {i}。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja")); await Task.Delay(40); }
+                await Task.Delay(400);
+                Check(inlineEditor is not null && inlineEditBox?.Text == "編集中の文章", "the editor stays open with the typed text while 25 new utterances arrive");
+                FinishInlineEdit(true);
+                Check(FindCaption(editedId)?.English == "編集中の文章", "Enter saves the edit afterwards");
+                captionStop = null;
+            }
+
             // 8. The pane follows live summary: shown when listening starts with it already on, closed by clearing
             //    or turning it off when nothing else is shown; checking an AI feature starts the model download at once.
             bool savedLive = settings.LiveSummary, savedCorrection = settings.CorrectTranscriptWithAi;

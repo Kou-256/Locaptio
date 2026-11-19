@@ -4,10 +4,24 @@ using Locaptio.Core;
 /// <summary>--text-tools: the text diff, the AI-correction guard and term dictionary files.</summary>
 internal static class TextToolsChecks
 {
+    private static void Repetition()
+    {
+        string source = "You will see a shiny ch shiny ch out of it";
+        string looping = "キラキラと光るキラキラと光るキラキラしたキラキラしたキラキラしたキラしたキラしたキラキラしたキラしたキラキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラしたキラした光";
+        Check(RepetitionGuard.IsRunaway(source, looping), "the looping translation from the report is detected");
+        string cleaned = RepetitionGuard.Clean(source, looping);
+        Check(!RepetitionGuard.HasLoop(cleaned) && cleaned.Length < looping.Length / 2, "it is cut back: " + cleaned);
+        Check(RepetitionGuard.Collapse("はいはいはいはいはい、わかりました") == "はい、わかりました", "whisper-style repeats are kept once");
+        foreach (string normal in new[] { "キラキラした光が見えます。", "どんどん進めましょう。ますます便利になります。", "はい、はい、わかりました。", "Thank you very much for coming today.", "今日の会議では来期の予算について話し合います。" })
+            Check(!RepetitionGuard.HasLoop(normal) && RepetitionGuard.Clean(normal, normal) == normal, "ordinary text is untouched: " + normal);
+        Check(!RepetitionGuard.IsRunaway("これはチップです", "This is a chip."), "a normal translation is accepted");
+        Console.WriteLine("PASS: repetition guard (looping translation detected and cut to: " + cleaned + "; Whisper repeats collapsed; ordinary text untouched)");
+    }
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
 
     public static void Run()
     {
+        Repetition();
         // Diff: what was added, where.
         var ranges = TextDiff.AddedRanges("議時録を保存します", "議事録を保存します。");
         Check(ranges.SequenceEqual([(1, 1), (9, 1)]), "added ranges: " + string.Join(",", ranges));

@@ -103,7 +103,7 @@ public sealed partial class MainWindow : Window
             await ShutdownAsync();
         };
         ModeSelector.OwnerWindow = this; TargetSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; RefreshModeLabels();
-        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeKeepOnTop(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
+        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeKeepOnTop(); ShowCrashNoticeIfAny(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
         Root.Loaded += async (_, _) =>
         {
             ApplyMainTextOpacity(Root);
@@ -190,7 +190,7 @@ public sealed partial class MainWindow : Window
     }
     private static bool IsRuntime(string path) => !string.IsNullOrEmpty(path) && File.Exists(Path.Combine(path, "inference", "worker.py"));
     private string WindowsBackendDescription(TranslationRoute? route) => "Windowsライブキャプション連携（Windows側の認識結果）" + (route is { } r ? " · " + (r.BuiltIn ? "FuguMT速報翻訳" + (settings.UseLocalLlm ? " → Qwen文脈翻訳: ON" : " · 文脈LLM翻訳: OFF") : $"翻訳: {TranslationPacks.Name(r.Source)}→{TranslationPacks.Name(r.Target)}") : "") + (settings.CorrectTranscriptWithAi ? " · 文章AI補正: ON" : " · 文章AI補正: OFF");
-    private void Status(string text) => DispatcherQueue.TryEnqueue(() => { if (!closing) { if (text.StartsWith("Windowsライブキャプション接続済み")) windowsBridgeConnected = true; StatusText.Text = text; if (text.StartsWith("AI確認済み") || text.StartsWith("AI文脈補正を反映")) correctionChecked = true; } });
+    private void Status(string text) => DispatcherQueue.TryEnqueue(() => { CrashReport.Note(text); if (!closing) { if (text.StartsWith("Windowsライブキャプション接続済み")) windowsBridgeConnected = true; StatusText.Text = text; if (text.StartsWith("AI確認済み") || text.StartsWith("AI文脈補正を反映")) correctionChecked = true; } });
     private void WindowsConnectionChanged(bool connected, string message)
     {
         windowsBridgeConnected = connected;
@@ -633,7 +633,8 @@ public sealed partial class MainWindow : Window
         row.ColumnDefinitions[0].Width = japanese || settings.English ? new(1, GridUnitType.Star) : new(0);
         row.ColumnDefinitions[1].Width = !japanese && settings.Japanese ? new(1, GridUnitType.Star) : new(0);
         var en = (TextBlock)row.Children[0]; var ja = (TextBlock)row.Children[1];
-        en.ContextFlyout = ja.ContextFlyout = transcriptSelectionMenu;
+        if (en.ContextFlyout != transcriptSelectionMenu) en.ContextFlyout = transcriptSelectionMenu;
+        if (ja.ContextFlyout != transcriptSelectionMenu) ja.ContextFlyout = transcriptSelectionMenu;
         en.SelectionFlyout = ja.SelectionFlyout = null;
         en.Opacity = ja.Opacity = settings.TextOpacity;
         en.FontSize = ja.FontSize = settings.FontSize;

@@ -195,7 +195,7 @@ public sealed partial class MainWindow
     private async Task EditRowAsync(long id)
     {
         if (dialogOpen || closing || FindCaption(id) is not { } caption) return;
-        dialogOpen = true;
+        dialogOpen = true; PauseHistoryFollowing();
         try
         {
             bool translated = caption.Japanese is not null || !TranscriptionOnly && !reviewingRecording;

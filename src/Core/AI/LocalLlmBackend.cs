@@ -66,15 +66,22 @@ public sealed class LocalLlmBackend : ITranslationRefinementBackend, ISpeechCorr
         Backend = response.RootElement.GetProperty("backend").GetString()!;
         PreparationChanged?.Invoke(new("llm", 2, 2, "準備完了"));
     }
-    public Task<InferenceResult> RefineAsync(string source, CancellationToken token) => RequestAsync(new { mode = "translate", text = source }, token);
-    public Task<InferenceResult> RefineAsync(string source, string[] context, string glossary, CancellationToken token) => RequestAsync(new { mode = "translate", text = source, context, glossary }, token);
+    public Task<InferenceResult> RefineAsync(string source, CancellationToken token) => Unlooped(source, RequestAsync(new { mode = "translate", text = source }, token));
+    public Task<InferenceResult> RefineAsync(string source, string[] context, string glossary, CancellationToken token) => Unlooped(source, RequestAsync(new { mode = "translate", text = source, context, glossary }, token));
+    /// <summary>A looping or runaway refinement is refused; the fast translation already shown stays.</summary>
+    private static async Task<InferenceResult> Unlooped(string source, Task<InferenceResult> request)
+    {
+        var result = await request;
+        if (RepetitionGuard.IsRunaway(source, result.Text)) throw new InvalidOperationException("AIの訳が同じ言葉の繰り返しになったため、速報訳を保持します。");
+        return result;
+    }
     /// <summary>Corrections refused because they dropped or invented words (the original is kept).</summary>
     public int RefusedCorrections { get; private set; }
     public async Task<InferenceResult> CorrectAsync(string source, string[] context, string language, CancellationToken token)
     {
         var result = await RequestAsync(new { mode = "correct", text = source, context, language, glossary = CorrectionGlossary }, token);
-        // The model sometimes drops a clause it found redundant; what was said must stay.
-        if (CorrectionGuard.Accept(source, result.Text.Trim(), out _)) return result;
+        // The model sometimes drops a clause it found redundant; what was said must stay. A looping result is refused too.
+        if (!RepetitionGuard.IsRunaway(source, result.Text) && CorrectionGuard.Accept(source, result.Text.Trim(), out _)) return result;
         RefusedCorrections++;
         return result with { Text = source };
     }
