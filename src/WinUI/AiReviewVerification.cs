@@ -305,6 +305,21 @@ public sealed partial class MainWindow
                 captionStop = null;
             }
 
+            // 10. Speaker colors switch on and off while transcribing (no restart).
+            bool savedSpeakers = settings.SpeakerDiarization;
+            try
+            {
+                using var listening = new CancellationTokenSource();
+                captionStop = listening; settings.SpeakerDiarization = false;
+                SetSpeakerDiarization(true); await Task.Delay(300);
+                Check(speakerSession is not null && SpeakerMenuItem.IsChecked && SpeakerStatusText.Visibility == Visibility.Visible, "speaker colors turn on while transcribing");
+                SetSpeakerDiarization(false); await Task.Delay(500);
+                Check(speakerSession is null && !settings.SpeakerDiarization && !SpeakerMenuItem.IsChecked, "and off again");
+                captionStop = null;
+            }
+            finally { await StopSpeakerRecognitionAsync(); settings.SpeakerDiarization = savedSpeakers; SpeakerMenuItem.IsChecked = savedSpeakers; captionStop = null; settings.Save(); }
+            Check(new Locaptio.App.Settings().SpeakerDiarization && !new Locaptio.App.Settings().KeepOnTop && !new Locaptio.App.Settings().SummaryWindowOnTop, "defaults: speaker colors on; main and summary windows not kept on top");
+
             // 8. The pane follows live summary: shown when listening starts with it already on, closed by clearing
             //    or turning it off when nothing else is shown; checking an AI feature starts the model download at once.
             bool savedLive = settings.LiveSummary, savedCorrection = settings.CorrectTranscriptWithAi;

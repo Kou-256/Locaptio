@@ -91,7 +91,8 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
         async Task ObserveAsync(Task task, string label) { try { await task; } catch (OperationCanceledException) { } catch (Exception ex) { Status?.Invoke(label + "準備失敗: " + ex.Message); PreparationChanged?.Invoke(new(label, 0, 1, ex.Message, true)); } }
         var fastObserver = ObserveAsync(fastReady, "速報翻訳"); Task qualityObserver = Task.CompletedTask;
         var llmReady = new Lazy<Task>(() => { var task = InitializeLlmAsync(); qualityObserver = ObserveAsync(task, "文脈AI"); return task; });
-        var translator = Route is null ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), useLlm && Route.BuiltIn ? new ReadyLocalLlm(llm, llmReady.Value) : null, glossary);
+        // The context translation follows 「AI補正」 while connected; the model loads only when it is first needed.
+        var translator = Route is null ? null : new StreamingTranslation(new ReadyTranslation(translation, fastReady), Route.BuiltIn ? new LazyRefinement(llm, () => llmReady.Value) : null, glossary) { QualityEnabled = () => useLlm && correctionEnabled };
         if (translator is not null) { translator.Caption += update => Caption?.Invoke(update); translator.Status += s => Status?.Invoke(s); }
         var translating = translator?.RunAsync(linked.Token) ?? Task.CompletedTask;
         correction = new StreamingSpeechCorrection(new LazyCorrection(llm, () => llmReady.Value), speechLanguage);
@@ -195,6 +196,12 @@ internal sealed class WindowsCaptionSession(string directory, bool japanese, str
     private sealed class ReadyTranslation(LocalBackend backend, Task ready) : ITranslationBackend
     {
         public async Task<InferenceResult> TranslateAsync(string text, CancellationToken token, bool final = true) { await ready.WaitAsync(token); return await backend.TranslateAsync(text, token, final); }
+    }
+    /// <summary>Context translation that loads the model only when first used (「AI補正」 may be turned on mid-session).</summary>
+    private sealed class LazyRefinement(LocalLlmBackend backend, Func<Task> ready) : ITranslationRefinementBackend
+    {
+        public async Task<InferenceResult> RefineAsync(string source, CancellationToken token) { await ready().WaitAsync(token); return await backend.RefineAsync(source, token); }
+        public async Task<InferenceResult> RefineAsync(string source, string[] context, string glossary, CancellationToken token) { await ready().WaitAsync(token); return await backend.RefineAsync(source, context, glossary, token); }
     }
     private sealed class LazyCorrection(LocalLlmBackend backend, Func<Task> ready) : ISpeechCorrectionBackend
     {

@@ -80,7 +80,7 @@ public sealed class Settings
     public bool RealtimePreviewOnGpu { get; set; }
     /// <summary>Correct each utterance with the local AI. Off by default (live summary is the lighter way to use the AI).</summary>
     public bool CorrectTranscriptWithAi { get; set; }
-    public bool SpeakerDiarization { get; set; }
+    public bool SpeakerDiarization { get; set; } = true;
     public double SpeakerThreshold { get; set; } = .55;
     public string[] SpeakerColors { get; set; } = ["#7DD3FC", "#FCA5A5", "#86EFAC", "#FDE68A", "#C4B5FD", "#FDBA74", "#F9A8D4", "#5EEAD4"];
     /// <summary>Spoken language and optional translation target, e.g. "ja" or "en>ja" (CaptionModes). Older values still read.</summary>
@@ -96,7 +96,9 @@ public sealed class Settings
     /// <summary>Lines kept per block: "short", "normal" or "detailed".</summary>
     public string LiveSummaryDetail { get; set; } = "normal";
     /// <summary>Keep the main window in front of other windows.</summary>
-    public bool KeepOnTop { get; set; } = true;
+    public bool KeepOnTop { get; set; }
+    /// <summary>Keep the separate AI summary window in front (independent of the main window).</summary>
+    public bool SummaryWindowOnTop { get; set; }
     /// <summary>Width of the summary pane beside the transcript (pixels at 100%).</summary>
     public double SummaryPaneWidth { get; set; } = 340;
     /// <summary>System-wide shortcut that toggles <see cref="KeepOnTop"/>: "ctrl-alt-t", "ctrl-shift-t", "ctrl-alt-f12" or "none".</summary>
@@ -212,9 +214,17 @@ public sealed class Settings
                 if (settings.CaptionPalette == "cyan-white") settings.CaptionPalette = "white-cyan";
                 settings.AppearanceVersion = 9;
             }
+            if (settings.AppearanceVersion < 10)
+            {
+                // From 1.0.61 the main window no longer stays in front by default (Ctrl+Alt+T turns it on), and
+                // speaker colors are on by default.
+                settings.KeepOnTop = false;
+                settings.SpeakerDiarization = true;
+                settings.AppearanceVersion = 10;
+            }
             return settings;
         }
-        catch { return new() { AppearanceVersion = 9 }; }
+        catch { return new() { AppearanceVersion = 10 }; }
     }
     public void Save()
     {

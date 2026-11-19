@@ -59,7 +59,6 @@ public sealed partial class MainWindow
         settings.KeepOnTop = on; settings.Save();
         ((OverlappedPresenter)AppWindow.Presenter).IsAlwaysOnTop = on;
         if (settingsWindow?.AppWindow.Presenter is OverlappedPresenter settingsPresenter) settingsPresenter.IsAlwaysOnTop = on;
-        if (summaryWindow?.AppWindow.Presenter is OverlappedPresenter summaryPresenter) summaryPresenter.IsAlwaysOnTop = on;
         KeepOnTopMenuItem.IsChecked = on;
         if (settingsKeepOnTopToggle is not null && settingsKeepOnTopToggle.IsOn != on) settingsKeepOnTopToggle.IsOn = on;
         // Turning it on from anywhere brings Locaptio forward, so the shortcut also finds a hidden window.
@@ -108,13 +107,22 @@ public sealed partial class MainWindow
         var main = AppWindow.Position; var mainSize = AppWindow.Size;
         int x = main.X + mainSize.Width + width <= area.X + area.Width ? main.X + mainSize.Width : Math.Max(area.X, main.X + mainSize.Width - width);
         window.AppWindow.MoveAndResize(new RectInt32(x, Math.Clamp(main.Y, area.Y, area.Y + area.Height - height), width, height));
-        ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = settings.KeepOnTop;
+        ((OverlappedPresenter)window.AppWindow.Presenter).IsAlwaysOnTop = settings.SummaryWindowOnTop;
+        SummaryOnTopButton.Visibility = Visibility.Visible; SummaryOnTopButton.IsChecked = settings.SummaryWindowOnTop;
         SummaryPopOutIcon.Glyph = ""; ToolTipService.SetToolTip(SummaryPopOutButton, "本体の要約欄に戻す");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SummaryPopOutButton, "要約を本体に戻す");
         // Closing the window puts the content back into the (hidden) pane.
         window.Closed += (_, _) => { if (ReferenceEquals(summaryWindow, window)) Reattach(window, show: false); };
         window.Activate();
         Status("AI要約を別ウィンドウで開きました。大きさを自由に変えられます。");
+    }
+    /// <summary>The separate summary window's own "always on top" (off by default, independent of the main window).</summary>
+    private void SummaryOnTopClick(object sender, RoutedEventArgs e) => SetSummaryWindowOnTop(SummaryOnTopButton.IsChecked == true);
+    private void SetSummaryWindowOnTop(bool on)
+    {
+        settings.SummaryWindowOnTop = on; settings.Save(); SummaryOnTopButton.IsChecked = on;
+        if (summaryWindow?.AppWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = on;
+        Status(on ? "要約ウィンドウを常に手前に表示します。" : "要約ウィンドウの常に手前を解除しました。");
     }
     private void DockSummary()
     {
@@ -125,6 +133,7 @@ public sealed partial class MainWindow
     {
         summaryWindow = null;
         if (window.Content is Grid host && host.Children.FirstOrDefault() is UIElement inner) { host.Children.Remove(inner); SummaryPane.Child = inner; }
+        SummaryOnTopButton.Visibility = Visibility.Collapsed;
         SummaryPopOutIcon.Glyph = ""; ToolTipService.SetToolTip(SummaryPopOutButton, "別ウィンドウで開く（大きさを自由に変えられます）");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SummaryPopOutButton, "要約を別ウィンドウで開く");
         if (!closing) { ShowSummaryPane(show); UpdateCommandStates(); }

@@ -29,6 +29,7 @@
    <MenuBarItem Title="聞き取り(T)">
     <MenuFlyoutItem Text="開始" Click="StartClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <MenuFlyoutItem Text="停止" Click="StopClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71A;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
+    <ToggleMenuFlyoutItem x:Name="SpeakerMenuItem" Text="話者ごとに色分け（文字起こし中も切り替え可）" Click="SpeakerMenuClick"/>
     <MenuFlyoutItem x:Name="ClearMenuItem" Text="表示中の文章をクリア" Click="ClearClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
    </MenuBarItem>
    <MenuBarItem Title="録音・AI(R)">
@@ -172,6 +173,7 @@
     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8FD;" FontSize="14"/><TextBlock Text="AI要約" FontSize="15" FontWeight="SemiBold"/></StackPanel>
      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+     <ToggleButton x:Name="SummaryOnTopButton" Visibility="Collapsed" Click="SummaryOnTopClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約ウィンドウを常に手前に表示" ToolTipService.ToolTip="要約ウィンドウを常に手前に表示（本体とは別に設定）"><FontIcon Glyph="&#xE718;" FontSize="12"/></ToggleButton>
      <Button x:Name="SummaryPopOutButton" Click="SummaryPopOutClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を別ウィンドウで開く" ToolTipService.ToolTip="別ウィンドウで開く（大きさを自由に変えられます）"><FontIcon x:Name="SummaryPopOutIcon" Glyph="&#xE8A7;" FontSize="12"/></Button>
      <Button Click="SummaryCloseClick" Padding="6,2" Background="Transparent" BorderThickness="0" AutomationProperties.Name="要約を閉じる"><FontIcon Glyph="&#xE711;" FontSize="11"/></Button></StackPanel>
     </Grid>

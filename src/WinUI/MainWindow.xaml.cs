@@ -245,30 +245,13 @@ public sealed partial class MainWindow : Window
     private async Task RunCaptionsAsync(CancellationToken token)
     {
         long sessionIdOffset = historyIds.LastOrDefault();
-        using var speakerStop = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task speakers = Task.CompletedTask, speakerMonitor = Task.CompletedTask;
         try
         {
             if (captionsForVerification is not null) { await captionsForVerification(token, sessionIdOffset); return; }
             bool japanese = SpeechJapanese; var route = Route is { } chosen ? TranslationPacks.Route(chosen.Source, chosen.Target, root) : null;
             if (MissingTranslationPack(root) is { } missing) { StatusText.Text = missing; ShowStatusDetails(pin: true); return; }
             SpeakerStatusText.Visibility = settings.SpeakerDiarization ? Visibility.Visible : Visibility.Collapsed;
-            if (settings.SpeakerDiarization)
-            {
-                SpeakerStatusText.Text = "話者識別モデルを準備中…";
-                var recognition = new SpeakerRecognitionSession(new SpeakerEmbeddingBackend(root), settings.SpeakerThreshold);
-                speakerSession = recognition;
-                recognition.Status += text => DispatcherQueue.TryEnqueue(() =>
-                {
-                    if (!closing && !token.IsCancellationRequested && ReferenceEquals(speakerSession, recognition)) SpeakerStatusText.Text = text;
-                });
-                recognition.Changed += () => DispatcherQueue.TryEnqueue(() =>
-                {
-                    if (!closing && !token.IsCancellationRequested && ReferenceEquals(speakerSession, recognition)) RefreshSpeakerAssignments();
-                });
-                speakers = Task.Run(() => recognition.RunAsync(speakerStop.Token));
-                if (UseWindowsCaptionEngine) speakerMonitor = MonitorWindowsSpeakersAsync(recognition, speakers, SelectedAudio(), speakerStop.Token);
-            }
+            if (settings.SpeakerDiarization) StartSpeakerRecognition(token);
             if (UseWindowsCaptionEngine)
             {
                 WindowsMicrophoneNotice.IsOpen = false;
@@ -311,14 +294,13 @@ public sealed partial class MainWindow : Window
             ReadyLocalLlm? readyLlm = llm is not null && llmReady is not null ? new(llm, llmReady) : null;
             Status(settings.CorrectTranscriptWithAi ? "文脈AI補正はONです。準備後、確定した発話を補正します。" : "文脈AI補正はOFFです。設定でONにできます。");
             pipeline = new(speech, translation, route is null, route is { BuiltIn: true } && settings.UseLocalLlm ? readyLlm : null, SelectedAudio(), settings.FastTranscription, settings.CorrectTranscriptWithAi ? readyLlm : null, accurateSpeech is null ? null : new ReadySpeechBackend(accurateSpeech, session.AccuracyReady), translationGlossary: Terms.TranslationGlossary(settings.TranslationGlossary), sourceLanguage: SpeechLanguage); pipeline.Status += Status; pipeline.Caption += update => DispatcherQueue.TryEnqueue(() => { if (!token.IsCancellationRequested) UpdateCaption(update with { Id = update.Id + sessionIdOffset }); });
-            if (speakerSession is { } speaker) pipeline.AudioFrameCaptured += speaker.Submit;
+            if (speakerSession is { } speaker) { pipeline.AudioFrameCaptured += speaker.Submit; speakerPipeline = pipeline; }
             StatusText.Text = (japanese ? "日本語" : "英語") + "音声を待っています…" + (route is { } shown ? $"（{TranslationPacks.Name(shown.Target)}に翻訳）" : ""); await Task.Run(() => pipeline.RunAsync(token), token);
         }
         catch (OperationCanceledException) { StatusText.Text = token.IsCancellationRequested ? "停止しました。" : "モデル初期化がタイムアウトしました。"; }
         catch (Exception ex) { StatusText.Text = ex.Message; ShowStatusDetails(pin: true); if (!closing && captionWindow is not null) { ((OverlappedPresenter)AppWindow.Presenter).Restore(); Activate(); } }
         finally
         {
-            speakerStop.Cancel();
             preparationEpoch++; preparationVisible = false; PreparationPanel.Visibility = Visibility.Collapsed;
             if (token.IsCancellationRequested && prepared is not null && (!prepared.Ready.IsCompleted || !prepared.AccuracyReady.IsCompleted || prepared.LlmReady is { IsCompleted: false }))
             {
@@ -326,9 +308,7 @@ public sealed partial class MainWindow : Window
                 PreparationPanel.Visibility = Visibility.Collapsed;
                 SetTextIfChanged(PreparationText, "モデル準備を中止しました。");
             }
-            await Task.WhenAll(speakers, speakerMonitor);
-            speakerSession?.Dispose(); speakerSession = null;
-            if (SpeakerStatusText.Visibility == Visibility.Visible) SpeakerStatusText.Text = "話者識別: 停止";
+            await StopSpeakerRecognitionAsync();
             transcriptClock.Stop();
             windowsSession = null; WindowsOperationText.Visibility = Visibility.Collapsed;
             WindowsLanguageWarning.IsOpen = false;
@@ -936,7 +916,9 @@ public sealed partial class MainWindow : Window
     private void ApplySettings()
     {
         if (settings.SpeakerColors is not { Length: 8 }) settings.SpeakerColors = new Settings().SpeakerColors;
-        AiCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi; LiveSummaryMenuItem.IsChecked = settings.LiveSummary; LiveSummaryToggle.IsChecked = settings.LiveSummary;
+        // One switch for the local AI: 「AI補正」 also turns on the context translation (they share one model).
+        settings.UseLocalLlm = settings.CorrectTranscriptWithAi;
+        AiCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi; SpeakerMenuItem.IsChecked = settings.SpeakerDiarization; LiveSummaryMenuItem.IsChecked = settings.LiveSummary; LiveSummaryToggle.IsChecked = settings.LiveSummary;
         if (settingsCorrectionToggle is not null) settingsCorrectionToggle.IsChecked = settings.CorrectTranscriptWithAi;
         settings.CaptionLineGap = Math.Clamp(settings.CaptionLineGap, 0, 30);
         settings.CaptionLineHeight = Math.Clamp(settings.CaptionLineHeight, 1.05, 1.8);
@@ -1126,7 +1108,7 @@ public sealed partial class MainWindow : Window
             prompt.TextChanged += (_, _) => { settings.SpeechPrompt = prompt.Text; settings.Save(); }; content.Children.Add(prompt);
             content.Children.Add(new TextBlock { Text = "large-v3-turboはGPU向け、smallはCPUでも使える精度優先モデル、base/tinyは速度優先です。未準備のモデルはscripts/setup-speech.ps1 -Model モデル名で追加できます。", TextWrapping = TextWrapping.Wrap });
             Section("AI文字補正", "原文を先に表示し、ローカルAIで後から文脈を補正します。");
-            settingsCorrectionToggle = Toggle("文字起こしをAIで補正（Windows連携は即時／Whisperは次回Start）", settings.CorrectTranscriptWithAi, SetAiCorrectionEnabled);
+            settingsCorrectionToggle = Toggle("AI補正：文字起こしの補正と、英語→日本語翻訳の文脈仕上げ（Windows連携は即時／Whisperは次回Start）", settings.CorrectTranscriptWithAi, SetAiCorrectionEnabled);
             content.Children.Add(new TextBlock { Text = "Windows字幕連携でも日本語・英語の認識原文を先に表示し、確定した発話を直前の最大8発話とともにローカルLLMで補正します。ON/OFFは連携中も即時反映。OFFにすると補正待ちと未反映の結果を破棄し、反映済みの文章は保持します。Windows側の字幕表示自体は変更しません。補正にはLLM環境・モデルの準備が必要です。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "高速でも日本語は選択したモデルを使用します（CPUではsmall）。最初は約400ms分の音声から簡易認識し、確定時は精度を優先します。英語の高速モードはbaseを使います。AI補正は補正済みの直前最大8発話を参照。日本語の補正では文脈を推論するため、数秒〜十数秒後に反映される場合があります。先行字幕はその間も表示します。数字が変わる補正は拒否し、補正後も既定では通常と同じ文字色です。色を変える場合は「補正済みの字幕も通常と同じ文字色にする」をOFFにします。保存テキストに補正ラベルは付けません。", TextWrapping = TextWrapping.Wrap });
             Toggle("録音・文字起こし中に、数分ごとの発話のまとまりをローカルAIで要約する（ライブ要約。長くなると古い部分をまとめ直します）", settings.LiveSummary, v => SetLiveSummary(v));
@@ -1138,8 +1120,8 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = "補正で変わった文字を紫色で示し、行の右に「AI」印を付けます。印にカーソルを合わせると補正前の文章と変更点が表示され、「補正前に戻す」で元に戻せます。AIが話した語を消したり、話していない語を足したりした補正は採用せず、原文のままにします。", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
             AddTermDictionarySettings(Section, () => content, window);
             Section("話者識別・色分け", "声から話者を区別し、本体・字幕・保存テキストへ反映します。");
-            Toggle("音声から話者を識別し、話者ごとに色分け（次回Startから）", settings.SpeakerDiarization, v => settings.SpeakerDiarization = v);
-            content.Children.Add(new TextBlock { Text = "scripts/setup-speakers.ps1で準備します。音声をローカルCPUで解析し、セッションごとに話者1〜8として区別します。字幕を先に表示し、約1〜2秒分の音声で判別した色を後から反映します。本体・独立字幕・保存テキストに対応。話者色は補正色より優先します。氏名の特定や、複数話者の声の分離は行いません。短い相づち・同時発話・雑音・声質の似た人は誤判定する場合があります。判別できない部分は通常色です。Windows連携は選択したPC音声と字幕を時刻から近似対応するため、Windows側の入力が違う場合や大きな認識遅延がある場合は正しく対応しません。1つの字幕に複数人が含まれる場合は主な話者の色になります。", TextWrapping = TextWrapping.Wrap });
+            Toggle("音声から話者を識別し、話者ごとに色分け（文字起こし中もすぐ切り替わります。初回は話者識別モデルを自動で準備）", settings.SpeakerDiarization, v => SetSpeakerDiarization(v));
+            content.Children.Add(new TextBlock { Text = "初回は話者識別モデル（数十MB）を自動で準備します。音声をローカルCPUで解析し、セッションごとに話者1〜8として区別します。字幕を先に表示し、約1〜2秒分の音声で判別した色を後から反映します。本体・独立字幕・保存テキストに対応。話者色は補正色より優先します。氏名の特定や、複数話者の声の分離は行いません。短い相づち・同時発話・雑音・声質の似た人は誤判定する場合があります。判別できない部分は通常色です。Windows連携は選択したPC音声と字幕を時刻から近似対応するため、Windows側の入力が違う場合や大きな認識遅延がある場合は正しく対応しません。1つの字幕に複数人が含まれる場合は主な話者の色になります。", TextWrapping = TextWrapping.Wrap });
             Slider("話者の一致しきい値（高いほど別の話者に分かれやすい／次回Startから）", 30, 85, settings.SpeakerThreshold * 100, v => settings.SpeakerThreshold = v / 100);
             for (int speakerIndex = 0; speakerIndex < 8; speakerIndex++)
             {
@@ -1149,7 +1131,7 @@ public sealed partial class MainWindow : Window
                 content.Children.Add(color);
             }
             Section("翻訳・ローカルLLM", "英日翻訳の文脈、専門用語、LLMモデルを設定します。");
-            Toggle("ローカルLLMで文脈を踏まえて翻訳（次回Startから）", settings.UseLocalLlm, v => settings.UseLocalLlm = v);
+            content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8, Text = "ローカルLLMによる文脈を踏まえた翻訳の仕上げ（英語→日本語）は、「AI補正」をONにすると一緒にONになります（Windows字幕連携は即時、Whisperは次回Startから）。" });
             content.Children.Add(new TextBlock { Text = "英文表示と独立してAI翻訳します。Windows連携では、途中の英文にも文脈LLMを使い、速報訳・文脈訳の準備ができたものから表示します。確定文は全文を再確認して更新します。文章のAI補正は上の設定で独立してON/OFFできます。", TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = "翻訳の用語メモ（次回Startから）" });
             var terminology = new TextBox { Text = settings.TranslationGlossary, MaxLength = 1000, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, PlaceholderText = "例: 32-bit float = 32ビット浮動小数点、subject = 被写体（撮影の話題）" };
@@ -1267,7 +1249,7 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new TextBlock { Text = body, TextWrapping = TextWrapping.Wrap, FontSize = 16 });
         }
         Explain("モデルの選び方", "音声認識モデルは音声を文字へ変換します。翻訳や文章のAI補正は別のモデルが担当します。精度や速度は話者、雑音、PC、設定によって変わります。");
-        Explain("CAMPPlus + Silero VAD：音声 → 話者ごとの色", "CAMPPlusは声の特徴を数値にし、Silero VADは人の発話を検出します。ローカルCPUで動作し、認識と並行してセッション内の最大8話者を区別します。氏名の特定や、複数人の声の分離は行いません。scripts/setup-speakers.ps1で準備後、設定で話者の色分けをONにしてStartしてください。色と一致しきい値は設定で変更できます。Windows連携の時刻対応は近似です。短い発話・同時発話・声質が似た人などは誤判定することがあります。日本語の精度は未評価です。");
+        Explain("CAMPPlus + Silero VAD：音声 → 話者ごとの色", "CAMPPlusは声の特徴を数値にし、Silero VADは人の発話を検出します。ローカルCPUで動作し、認識と並行してセッション内の最大8話者を区別します。氏名の特定や、複数人の声の分離は行いません。既定でONで、初回は自動で準備します。文字起こし中も「聞き取り」メニューや設定でON/OFFできます。色と一致しきい値は設定で変更できます。Windows連携の時刻対応は近似です。短い発話・同時発話・声質が似た人などは誤判定することがあります。日本語の精度は未評価です。");
         Explain("Whisper：音声 → 英語／日本語の文字", "tiny：最軽量。速度や少ないメモリを優先する場合。\nbase：軽量。高速文字起こしの標準モデル。\nsmall：速度と精度のバランス。CPU利用時にも候補。\nmedium：より大きなモデル。処理時間とメモリが増えるため余裕のあるPC向け。\nlarge-v3-turbo：large-v3を高速化したモデル。CUDA GPUで精度と速度を両立したい場合の候補。日本語訳はこのモデル自身ではなく下の翻訳モデルが生成します。");
         Explain("Windowsライブキャプション連携", "設定の「音声認識エンジン」で選ぶと、Windowsのライブキャプションが認識した文字を取り込みます。Windowsが公開している字幕の文字情報を100ms間隔で読み取ります。モデル単体の再配布ではありません。本体・独立字幕・テキスト保存に反映し、連携前の履歴は取り込みません。\n入力と認識言語はWindows側に従います。日本語文字起こしではWindowsの認識言語を日本語、英日翻訳では英語にしてください。Windows側の字幕も開いておく必要があり、ウィンドウを閉じると再接続待ちになります。取り込んだ認識文のAI補正は設定でON/OFFできます。英日翻訳はFuguMTで速報を出し、ローカルLLMがONなら直前4発話と用語メモを使い、後から自然な日本語へ更新します。\n認識GPU/NPUを本アプリから指定する方式ではありません。マイクやアプリ別音声を本アプリで選択したい場合はWhisperを使ってください。「PC内音声＋マイク」の同時入力では、自動的にWhisperを使って混合音声を認識します。英日翻訳は従来のローカル翻訳モデルを使うため、その翻訳処理の時間は別途かかります。");
         Explain("Windowsのライブキャプションとの違い", "Windowsは端末内に組み込まれたコンパクトなAzure AI Speechモデルで字幕を生成します。このアプリはWhisperで蓄積音声を繰り返し認識するため、モデル計算と音声の蓄積に待ち時間が生じます。速報では軽いtiny/baseを別プロセスで使い、高精度認識やAI補正を待たずに表示します。同じ速度を保証するものではありません。Windowsの既定色はOSテーマでも変わるため、本アプリの既定色は添付例に近い白と濃いグレーです。参考: https://support.microsoft.com/en-us/accessibility/windows/use-live-captions-to-better-understand-audio");

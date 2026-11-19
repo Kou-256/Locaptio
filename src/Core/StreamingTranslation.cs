@@ -68,6 +68,8 @@ public sealed class StreamingTranslation(ITranslationBackend fast, ITranslationR
             return (row.Source, rows.Values.Where(r => r.Source.Id < row.Source.Id && !string.IsNullOrWhiteSpace(r.Source.English)).TakeLast(4).Select(r => r.Source.English).ToArray());
         }
     }
+    /// <summary>Whether the context (LLM) translation runs now; it follows the 「AI補正」 switch during a session.</summary>
+    public Func<bool>? QualityEnabled { get; set; }
     public Task RunAsync(CancellationToken token) => Task.WhenAll(WorkAsync(false, token), quality is null ? Task.CompletedTask : WorkAsync(true, token));
     private async Task WorkAsync(bool refine, CancellationToken token)
     {
@@ -77,6 +79,7 @@ public sealed class StreamingTranslation(ITranslationBackend fast, ITranslationR
             while (wake.Reader.TryRead(out _)) { }
             while (Next(refine) is { } job)
             {
+                if (refine && QualityEnabled?.Invoke() == false) continue;
                 try
                 {
                     var result = refine ? await quality!.RefineAsync(job.Source.English, job.Context, glossary, token) : await fast.TranslateAsync(job.Source.English, token, job.Source.Final);
