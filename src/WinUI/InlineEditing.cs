@@ -18,8 +18,14 @@ public sealed partial class MainWindow
     private TextBox? inlineEditBox;
     private long inlineEditId; private int inlineEditColumn;
 
+    private TextBlock? inlineEditTarget;
+    /// <summary>When the user last pressed in the transcript (a click elsewhere ends an edit; updates do not).</summary>
+    private long transcriptPressed;
     private void InitializeInlineEditing()
     {
+        CaptionList.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => { if (inlineEditor is not null) transcriptPressed = System.Diagnostics.Stopwatch.GetTimestamp(); }), true);
+        // While the right-click menu is open, new speech must not scroll its row away (that closes the menu).
+        transcriptSelectionMenu.Opening += (_, _) => PauseHistoryFollowing();
         CaptionList.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler(BeginInlineEdit), true);
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(DeleteSelectedText), true);
     }
@@ -51,7 +57,7 @@ public sealed partial class MainWindow
             Width = Math.Max(160, target.ActualWidth + 18), MinHeight = target.ActualHeight + 10, Padding = new Thickness(8, 4, 8, 4)
         };
         // The theme's text box background is translucent; the sentence underneath would show through.
-        uint rgb = CaptionWindow.ParseColor(settings.CaptionSurfaceColor, 0x363636);
+        uint rgb = CaptionWindow.ParseColor(settings.MainSurfaceColor, 0x363636);
         var surface = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
         foreach (string key in new[] { "TextControlBackground", "TextControlBackgroundPointerOver", "TextControlBackgroundFocused" }) box.Resources[key] = surface;
         box.RequestedTheme = Root.RequestedTheme;
@@ -59,26 +65,45 @@ public sealed partial class MainWindow
         ToolTipService.SetToolTip(box, "Enterで確定、Escで取り消し。Ctrl+Zで後から元に戻せます。");
         var origin = target.TransformToVisual(Root).TransformPoint(new Point(-9, -5));
         var popup = new Popup { Child = box, XamlRoot = Root.XamlRoot, HorizontalOffset = origin.X, VerticalOffset = origin.Y, IsLightDismissEnabled = false };
-        inlineEditor = popup; inlineEditBox = box; inlineEditId = id; inlineEditColumn = column;
+        inlineEditor = popup; inlineEditBox = box; inlineEditId = id; inlineEditColumn = column; inlineEditTarget = target;
         box.KeyDown += (_, args) =>
         {
             if (args.Key == Windows.System.VirtualKey.Enter) { args.Handled = true; FinishInlineEdit(true); }
             else if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; FinishInlineEdit(false); }
         };
-        box.LostFocus += (_, _) => FinishInlineEdit(true);
+        // Focus taken by the list itself (rows updating as speech arrives) keeps the edit; clicking elsewhere saves it.
+        box.LostFocus += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (!ReferenceEquals(inlineEditBox, box)) return;
+            var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+            bool listOrNothing = focused is null || focused is ListViewBase || focused is ListViewItem || ReferenceEquals(focused, box);
+            bool clicked = System.Diagnostics.Stopwatch.GetElapsedTime(transcriptPressed).TotalMilliseconds < 600;
+            if (listOrNothing && !clicked) box.Focus(FocusState.Programmatic); else FinishInlineEdit(true);
+        });
         if (historyScroll is not null) historyScroll.ViewChanged += ScrolledWhileEditing;
         popup.IsOpen = true;
         box.Focus(FocusState.Programmatic);
         box.Select(Math.Clamp(caret, 0, text.Length), 0);
         Status("発話を直接編集しています。Enterで確定、Escで取り消します。");
     }
-    // The editor sits over the row; when the list scrolls, keep what was typed and close it.
-    private void ScrolledWhileEditing(object? sender, ScrollViewerViewChangedEventArgs e) => FinishInlineEdit(true);
+    // New speech or scrolling must not end the edit: the editor follows its row and stays open until Enter or Esc.
+    private void ScrolledWhileEditing(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (inlineEditor is not { } popup) return;
+        PauseHistoryFollowing();
+        // The row's text block may have been reused for another row; find the one showing the edited row now.
+        var target = RealizedCaptionRows.SelectMany(row => row.Children.OfType<TextBlock>())
+            .FirstOrDefault(t => t.DataContext is CaptionHistoryEntry entry && entry.Id == inlineEditId && Grid.GetColumn(t) == inlineEditColumn);
+        if (target is null) return; // scrolled out of view: keep the editor where it is
+        inlineEditTarget = target;
+        var origin = target.TransformToVisual(Root).TransformPoint(new Point(-9, -5));
+        popup.HorizontalOffset = origin.X; popup.VerticalOffset = origin.Y;
+    }
 
     private void FinishInlineEdit(bool save)
     {
         if (inlineEditor is not { } popup || inlineEditBox is not { } box) return;
-        inlineEditor = null; inlineEditBox = null;
+        inlineEditor = null; inlineEditBox = null; inlineEditTarget = null;
         if (historyScroll is not null) historyScroll.ViewChanged -= ScrolledWhileEditing;
         popup.IsOpen = false;
         CaptionList.Focus(FocusState.Programmatic);

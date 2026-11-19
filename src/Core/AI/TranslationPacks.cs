@@ -26,7 +26,7 @@ public static class TranslationPacks
     public static readonly TranslationPack[] Downloadable =
     [
         new(JapaneseEnglish, "日本語 → 英語", "translation-ja-en", "staka/fugumt-ja-en", 0.12, "CC-BY-SA-4.0", "日本語の音声を英語に翻訳します（FuguMT）。"),
-        new(Multilingual, "多言語（100言語）", "translation-m2m100", "facebook/m2m100_418M", 1.9, "MIT", "日本語・英語から中国語・韓国語・フランス語などへ翻訳します（M2M100）。"),
+        new(Multilingual, "多言語（イタリア語・スペイン語など）", "translation-m2m100", "facebook/m2m100_418M", 1.9, "MIT", "イタリア語・スペイン語を含む翻訳に使います（英語→日本語、日本語→英語以外のすべての組み合わせ。M2M100）。"),
     ];
     public static readonly TranslationLanguage[] Languages =
     [
@@ -36,6 +36,15 @@ public static class TranslationPacks
         new("id", "インドネシア語", "Indonesian"),
     ];
     public static string Name(string code) => Languages.FirstOrDefault(l => l.Code == code)?.Name ?? code;
+    /// <summary>Deletes a downloaded pack's folder (it can be downloaded again from Settings).</summary>
+    public static void Remove(string root, TranslationPack pack)
+    {
+        string folder = Path.Combine(root, "models", pack.Folder);
+        if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        // Leftover source weights from an interrupted conversion.
+        string source = folder + "-source";
+        if (Directory.Exists(source)) Directory.Delete(source, true);
+    }
     public static TranslationPack? Find(string key) => Downloadable.FirstOrDefault(p => p.Key == key);
 
     /// <summary>The model for a direction; null when there is nothing to translate.</summary>

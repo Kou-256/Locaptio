@@ -132,7 +132,6 @@ public sealed partial class MainWindow
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 var show = new CheckBox { Content = ToolbarLabel(item), IsChecked = !MainToolbar.Hidden.Contains(item), IsEnabled = !AlwaysShown.Contains(name) };
-                CheckBoxGlyph.SetStatic(show, true);
                 show.Click += (_, _) => { SetToolbarHidden(name, show.IsChecked != true); };
                 var up = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, IsEnabled = i > 0, Padding = new Thickness(8, 4, 8, 4) };
                 var down = new Button { Content = new FontIcon { Glyph = "", FontSize = 12 }, IsEnabled = i < order.Length - 1, Padding = new Thickness(8, 4, 8, 4) };

@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 namespace Locaptio.WinUI;
 internal static class WindowAppearance
 {
+    /// <summary>Changes an element's light/dark theme only when it differs.</summary>
+    public static void SetTheme(Microsoft.UI.Xaml.FrameworkElement element, Microsoft.UI.Xaml.ElementTheme theme) { if (element.RequestedTheme != theme) element.RequestedTheme = theme; }
     [DllImport("user32.dll")] private static extern int GetWindowLongW(nint window, int index);
     [DllImport("user32.dll")] private static extern int SetWindowLongW(nint window, int index, int value);
     [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(nint window, uint color, byte alpha, uint flags);

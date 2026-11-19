@@ -73,7 +73,9 @@ class MarianBackend(ITranslationBackend):
     def translate(self, text):
         ids = self.tokenizer.encode(text, truncation=True, max_length=256)
         tokens = self.tokenizer.convert_ids_to_tokens(ids)
-        result = self.model.translate_batch([tokens], beam_size=2, max_decoding_length=256)[0].hypotheses[0]
+        # Discourage loops ("キラキラしたキラキラした…") and stop well before the old 256-token limit.
+        result = self.model.translate_batch([tokens], beam_size=2, max_decoding_length=min(256, len(tokens) * 3 + 16),
+                                            repetition_penalty=1.15, no_repeat_ngram_size=4)[0].hypotheses[0]
         return self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(result), skip_special_tokens=True)
 
 class M2M100Backend(ITranslationBackend):
@@ -88,7 +90,8 @@ class M2M100Backend(ITranslationBackend):
         self.model_name = 'm2m100 ' + source + '-' + target
     def translate(self, text):
         tokens = self.tokenizer.convert_ids_to_tokens(self.tokenizer.encode(text, truncation=True, max_length=256))
-        result = self.model.translate_batch([tokens], target_prefix=[[self.target]], beam_size=2, max_decoding_length=256)[0].hypotheses[0]
+        result = self.model.translate_batch([tokens], target_prefix=[[self.target]], beam_size=2, max_decoding_length=min(256, len(tokens) * 3 + 16),
+                                            repetition_penalty=1.15, no_repeat_ngram_size=4)[0].hypotheses[0]
         if result and result[0] == self.target:
             result = result[1:]
         return self.tokenizer.decode(self.tokenizer.convert_tokens_to_ids(result), skip_special_tokens=True)

@@ -5,12 +5,20 @@ namespace Locaptio.Core;
 
 public sealed record RecordingWord(int StartIndex, int Length, double Start, double End);
 // Original keeps the recognized text from before AI correction or a manual edit.
-public sealed record RecordingPhrase(long Id, long Started, double Seconds, string Text, string? Translation, int Revision, string Language = "ja", double? EndSeconds = null, RecordingWord[]? Words = null, string? Original = null, bool Edited = false, double? Match = null);
+/// <param name="AiCorrected">The text was changed by AI correction (the mark and the text before it are shown).</param>
+/// <param name="TranslationRefined">The translation was finished by the local AI.</param>
+public sealed record RecordingPhrase(long Id, long Started, double Seconds, string Text, string? Translation, int Revision, string Language = "ja", double? EndSeconds = null, RecordingWord[]? Words = null, string? Original = null, bool Edited = false, double? Match = null,
+    bool AiCorrected = false, bool TranslationRefined = false);
 public sealed record RecordingBookmark(double Seconds, string Label, long PhraseId = 0, string? Text = null);
 /// <summary>Evidence is stored as phrase onsets so it survives the row IDs of a later session.</summary>
 public sealed record RecordingSummaryItem(string Section, string Text, double[] Evidence);
 // Optional members are appended so files written by older versions still load.
-public sealed record RecordingDocument(int Version, string AudioFile, DateTimeOffset RecordedAt, bool ApproximateTiming, RecordingPhrase[] Phrases, RecordingBookmark[]? Bookmarks = null, RecordingSummaryItem[]? Summary = null, string? Model = null);
+/// <summary>One live-summary block: the time span it covers and its lines (evidence as times in the recording).</summary>
+public sealed record RecordingLiveBlock(double FirstSeconds, double LastSeconds, RecordingSummaryItem[] Items);
+/// <summary>The live summary made while recording: recent blocks, folded older blocks and the "so far" digest.</summary>
+public sealed record RecordingLiveSummary(RecordingLiveBlock[] Blocks, RecordingLiveBlock[] Archived, RecordingLiveBlock? Digest);
+public sealed record RecordingDocument(int Version, string AudioFile, DateTimeOffset RecordedAt, bool ApproximateTiming, RecordingPhrase[] Phrases, RecordingBookmark[]? Bookmarks = null, RecordingSummaryItem[]? Summary = null, string? Model = null,
+    RecordingLiveSummary? LiveSummary = null);
 
 /// <summary>Only text and media offsets are persisted. No audio is held in memory.</summary>
 public sealed class RecordingTranscript(string audioPath, long started, bool approximateTiming)
@@ -57,7 +65,8 @@ public sealed class RecordingTranscript(string audioPath, long started, bool app
         if (InPause(update.Started)) return false;
         if (string.IsNullOrWhiteSpace(update.English)) return phrases.Remove(key);
         double seconds = Math.Max(0, Offset(update.Started) - (approximateTiming ? 1.0 : 0));
-        var phrase = new RecordingPhrase(update.Id, update.Started, seconds, update.English, update.Japanese, update.Revision, update.SourceLanguage, Original: previous?.Original, Edited: previous?.Edited ?? false);
+        var phrase = new RecordingPhrase(update.Id, update.Started, seconds, update.English, update.Japanese, update.Revision, update.SourceLanguage, Original: previous?.Original, Edited: previous?.Edited ?? false,
+            AiCorrected: update.AiCorrected || (previous?.AiCorrected ?? false), TranslationRefined: update.TranslationRefined || (previous?.TranslationRefined ?? false));
         if (update.Appeared is { } times && times.Length == update.English.Length) appeared[key] = times; else appeared.Remove(key);
         if (previous == phrase) return false;
         phrases[key] = phrase; return true;

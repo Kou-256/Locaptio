@@ -18,6 +18,16 @@ public static class SpeechPreparation
         try { if (!Ready()) await RunAsync(root, "setup-speech.ps1", ["-TranslationOnly"], progress, token); }
         finally { EnvironmentGate.Release(); }
     }
+    public static bool SpeakersReady(string root) => File.Exists(Path.Combine(root, ".venv-speakers", "Scripts", "python.exe"))
+        && File.Exists(Path.Combine(root, "models", "speakers", "embedding.onnx")) && File.Exists(Path.Combine(root, "models", "speakers", "silero_vad.onnx"));
+    /// <summary>Prepares the speaker-color model (scripts/setup-speakers.ps1) the first time it is used.</summary>
+    public static async Task EnsureSpeakersAsync(string root, Action<PreparationProgress>? progress, CancellationToken token)
+    {
+        if (SpeakersReady(root)) return;
+        await WaitAsync(progress, token);
+        try { if (!SpeakersReady(root)) await RunAsync(root, "setup-speakers.ps1", [], progress, token); }
+        finally { EnvironmentGate.Release(); }
+    }
     internal static async Task WaitAsync(Action<PreparationProgress>? progress, CancellationToken token)
     {
         if (EnvironmentGate.Wait(0)) return;
