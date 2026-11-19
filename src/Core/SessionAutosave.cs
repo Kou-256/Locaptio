@@ -2,7 +2,9 @@ using System.Text.Json;
 
 namespace Locaptio.Core;
 
-public sealed record AutosaveRow(long Id, double Seconds, string Text, string? Translation, string Language, int SpeakerId = 0, string? Original = null, bool Edited = false);
+/// <summary>One row; AI marks (corrected text, refined translation) are kept so a restored row looks as it did.</summary>
+public sealed record AutosaveRow(long Id, double Seconds, string Text, string? Translation, string Language, int SpeakerId = 0, string? Original = null, bool Edited = false,
+    bool AiCorrected = false, bool SourceCorrected = false, bool TranslationRefined = false);
 public sealed record AutosaveSnapshot(int Version, DateTimeOffset SavedAt, string Mode, string? RecordingPath, AutosaveRow[] Rows, RecordingBookmark[]? Bookmarks = null, AutosaveSummary? Summary = null);
 /// <summary>One live-summary block: the rows it covers and its lines (row IDs are the snapshot's).</summary>
 public sealed record AutosaveSummaryBlock(long FirstId, long LastId, SummaryItem[] Items);

@@ -320,6 +320,38 @@ public sealed partial class MainWindow
             finally { await StopSpeakerRecognitionAsync(); settings.SpeakerDiarization = savedSpeakers; SpeakerMenuItem.IsChecked = savedSpeakers; captionStop = null; settings.Save(); }
             Check(new Locaptio.App.Settings().SpeakerDiarization && !new Locaptio.App.Settings().KeepOnTop && !new Locaptio.App.Settings().SummaryWindowOnTop, "defaults: speaker colors on; main and summary windows not kept on top");
 
+            // 11. Restoring keeps where AI corrected or translated and what was edited, along with the live summary.
+            {
+                ClearCaptions(); settings.ShowAiChanges = true;
+                using (var listening = new CancellationTokenSource())
+                {
+                    captionStop = listening;
+                    long a = historyIds.LastOrDefault() + 1;
+                    UpdateCaption(new CaptionUpdate(a, 1, "今日は議時録を保存します", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    UpdateCaption(new CaptionUpdate(a, 2, "今日は議事録を保存します", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja", SourceCorrected: true, AiCorrected: true));
+                    long b = a + 1;
+                    UpdateCaption(new CaptionUpdate(b, 1, "Please share the minutes.", "議事録を共有してください。", true, Stopwatch.GetTimestamp(), 0, 0, "en", TranslationRefined: true));
+                    long c = b + 1;
+                    UpdateCaption(new CaptionUpdate(c, 1, "予算の確認をします", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    if (edits.Apply(FindCaption(c)!, "予算を確認します", null) is { } manual) ApplyManualUpdate(manual);
+                    liveBlocks.Clear(); liveBlocks.Add(new(a, c, [new SummaryItem("要点", "議事録を共有する", [b])])); liveSummaryNextId = c + 1;
+                    captionStop = null;
+                }
+                bool savedAutosave = settings.AutosaveSession; settings.AutosaveSession = true; reviewingRecording = false;
+                sessionDirty = true; WriteAutosave(); await autosaveWrite; settings.AutosaveSession = savedAutosave;
+                var restoredSnapshot = SessionAutosave.TryLoad(autosavePath);
+                Check(restoredSnapshot is not null, "the autosave snapshot is written");
+                if (restoredSnapshot is null) throw new InvalidOperationException("no autosave snapshot");
+                ClearCaptions();
+                await RestoreSessionAsync(restoredSnapshot!);
+                var rowsAfter = history.Select(h => h.Caption).ToArray();
+                Check(rowsAfter.Length == 3 && rowsAfter[0].AiCorrected && AiOriginal(rowsAfter[0]) == "今日は議時録を保存します", "restore keeps the AI correction mark and the text before it");
+                Check(rowsAfter[1].TranslationRefined, "restore keeps the AI (context) translation mark");
+                Check(edits.IsEdited(rowsAfter[2].Id) && rowsAfter[2].English == "予算を確認します" && edits.Original(rowsAfter[2].Id) == "予算の確認をします", "restore keeps the manual edit and its original");
+                Check(liveBlocks.Count == 1 && liveBlocks[0].Items[0].RowIds.Length == 1 && FindCaption(liveBlocks[0].Items[0].RowIds[0]) is not null, "restore keeps the live summary with its links");
+                ClearCaptions();
+            }
+
             // 8. The pane follows live summary: shown when listening starts with it already on, closed by clearing
             //    or turning it off when nothing else is shown; checking an AI feature starts the model download at once.
             bool savedLive = settings.LiveSummary, savedCorrection = settings.CorrectTranscriptWithAi;

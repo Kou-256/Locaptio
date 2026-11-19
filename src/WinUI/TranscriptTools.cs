@@ -588,7 +588,7 @@ public sealed partial class MainWindow
         // A reviewed recording is already on disk; only a live or restored session needs a snapshot.
         if (!settings.AutosaveSession || reviewingRecording || history.Count == 0) return;
         var rows = history.Select(row => new AutosaveRow(row.Id, RowSeconds(row.Caption), row.English, row.Japanese, row.Caption.SourceLanguage, row.Caption.SpeakerId,
-            edits.Original(row.Id) is { } original && original != row.English ? original : null, edits.IsEdited(row.Id))).ToArray();
+            edits.Original(row.Id) is { } original && original != row.English ? original : null, edits.IsEdited(row.Id), row.Caption.AiCorrected, row.Caption.SourceCorrected, row.Caption.TranslationRefined)).ToArray();
         var snapshot = new AutosaveSnapshot(1, DateTimeOffset.Now, settings.CaptionMode, recordingStop is not null ? recordingPath : null, rows, bookmarks.Count == 0 ? null : bookmarks.ToArray(), SummarySnapshot());
         string path = autosavePath;
         // Up to 1,000 rows every 5 s; a multi-hour session (20,000 rows, a few MB) every 30 s at most.
@@ -661,6 +661,25 @@ public sealed partial class MainWindow
         catch (Exception ex) { Status("復元できません: " + ex.Message + " 自動保存データは残してあります。"); ShowStatusDetails(pin: true); }
         finally { dialogOpen = false; }
     }
+    /// <summary>Snapshot row → shown row: the same text in order first, then the nearest time.</summary>
+    private Dictionary<long, long> MatchRestoredRows(AutosaveRow[] rows)
+    {
+        var map = new Dictionary<long, long>(); int from = 0;
+        var shown = history.ToList();
+        foreach (var row in rows)
+        {
+            int index = shown.FindIndex(from, h => h.English == row.Text || edits.Original(h.Id) == row.Text || (row.Original is not null && h.English == row.Original));
+            if (index < 0)
+            {
+                // Nearest time when the text was changed after the recording's file was last written.
+                index = shown.Select((h, i) => (i, distance: Math.Abs(RowSeconds(h.Caption) - row.Seconds))).Where(p => p.i >= from).OrderBy(p => p.distance).Select(p => p.i).DefaultIfEmpty(-1).First();
+                if (index >= 0 && Math.Abs(RowSeconds(shown[index].Caption) - row.Seconds) > 5) index = -1;
+            }
+            if (index < 0) continue;
+            map[row.Id] = shown[index].Id; from = index + 1;
+        }
+        return map;
+    }
     private async Task RestoreSessionAsync(AutosaveSnapshot snapshot)
     {
         ClosePlayback();
@@ -670,12 +689,18 @@ public sealed partial class MainWindow
             // The recording's own search data carries the media times; open it like any saved recording.
             await LoadRecordingAsync(audio);
             if (playbackDocument is not null && !File.Exists(audio + ".txt")) await RecordingLibrary.SaveTextAsync(audio, playbackDocument);
-            // The recording's phrases are the same utterances in the same order as the snapshot's rows.
-            if (snapshot.Summary is { } saved && history.Count == snapshot.Rows.Length)
+            // Match the snapshot's rows to the recording's phrases (same text, else nearest time) and put back the
+            // edit and AI marks and the summaries, which the recording's own file does not carry.
+            var byRow = MatchRestoredRows(snapshot.Rows);
+            foreach (var row in snapshot.Rows)
             {
-                var byOrder = snapshot.Rows.Select((row, i) => (row.Id, history[i].Id)).ToDictionary(p => p.Item1, p => p.Item2);
-                RestoreSummarySnapshot(saved, byOrder);
+                if (!byRow.TryGetValue(row.Id, out long id) || FindCaption(id) is not { } shown) continue;
+                edits.Restore(id, row.Original, row.Edited);
+                if (row.AiCorrected || row.SourceCorrected || row.TranslationRefined)
+                    UpdateHistory(shown with { AiCorrected = row.AiCorrected || shown.AiCorrected, SourceCorrected = row.SourceCorrected || shown.SourceCorrected, TranslationRefined = row.TranslationRefined || shown.TranslationRefined });
             }
+            if (snapshot.Summary is { } saved) RestoreSummarySnapshot(saved, byRow);
+            RenderCaptions();
             Status("中断された録音と文字起こしを復元しました: " + audio); return;
         }
         ClearCaptions(); reviewingRecording = false; playbackDocument = null; playbackPath = "";
@@ -690,7 +715,8 @@ public sealed partial class MainWindow
         var ids = new Dictionary<long, long>();
         foreach (var row in snapshot.Rows)
         {
-            var caption = new CaptionUpdate(history.Count + 1, 1, row.Text, row.Translation, true, now - (long)((last - row.Seconds) * Stopwatch.Frequency), 0, 0, row.Language, SpeakerId: row.SpeakerId);
+            var caption = new CaptionUpdate(history.Count + 1, 1, row.Text, row.Translation, true, now - (long)((last - row.Seconds) * Stopwatch.Frequency), 0, 0, row.Language,
+                TranslationRefined: row.TranslationRefined, SourceCorrected: row.SourceCorrected, SpeakerId: row.SpeakerId, AiCorrected: row.AiCorrected);
             ids[row.Id] = caption.Id; edits.Restore(caption.Id, row.Original, row.Edited);
             UpdateHistory(caption); transcript.Update(caption);
         }
