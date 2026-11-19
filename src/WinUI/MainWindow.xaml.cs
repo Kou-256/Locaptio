@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
     private double sttMs, translationMs, totalMs;
     private readonly nint hwnd;
     private Window? settingsWindow;
-    private CheckBox? settingsCorrectionToggle;
+    private FeatureSwitch? settingsCorrectionToggle;
     private CaptionWindow? captionWindow;
     private Window? modelHelpWindow;
     [DllImport("user32.dll")] private static extern int GetWindowLongW(nint window, int index);
@@ -116,6 +116,7 @@ public sealed partial class MainWindow : Window
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-lifecycle")) await VerifyLifecycleAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-stop-options")) await VerifyStopOptionsAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-caption-idle")) await VerifyCaptionIdleAsync(); };
+        Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-appearance-stress")) await VerifyAppearanceStressAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-caption-behavior")) await VerifyCaptionBehaviorAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-translation")) await VerifyWindowsTranslationAsync(); };
         Root.Loaded += async (_, _) => { if (Environment.GetCommandLineArgs().Contains("--verify-windows-live")) await VerifyWindowsLiveAsync(); };
@@ -957,13 +958,13 @@ public sealed partial class MainWindow : Window
         if (Array.IndexOf(CountdownChoices, settings.VideoCountdownSeconds) < 0) settings.VideoCountdownSeconds = 3;
         if (settings.MenuBarTheme is not ("white" or "matching")) settings.MenuBarTheme = "white";
         Root.Background = CaptionWindow.BackgroundBrush(settings, settings.BackgroundOpacity);
-        Root.RequestedTheme = settings.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark;
-        if (settingsWindow?.Content is Grid settingsRoot) { settingsRoot.Background = CaptionWindow.SurfaceBrush(settings); settingsRoot.RequestedTheme = Root.RequestedTheme; }
+        CheckBoxGlyph.SetTheme(Root, settings.CaptionBackground == "light" ? ElementTheme.Light : ElementTheme.Dark);
+        if (settingsWindow?.Content is Grid settingsRoot) { settingsRoot.Background = CaptionWindow.SurfaceBrush(settings); CheckBoxGlyph.SetTheme(settingsRoot, Root.RequestedTheme); }
         SummaryPane.Background = CaptionWindow.SurfaceBrush(settings);
         if (string.IsNullOrWhiteSpace(settings.BookmarkLabels)) settings.BookmarkLabels = new Settings().BookmarkLabels;
         RefreshBookmarkLabels();
         bool matchingMenu = settings.MenuBarTheme == "matching";
-        HeaderMenu.RequestedTheme = matchingMenu ? Root.RequestedTheme : ElementTheme.Light;
+        CheckBoxGlyph.SetTheme(HeaderMenu, matchingMenu ? Root.RequestedTheme : ElementTheme.Light);
         HeaderMenu.Background = matchingMenu ? new SolidColorBrush(Microsoft.UI.Colors.Transparent) : new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 245, 247, 250));
         settings.FontSize = Math.Clamp(settings.FontSize, 14, 40); settings.BackgroundOpacity = Math.Clamp(settings.BackgroundOpacity, 0, 1); settings.TextOpacity = Math.Clamp(settings.TextOpacity, 0, 1);
         if (!settings.English && !settings.Japanese) settings.Japanese = true;
@@ -1014,9 +1015,12 @@ public sealed partial class MainWindow : Window
                 var control = new Slider { Minimum = min, Maximum = max, Value = value, StepFrequency = 1 };
                 control.ValueChanged += (_, _) => { set(control.Value); caption.Text = $"{label}: {control.Value:F0}"; ApplySettings(); }; content.Children.Add(control);
             }
-            CheckBox Toggle(string label, bool value, Action<bool> set)
+            // A feature that takes effect when flipped: a switch (checkboxes are for picking items from a list).
+            FeatureSwitch Toggle(string label, bool value, Action<bool> set)
             {
-                var control = new CheckBox { Content = label, IsChecked = value }; control.Click += (_, _) => { set(control.IsChecked == true); ApplySettings(); }; content.Children.Add(control);
+                var control = new FeatureSwitch { Header = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap }, IsOn = value, OnContent = "オン", OffContent = "オフ" };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(control, label);
+                control.Click += (_, _) => { set(control.IsOn); ApplySettings(); }; content.Children.Add(control);
                 return control;
             }
             Slider("フォントサイズ", 14, 40, settings.FontSize, v => settings.FontSize = v); Slider("本体：背景の透過率 (%)", 0, 100, (1 - settings.BackgroundOpacity) * 100, v => settings.BackgroundOpacity = 1 - v / 100); Slider("本体：文字の不透明度 (%)", 0, 100, settings.TextOpacity * 100, v => settings.TextOpacity = v / 100); content.Children.Add(new TextBlock { Text = "本体の履歴：全行を表示（行数制限なし）", TextWrapping = TextWrapping.Wrap });

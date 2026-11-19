@@ -85,8 +85,8 @@
    </DropDownButton>
    <Button x:Name="LibraryButton" Click="OpenRecordingClick" AutomationProperties.Name="録音一覧・再生" ToolTipService.ToolTip="保存済みの音声とテキストを開きます。新しい録音は開始しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8B7;"/><TextBlock Text="録音一覧"/></StackPanel></Button>
    <Button x:Name="ImportButton" Click="ImportAudioClick" AutomationProperties.Name="音声ファイル読込" ToolTipService.ToolTip="MP3・M4A・WAVの音声やMP4・MOVなどの動画をローカルで文字起こし。ドラッグ＆ドロップにも対応。原本は変更しません。"><StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE8E5;"/><TextBlock Text="ファイル読込"/></StackPanel></Button>
-   <CheckBox x:Name="AiCorrectionToggle" Content="AI補正" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回の開始から。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
-   <CheckBox x:Name="LiveSummaryToggle" Content="ライブ要約" Click="LiveSummaryToggleClick" AutomationProperties.Name="ライブ要約" ToolTipService.ToolTip="録音・文字起こし中に、数分ごとの発話をローカルAIが要約して右の欄に追加します。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。録音中でもON/OFFできます。"/>
+   <local:FeatureSwitch x:Name="AiCorrectionToggle" Label="AI補正" MinWidth="0" Click="AiCorrectionChanged" AutomationProperties.Name="文字起こしをAIで補正" ToolTipService.ToolTip="文字起こしをローカルAIで補正します。Windows連携は即時反映、Whisperは次回の開始から。LLM環境・既定モデルがない場合は初回のみ自動取得します（ネット接続・数GBの空き容量が必要）。"/>
+   <local:FeatureSwitch x:Name="LiveSummaryToggle" Label="ライブ要約" MinWidth="0" Click="LiveSummaryToggleClick" AutomationProperties.Name="ライブ要約" ToolTipService.ToolTip="録音・文字起こし中に、数分ごとの発話をローカルAIが要約して右の欄に追加します。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。録音中でもON/OFFできます。"/>
    <Button x:Name="SearchButton" Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;"/></Button>
   </local:ToolbarPanel></StackPanel>
   <StackPanel Grid.Row="2" Spacing="4">

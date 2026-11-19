@@ -186,7 +186,7 @@ public sealed partial class MainWindow
                 summaryItems = [];
                 captionStop = null; UpdateCommandStates();
             }
-            Check(LiveSummaryToggle is CheckBox && LiveSummaryMenuItem.Icon is ImageIcon, "live summary is a toolbar checkbox; its icon is only in the menu bar");
+            Check(LiveSummaryToggle is FeatureSwitch && LiveSummaryMenuItem.Icon is ImageIcon, "live summary is a toolbar switch; its icon is only in the menu bar");
 
             // 6. Toolbar: hide, reorder, settings rows, persistence and reset (the user's own layout is restored afterwards).
             string[] savedOrder = settings.ToolbarOrder, savedHidden = settings.ToolbarHidden;
