@@ -100,7 +100,7 @@ public sealed partial class MainWindow
             if (closing) return;
             liveSummaryDismissed = false; liveSummaryAutoShown = false;
             if (!SummaryShown) ShowSummaryPane(true);
-            RenderLiveSummary();
+            RenderLiveSummary(); PersistLiveSummary();
         }
         catch (Exception ex) when (!closing) { Status("ライブ要約を作成できませんでした（次のまとまりで再試行します）: " + ex.Message); }
         finally { liveSummaryRunning = false; }
@@ -217,10 +217,44 @@ public sealed partial class MainWindow
         // With nothing left to show, clearing also closes the pane; the next summary opens it again.
         if (summaryItems.Length > 0) RenderSummary();
         else { liveSummaryDismissed = captionStop is not null || recordingStop is not null; liveSummaryAutoShown = false; ShowSummaryPane(false); }
-        UpdateLiveSummaryClear();
+        UpdateLiveSummaryClear(); PersistLiveSummary();
         Status("ライブ要約をクリアしました。これ以降の発話から要約します。");
     }
     private void UpdateLiveSummaryClear() => SummaryLiveClearButton.Visibility = liveBlocks.Count > 0 || liveDigest is not null ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The live summary in the recording's terms (times instead of row IDs, which change when it is reopened).</summary>
+    private RecordingLiveSummary? LiveSummaryForRecording(RecordingDocument document)
+    {
+        if (liveBlocks.Count == 0 && liveDigest is null) return null;
+        var seconds = document.Phrases.ToDictionary(p => p.Id, p => p.Seconds);
+        double At(long id) => seconds.TryGetValue(id, out double s) ? s : -1;
+        RecordingLiveBlock Block(LiveSummaryBlock b) => new(At(b.FirstId), At(b.LastId),
+            b.Items.Select(i => new RecordingSummaryItem(i.Section, i.Text, i.RowIds.Select(At).Where(s => s >= 0).ToArray())).ToArray());
+        return new(liveBlocks.Select(Block).ToArray(), liveArchived.Select(Block).ToArray(), liveDigest is null ? null : Block(liveDigest));
+    }
+    /// <summary>Writes the live summary into the recording being reviewed (after it stops, and whenever it changes).</summary>
+    private void PersistLiveSummary()
+    {
+        if (!reviewingRecording || playbackDocument is not { } document) return;
+        var live = LiveSummaryForRecording(document);
+        if (Equals(live, document.LiveSummary)) return;
+        playbackDocument = document with { LiveSummary = live };
+        SaveReviewDocument();
+    }
+    /// <summary>Puts a recording's saved live summary back when it is opened.</summary>
+    private void RestoreLiveSummary(RecordingDocument document)
+    {
+        liveBlocks.Clear(); liveArchived.Clear(); liveDigest = null;
+        if (document.LiveSummary is not { } saved) return;
+        long Row(double seconds) => seconds < 0 ? 0 : RecordingTranscript.At(document, seconds + .0005)?.Id ?? 0;
+        LiveSummaryBlock Block(RecordingLiveBlock b) => new(Row(b.FirstSeconds), Row(b.LastSeconds),
+            (b.Items ?? []).Select(i => new SummaryItem(i.Section, i.Text, (i.Evidence ?? []).Select(Row).Where(id => id != 0).Distinct().ToArray())).ToArray());
+        liveBlocks.AddRange((saved.Blocks ?? []).Select(Block));
+        liveArchived.AddRange((saved.Archived ?? []).Select(Block));
+        liveDigest = saved.Digest is null ? null : Block(saved.Digest);
+        // Speech already in the recording has been summarized; new speech (if recording continues) starts after it.
+        liveSummaryNextId = (history.LastOrDefault()?.Id ?? 0) + 1;
+    }
 
     private void RenderLiveSummary()
     {

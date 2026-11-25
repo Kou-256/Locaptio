@@ -123,14 +123,25 @@ public sealed class LocalBackend : ITimedSpeechRecognitionBackend, ITranslationB
     {
         byte[] bytes = new byte[samples.Length * sizeof(float)];
         Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
-        return RequestAsync(new { id = Interlocked.Increment(ref sequence), audio = Convert.ToBase64String(bytes), final, prompt = speechPrompt, reset_context = Interlocked.Exchange(ref resetSpeechContext, 0) != 0 }, token);
+        return CollapseAsync(RequestAsync(new { id = Interlocked.Increment(ref sequence), audio = Convert.ToBase64String(bytes), final, prompt = speechPrompt, reset_context = Interlocked.Exchange(ref resetSpeechContext, 0) != 0 }, token));
+    }
+    /// <summary>Whisper can also repeat a phrase on silence or noise; four or more repeats in a row are kept once.</summary>
+    private static async Task<InferenceResult> CollapseAsync(Task<InferenceResult> recognition)
+    {
+        var result = await recognition;
+        return RepetitionGuard.HasLoop(result.Text) ? result with { Text = RepetitionGuard.Collapse(result.Text) } : result;
     }
     public Task<InferenceResult> RecognizeTimedAsync(float[] samples, CancellationToken token)
     {
         byte[] bytes = new byte[samples.Length * sizeof(float)]; Buffer.BlockCopy(samples, 0, bytes, 0, bytes.Length);
         return RequestAsync(new { id = Interlocked.Increment(ref sequence), audio = Convert.ToBase64String(bytes), final = true, word_timestamps = true, prompt = speechPrompt, reset_context = false }, token);
     }
-    public Task<InferenceResult> TranslateAsync(string text, CancellationToken token, bool final = true) => RequestAsync(new { id = Interlocked.Increment(ref sequence), text }, token);
+    public async Task<InferenceResult> TranslateAsync(string text, CancellationToken token, bool final = true)
+    {
+        var result = await RequestAsync(new { id = Interlocked.Increment(ref sequence), text }, token);
+        // A decoder that fell into a loop ("キラキラしたキラキラした…") is cut back to what it meant to say.
+        return result with { Text = RepetitionGuard.Clean(text, result.Text) };
+    }
     private async Task<InferenceResult> RequestAsync(object request, CancellationToken token)
     {
         await serial.WaitAsync(token);

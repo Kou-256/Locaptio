@@ -78,8 +78,9 @@ public sealed partial class MainWindow
     {
         summaryItems = (document.Summary ?? []).Select(item => new SummaryItem(item.Section, item.Text,
             item.Evidence.Select(seconds => RecordingTranscript.At(document, seconds + .0005)?.Id ?? 0).Where(id => id != 0).Distinct().ToArray())).ToArray();
-        if (summaryItems.Length > 0 || SummaryShown) RenderSummary();
-        if (summaryItems.Length > 0) ShowSummaryPane(true);
+        bool any = summaryItems.Length > 0 || liveBlocks.Count > 0 || liveDigest is not null;
+        if (any || SummaryShown) RenderSummary();
+        if (any) ShowSummaryPane(true);
     }
     private void RenderSummary(string? message = null)
     {

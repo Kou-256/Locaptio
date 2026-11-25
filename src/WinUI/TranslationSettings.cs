@@ -60,12 +60,15 @@ public sealed partial class MainWindow
         {
             var state = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
             var download = new Button();
+            var remove = new Button { Content = "削除" };
+            ToolTipService.SetToolTip(remove, "この翻訳モデルを削除して空き容量を戻します（あとで再ダウンロードできます）。");
             var progress = new ProgressBar { Maximum = 100, Visibility = Visibility.Collapsed };
             void Refresh()
             {
                 string folder = FindRoot(); bool there = folder.Length > 0 && pack.IsInstalled(folder);
                 state.Text = $"{pack.Name}：{pack.Use}　約{pack.Gigabytes:0.##}GB・{pack.License}　" + (there ? "✓ダウンロード済み" : folder.Length == 0 ? "（モデル・推論環境のフォルダーを指定してください）" : "未ダウンロード");
                 download.Content = there ? "ダウンロード済み" : "ダウンロード"; download.IsEnabled = !there && folder.Length > 0;
+                remove.Visibility = there ? Visibility.Visible : Visibility.Collapsed;
             }
             download.Click += async (_, _) =>
             {
@@ -83,7 +86,20 @@ public sealed partial class MainWindow
                 finally { progress.Visibility = Visibility.Collapsed; }
             };
             Refresh();
-            var row = new StackPanel { Spacing = 4 }; row.Children.Add(state); row.Children.Add(download); row.Children.Add(progress);
+            remove.Click += async (_, _) =>
+            {
+                string folder = FindRoot();
+                if (captionStop is not null || recordingStop is not null) { state.Text = "文字起こし・録音を停止してから削除してください。"; return; }
+                var confirm = new ContentDialog { XamlRoot = owner.Content.XamlRoot, Title = $"「{pack.Name}」の翻訳モデルを削除しますか？", RequestedTheme = ElementTheme.Dark, PrimaryButtonText = "削除", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Close,
+                    Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = $"約{pack.Gigabytes:0.##}GBを削除します。この翻訳を使うモードを選ぶと、もう一度ダウンロードが必要になります。" } };
+                if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+                // A worker still holding the model would block the delete; stop prepared models first.
+                prepared?.Dispose(); prepared = null; preparedKey = "";
+                try { TranslationPacks.Remove(folder, pack); Refresh(); Status($"翻訳モデル「{pack.Name}」を削除しました。"); }
+                catch (Exception ex) { state.Text = "削除できませんでした（使用中の可能性があります）：" + ex.Message; }
+            };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; buttons.Children.Add(download); buttons.Children.Add(remove);
+            var row = new StackPanel { Spacing = 4 }; row.Children.Add(state); row.Children.Add(buttons); row.Children.Add(progress);
             content.Children.Add(row);
         }
         content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8, Text = "・ローカルLLMによる文脈を踏まえた翻訳の仕上げは、英語→日本語で使います。その他の言語は翻訳モデルだけで訳します。\n・日本語→英語は「日本語 → 英語」のモデルがあればそれを、なければ多言語モデルを使います。" });

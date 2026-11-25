@@ -85,7 +85,9 @@ def main():
             analysis = llm(prompt, max_tokens=256, temperature=0.6, top_p=0.95, top_k=20, min_p=0,
                            stop=['</think>', '<|im_end|>', '<|im_start|>'])['choices'][0]['text']
             prompt += analysis + '</think>\n\n'
-        result = llm(prompt, max_tokens=512, temperature=0.7 if correction else 0,
+        # A translation or correction is about as long as the utterance; a loop would otherwise run to 512 tokens.
+        limit = min(512, len(source) * 3 + 64)
+        result = llm(prompt, max_tokens=limit, temperature=0.7 if correction else 0, repeat_penalty=1.15,
                      top_p=0.8, top_k=20, min_p=0, stop=['<|im_end|>', '<|im_start|>'])
         # A small multilingual model can occasionally mix Chinese into Japanese.
         # Retry an explicit Japanese-only edit rather than publishing that result.
@@ -93,7 +95,7 @@ def main():
             retry = ('<|im_start|>system\nTranslate the English utterance into natural Japanese. '
                      'Output only Japanese text. Preserve meaning, names, numbers and negation. /no_think<|im_end|>\n'
                      '<|im_start|>user\n' + user + '<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n')
-            result = llm(retry, max_tokens=512, temperature=0, top_p=0.8, top_k=20, min_p=0,
+            result = llm(retry, max_tokens=limit, temperature=0, repeat_penalty=1.15, top_p=0.8, top_k=20, min_p=0,
                          stop=['<|im_end|>', '<|im_start|>'])
             if re.search(r'[这们吗为说让从过时]|的(?:时候|時候)', result['choices'][0]['text']):
                 raise ValueError('LLM翻訳に日本語以外の表現が混ざったため速報訳を保持します')

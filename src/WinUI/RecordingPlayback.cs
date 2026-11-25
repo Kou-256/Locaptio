@@ -86,7 +86,8 @@ public sealed partial class MainWindow
             try { await RecordingLibrary.SaveTextAsync(path, playbackDocument); }
             catch (Exception ex) { Status("音声・検索データは保存しましたが、テキストの保存に失敗しました: " + ex.Message); }
             reviewingRecording = true; SessionTitle.Text = (PlaybackClock.IsVideo(path) ? "保存済み録画を再生：" : "保存済み録音を再生：") + Path.GetFileName(Path.GetDirectoryName(path));
-            // Everything on screen is now in the recording's own files.
+            // Everything on screen is now in the recording's own files, the live summary included.
+            PersistLiveSummary();
             DiscardAutosave(); QueueSummaryAfterRecording();
             PlaybackPanel.Visibility = Visibility.Visible;
             EnsurePlaybackSpace();
@@ -366,7 +367,8 @@ public sealed partial class MainWindow
             if (document is not null)
                 foreach (var phrase in document.Phrases)
                 {
-                    var caption = new CaptionUpdate(history.Count + 1, phrase.Revision, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, !string.IsNullOrWhiteSpace(phrase.Translation) ? "en" : phrase.Language);
+                    var caption = new CaptionUpdate(history.Count + 1, phrase.Revision, phrase.Text, phrase.Translation, true, phrase.Started, 0, 0, !string.IsNullOrWhiteSpace(phrase.Translation) ? "en" : phrase.Language,
+                        TranslationRefined: phrase.TranslationRefined, SourceCorrected: phrase.AiCorrected, AiCorrected: phrase.AiCorrected);
                     UpdateHistory(caption); transcript.Update(caption);
                 }
             // Rebind IDs to visible rows after resolving any reused session IDs.

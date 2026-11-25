@@ -31,16 +31,10 @@ public partial class App : Application
     {
         InitializeComponent();
         // Keep the cause of a crash; WinUI otherwise reports only a generic stowed-exception code.
-        UnhandledException += (_, e) =>
-        {
-            try
-            {
-                string folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Locaptio", "logs");
-                System.IO.Directory.CreateDirectory(folder);
-                System.IO.File.WriteAllText(System.IO.Path.Combine(folder, "crash.txt"), DateTimeOffset.Now + Environment.NewLine + e.Exception);
-            }
-            catch (Exception) { }
-        };
+        UnhandledException += (_, e) => CrashReport.Write(e.Exception, "UI");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => CrashReport.Write(e.ExceptionObject as Exception, "background");
+        // A failed background task does not close the app; keep it in the trail of the next report.
+        TaskScheduler.UnobservedTaskException += (_, e) => { CrashReport.Note("unobserved task: " + e.Exception.GetBaseException().Message); e.SetObserved(); };
     }
 
     /// <summary>

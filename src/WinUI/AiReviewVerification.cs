@@ -186,7 +186,7 @@ public sealed partial class MainWindow
                 summaryItems = [];
                 captionStop = null; UpdateCommandStates();
             }
-            Check(LiveSummaryToggle is CheckBox && LiveSummaryMenuItem.Icon is ImageIcon, "live summary is a toolbar checkbox; its icon is only in the menu bar");
+            Check(LiveSummaryToggle is FeatureSwitch && LiveSummaryMenuItem.Icon is ImageIcon, "live summary is a toolbar switch; its icon is only in the menu bar");
 
             // 6. Toolbar: hide, reorder, settings rows, persistence and reset (the user's own layout is restored afterwards).
             string[] savedOrder = settings.ToolbarOrder, savedHidden = settings.ToolbarHidden;
@@ -284,6 +284,96 @@ public sealed partial class MainWindow
                 settings.LiveSummaryMinutes = savedMinutes; settings.LiveSummaryChars = savedChars; settings.LiveSummaryDetail = savedDetail; settings.SummaryPaneWidth = savedWidth;
                 settings.KeepOnTopHotkey = savedHotkey; RegisterKeepOnTopHotkey(); UpdateKeepOnTopMenuText(); SetKeepOnTop(savedTop);
                 liveSummaryClearConfirmForVerification = null; captionStop = null; settings.Save();
+            }
+
+            // 9. Editing stays open while new speech arrives (the editor follows its row; Enter saves what was typed).
+            ClearCaptions();
+            using (var listening = new CancellationTokenSource())
+            {
+                captionStop = listening;
+                for (int i = 0; i < 12; i++) UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, $"会議のメモ その{i + 1}。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                await Task.Delay(400); CaptionList.UpdateLayout();
+                var target = RealizedCaptionRows.SelectMany(r => r.Children.OfType<TextBlock>()).First(t => t.DataContext is CaptionHistoryEntry && Grid.GetColumn(t) == 0 && t.Visibility == Visibility.Visible);
+                long editedId = ((CaptionHistoryEntry)target.DataContext).Id;
+                BeginInlineEdit(target, editedId, 0, 0); await Task.Delay(200);
+                inlineEditBox!.Text = "編集中の文章";
+                for (int i = 0; i < 25; i++) { UpdateCaption(new CaptionUpdate(historyIds.LastOrDefault() + 1, 1, $"新しい発話 {i}。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja")); await Task.Delay(40); }
+                await Task.Delay(400);
+                Check(inlineEditor is not null && inlineEditBox?.Text == "編集中の文章", "the editor stays open with the typed text while 25 new utterances arrive");
+                FinishInlineEdit(true);
+                Check(FindCaption(editedId)?.English == "編集中の文章", "Enter saves the edit afterwards");
+                captionStop = null;
+            }
+
+            // 10. Speaker colors switch on and off while transcribing (no restart).
+            bool savedSpeakers = settings.SpeakerDiarization;
+            try
+            {
+                using var listening = new CancellationTokenSource();
+                captionStop = listening; settings.SpeakerDiarization = false;
+                SetSpeakerDiarization(true); await Task.Delay(300);
+                Check(speakerSession is not null && SpeakerMenuItem.IsChecked && SpeakerStatusText.Visibility == Visibility.Visible, "speaker colors turn on while transcribing");
+                SetSpeakerDiarization(false); await Task.Delay(500);
+                Check(speakerSession is null && !settings.SpeakerDiarization && !SpeakerMenuItem.IsChecked, "and off again");
+                captionStop = null;
+            }
+            finally { await StopSpeakerRecognitionAsync(); settings.SpeakerDiarization = savedSpeakers; SpeakerMenuItem.IsChecked = savedSpeakers; captionStop = null; settings.Save(); }
+            Check(new Locaptio.App.Settings().SpeakerDiarization && !new Locaptio.App.Settings().KeepOnTop && !new Locaptio.App.Settings().SummaryWindowOnTop, "defaults: speaker colors on; main and summary windows not kept on top");
+
+            // 11. Restoring keeps where AI corrected or translated and what was edited, along with the live summary.
+            {
+                ClearCaptions(); settings.ShowAiChanges = true;
+                using (var listening = new CancellationTokenSource())
+                {
+                    captionStop = listening;
+                    long a = historyIds.LastOrDefault() + 1;
+                    UpdateCaption(new CaptionUpdate(a, 1, "今日は議時録を保存します", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    UpdateCaption(new CaptionUpdate(a, 2, "今日は議事録を保存します", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja", SourceCorrected: true, AiCorrected: true));
+                    long b = a + 1;
+                    UpdateCaption(new CaptionUpdate(b, 1, "Please share the minutes.", "議事録を共有してください。", true, Stopwatch.GetTimestamp(), 0, 0, "en", TranslationRefined: true));
+                    long c = b + 1;
+                    UpdateCaption(new CaptionUpdate(c, 1, "予算の確認をします", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    if (edits.Apply(FindCaption(c)!, "予算を確認します", null) is { } manual) ApplyManualUpdate(manual);
+                    liveBlocks.Clear(); liveBlocks.Add(new(a, c, [new SummaryItem("要点", "議事録を共有する", [b])])); liveSummaryNextId = c + 1;
+                    captionStop = null;
+                }
+                bool savedAutosave = settings.AutosaveSession; settings.AutosaveSession = true; reviewingRecording = false;
+                sessionDirty = true; WriteAutosave(); await autosaveWrite; settings.AutosaveSession = savedAutosave;
+                var restoredSnapshot = SessionAutosave.TryLoad(autosavePath);
+                Check(restoredSnapshot is not null, "the autosave snapshot is written");
+                if (restoredSnapshot is null) throw new InvalidOperationException("no autosave snapshot");
+                ClearCaptions();
+                await RestoreSessionAsync(restoredSnapshot!);
+                var rowsAfter = history.Select(h => h.Caption).ToArray();
+                Check(rowsAfter.Length == 3 && rowsAfter[0].AiCorrected && AiOriginal(rowsAfter[0]) == "今日は議時録を保存します", "restore keeps the AI correction mark and the text before it");
+                Check(rowsAfter[1].TranslationRefined, "restore keeps the AI (context) translation mark");
+                Check(edits.IsEdited(rowsAfter[2].Id) && rowsAfter[2].English == "予算を確認します" && edits.Original(rowsAfter[2].Id) == "予算の確認をします", "restore keeps the manual edit and its original");
+                Check(liveBlocks.Count == 1 && liveBlocks[0].Items[0].RowIds.Length == 1 && FindCaption(liveBlocks[0].Items[0].RowIds[0]) is not null, "restore keeps the live summary with its links");
+                ClearCaptions();
+            }
+
+            // 12. A recording keeps its live summary: saved into the recording's files and back when it is opened again.
+            {
+                string recordingFolder = Path.Combine(work, "live-summary-recording"); Directory.CreateDirectory(recordingFolder);
+                string audio = Path.Combine(recordingFolder, "会議.wav");
+                using (var writer = new NAudio.Wave.WaveFileWriter(audio, new NAudio.Wave.WaveFormat(16000, 16, 1))) writer.Write(new byte[32000 * 20], 0, 32000 * 20);
+                string[] lines = ["それでは定例会議を始めます。", "リリースは来月の十五日にしましょう。", "佐藤さんは金曜日までにテスト結果を共有してください。"];
+                var phrases = lines.Select((text, i) => new RecordingPhrase(i + 1, i + 1, 1 + i * 5, text, null, 1, "ja", 4 + i * 5)).ToArray();
+                await RecordingTranscript.SaveAsync(audio, new(1, "会議.wav", DateTimeOffset.Now, false, phrases));
+                await LoadRecordingAsync(audio);
+                var ids = history.Select(h => h.Id).ToArray();
+                liveBlocks.Clear(); liveArchived.Clear(); liveDigest = null;
+                liveBlocks.Add(new(ids[0], ids[2], [new SummaryItem("決定事項", "リリースは来月15日", [ids[1]]), new SummaryItem("TODO", "佐藤さん：テスト結果を金曜までに共有", [ids[2]])]));
+                PersistLiveSummary(); await reviewWrite;
+                var reopenedFile = await RecordingTranscript.LoadAsync(audio);
+                Check(reopenedFile?.LiveSummary is { Blocks.Length: 1 } fileLive && fileLive.Blocks[0].Items.Length == 2 && fileLive.Blocks[0].Items[0].Evidence.SequenceEqual([6.0]), "the live summary is saved in the recording's file (with the times it is based on)");
+                ClearCaptions(); ShowSummaryPane(false);
+                Check(liveBlocks.Count == 0, "closing the recording clears the pane");
+                await LoadRecordingAsync(audio);
+                Check(liveBlocks.Count == 1 && liveBlocks[0].Items[0].RowIds.Length == 1 && FindCaption(liveBlocks[0].Items[0].RowIds[0])?.English == lines[1] && SummaryShown,
+                    "opening the recording again shows its live summary, linked to the right sentences");
+                await CaptureComposedAsync(Path.Combine(shots, "recording-live-summary.png"));
+                ClearCaptions(); ShowSummaryPane(false); ClosePlayback();
             }
 
             // 8. The pane follows live summary: shown when listening starts with it already on, closed by clearing

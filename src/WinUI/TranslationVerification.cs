@@ -38,32 +38,37 @@ public sealed partial class MainWindow
             await Choose(ModeSelector, 0); await Choose(TargetSelector, 1); RenderCaptions();
             Check(settings.CaptionMode == "ja>en" && SpeechJapanese && Route is { Source: "ja", Target: "en", Pack: "ja-en" } && EnglishHeader.Text == "日本語" && JapaneseHeader.Text == "英語", $"Japanese → English route and headers ({EnglishHeader.Text} / {JapaneseHeader.Text})");
             // Caption colors follow the role (original / translation / transcription only), not the language.
-            string savedPalette = settings.CaptionPalette, savedTranscript = settings.CaptionTranscriptColor, savedBackground = settings.CaptionBackground;
+            string savedPalette = settings.MainPalette, savedTranscript = settings.MainTranscriptColor, savedBackground = settings.MainBackground;
             try
             {
-                settings.CaptionPalette = "cyan-white"; settings.CaptionTranscriptColor = "white"; settings.CaptionBackground = "live";
+                settings.MainPalette = "cyan-white"; settings.MainTranscriptColor = "white"; settings.MainBackground = "live";
                 Windows.UI.Color RowColor(int child, CaptionUpdate caption)
                 {
                     var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition());
-                    row.Children.Add(new TextBlock()); row.Children.Add(new TextBlock()); StyleHistoryRow(row, caption);
+                    row.Children.Add(new TextBlock()); row.Children.Add(new TextBlock()); mainView = settings.MainView(); StyleHistoryRow(row, caption);
                     return ((Microsoft.UI.Xaml.Media.SolidColorBrush)((TextBlock)row.Children[child]).Foreground).Color;
                 }
                 var spoken = new CaptionUpdate(1, 1, "今日の会議を始めます。", "Let's start today's meeting.", true, 0, 0, 0, "ja");
                 var cyan = Windows.UI.Color.FromArgb(255, 0x7D, 0xE3, 0xFF); var white = Windows.UI.Color.FromArgb(255, 255, 255, 255); var yellow = Windows.UI.Color.FromArgb(255, 0xFF, 0xE7, 0x94);
                 Check(RowColor(0, spoken) == cyan && RowColor(1, spoken) == white, "Japanese → English: the original (Japanese) uses the original color, the English translation the translation color");
-                settings.CaptionPalette = new Locaptio.App.Settings().CaptionPalette;
-                Check(settings.CaptionPalette == "white-cyan" && RowColor(0, spoken) == white && RowColor(1, spoken) == cyan, "default: original white, translation cyan");
-                settings.CaptionPalette = "yellow-white";
+                settings.MainPalette = new Locaptio.App.Settings().CaptionPalette;
+                Check(settings.MainPalette == "white-cyan" && RowColor(0, spoken) == white && RowColor(1, spoken) == cyan, "default: original white, translation cyan");
+                settings.MainPalette = "yellow-white";
                 Check(RowColor(0, spoken) == Windows.UI.Color.FromArgb(255, 0xFF, 0xE7, 0x94) && RowColor(1, spoken) == white, "original yellow / translation white");
-                settings.CaptionPalette = "cyan-white";
+                settings.MainPalette = "cyan-white";
                 modeChanging = true; settings.CaptionMode = "ja"; modeChanging = false; ApplySettings();
                 Check(RowColor(0, spoken with { Japanese = null }) == white, "transcription only uses its own color (white by default)");
-                settings.CaptionTranscriptColor = "yellow";
+                settings.MainTranscriptColor = "yellow";
                 Check(RowColor(0, spoken with { Japanese = null }) == yellow, "the transcription-only color can be changed separately");
                 modeChanging = true; settings.CaptionMode = "it>es"; modeChanging = false; ApplySettings();
                 Check(RowColor(0, spoken) == cyan, "translation colors stay as chosen for other languages");
+                // The caption window's look no longer changes the main window, and the other way round.
+                string captionPalette = settings.CaptionPalette, captionBackground = settings.CaptionBackground;
+                settings.CaptionPalette = "yellow-white"; settings.CaptionBackground = "light"; ApplySettings();
+                Check(RowColor(0, spoken) == cyan && Root.RequestedTheme == ElementTheme.Dark, "changing the caption look leaves the main window as it was");
+                settings.CaptionPalette = captionPalette; settings.CaptionBackground = captionBackground; ApplySettings();
             }
-            finally { settings.CaptionPalette = savedPalette; settings.CaptionTranscriptColor = savedTranscript; settings.CaptionBackground = savedBackground; modeChanging = true; settings.CaptionMode = "ja>en"; modeChanging = false; ApplySettings(); }
+            finally { settings.MainPalette = savedPalette; settings.MainTranscriptColor = savedTranscript; settings.MainBackground = savedBackground; modeChanging = true; settings.CaptionMode = "ja>en"; modeChanging = false; ApplySettings(); }
             bool packHere = TranslationPacks.Find("ja-en")!.IsInstalled(root);
             Check(packHere ? MissingTranslationPack(root) is null : MissingTranslationPack(root)?.Contains("日本語 → 英語") == true, "missing pack explained (or none missing): " + (MissingTranslationPack(root) ?? "installed"));
             Check(CaptionModes.Normalize("translate", "zh") == "en>ja" && CaptionModes.Normalize("translate", "es") == "en>es" && CaptionModes.Normalize("ja-translate", "ja", "en") == "ja>en"
@@ -73,7 +78,7 @@ public sealed partial class MainWindow
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(400);
             settingsNavigation!.Select("翻訳・ローカルLLM"); await Task.Delay(300);
             var page = settingsNavigation.Page("翻訳・ローカルLLM");
-            Check(page.Children.OfType<TextBlock>().Any(t => t.Text == "翻訳の言語") && TranslationPacks.Downloadable.All(pack => page.Children.OfType<StackPanel>().Any(p => p.Children.OfType<TextBlock>().FirstOrDefault()?.Text.StartsWith(pack.Name + "：") == true && p.Children.OfType<Button>().Any())), "settings explain the languages and list two downloadable packs");
+            Check(page.Children.OfType<TextBlock>().Any(t => t.Text == "翻訳の言語") && TranslationPacks.Downloadable.All(pack => page.Children.OfType<StackPanel>().Any(p => p.Children.OfType<TextBlock>().FirstOrDefault()?.Text.StartsWith(pack.Name + "：") == true && p.Children.OfType<StackPanel>().Any(b => b.Children.OfType<Button>().Count() == 2))), "settings explain the languages and list two downloadable packs, each with download and delete");
             await settingsNavigation.CaptureAsync(Path.Combine(root, "artifacts", "settings-translation.png"));
             settingsWindow?.Close(); await Task.Delay(200);
 

@@ -141,7 +141,9 @@ public sealed class CaptionWindow : Window
         lines.Spacing = settings.CaptionLineGap;
         WindowAppearance.SetOpacity(hwnd, 1);
         lines.Children.Clear(); bubbles.Clear();
-        var visibleCaptions = captions.TakeLast(settings.CaptionSentenceMode ? 1 : settings.CaptionRows).ToArray();
+        // One sentence per bubble: each utterance is shown as its sentences (the main window keeps whole utterances).
+        var pieces = settings.CaptionSplitSentences ? captions.SelectMany(CaptionSentences.Expand) : captions;
+        var visibleCaptions = pieces.TakeLast(settings.CaptionSentenceMode ? 1 : settings.CaptionRows).ToArray();
         foreach (var caption in visibleCaptions)
         {
             bool japanese = CaptionModes.TranscriptionOnly(CaptionModes.Normalize(settings.CaptionMode, settings.EnglishTranslationTarget, settings.JapaneseTranslationTarget));
@@ -339,6 +341,7 @@ public sealed class CaptionWindow : Window
     internal static SolidColorBrush BackgroundBrush(Settings settings, double opacity) => new(SurfaceBrush(settings).Color) { Opacity = Math.Clamp(opacity, 0, 1) };
     internal bool HasIndependentOpacity() => bubbles.All(b => Math.Abs(b.Background.Opacity - settings.CaptionOpacity) < .001 && Math.Abs(((TextBlock)b.Child).Opacity - settings.CaptionTextOpacity) < .001);
     internal bool UsesOrdinaryColors() => bubbles.All(b => { var text = (TextBlock)b.Child; string role = text.Tag as string ?? "original"; return ((SolidColorBrush)text.Foreground).Color == RoleBrush(settings, role == "transcript", role == "translation").Color; });
+    internal string ColorDiagnostic() => string.Join(" ", bubbles.Select(b => { var text = (TextBlock)b.Child; string role = text.Tag as string ?? "original"; return $"{role}:{((SolidColorBrush)text.Foreground).Color}/{RoleBrush(settings, role == "transcript", role == "translation").Color}"; }));
     internal bool UsesCorrectionColor() => bubbles.Select(b => (TextBlock)b.Child).Any(t => ((SolidColorBrush)t.Foreground).Color == CorrectedBrush(settings).Color && !t.Text.Contains("AI補正"));
     internal bool HasNoNativeFrame()
     {

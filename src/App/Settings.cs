@@ -24,6 +24,8 @@ public sealed class Settings
     public int CaptionRows { get; set; } = 2;
     public int CaptionMaxLines { get; set; } = 4;
     public bool CaptionSentenceMode { get; set; }
+    /// <summary>Caption window: show each sentence in its own bubble (split at 。！？ and sentence-ending periods).</summary>
+    public bool CaptionSplitSentences { get; set; } = true;
     public double CaptionLineGap { get; set; } = 2;
     public double CaptionLineHeight { get; set; } = 1.15;
     public int AppearanceVersion { get; set; }
@@ -80,7 +82,7 @@ public sealed class Settings
     public bool RealtimePreviewOnGpu { get; set; }
     /// <summary>Correct each utterance with the local AI. Off by default (live summary is the lighter way to use the AI).</summary>
     public bool CorrectTranscriptWithAi { get; set; }
-    public bool SpeakerDiarization { get; set; }
+    public bool SpeakerDiarization { get; set; } = true;
     public double SpeakerThreshold { get; set; } = .55;
     public string[] SpeakerColors { get; set; } = ["#7DD3FC", "#FCA5A5", "#86EFAC", "#FDE68A", "#C4B5FD", "#FDBA74", "#F9A8D4", "#5EEAD4"];
     /// <summary>Spoken language and optional translation target, e.g. "ja" or "en>ja" (CaptionModes). Older values still read.</summary>
@@ -96,7 +98,25 @@ public sealed class Settings
     /// <summary>Lines kept per block: "short", "normal" or "detailed".</summary>
     public string LiveSummaryDetail { get; set; } = "normal";
     /// <summary>Keep the main window in front of other windows.</summary>
-    public bool KeepOnTop { get; set; } = true;
+    public bool KeepOnTop { get; set; }
+    /// <summary>Keep the separate AI summary window in front (independent of the main window).</summary>
+    public bool SummaryWindowOnTop { get; set; }
+    // The main window's own look (set in 本体の表示); the caption window keeps the Caption* settings.
+    public string MainPalette { get; set; } = "white-cyan";
+    public string MainTranscriptColor { get; set; } = "white";
+    public string MainTextColor { get; set; } = "#FFFFFF";
+    public string MainBackground { get; set; } = "live";
+    public string MainSurfaceColor { get; set; } = "#363636";
+    public double MainLineGap { get; set; } = 2;
+    public double MainLineHeight { get; set; } = 1.15;
+    /// <summary>A copy whose Caption* look is the main window's, for code that draws with the caption brushes.</summary>
+    public Settings MainView()
+    {
+        var view = (Settings)MemberwiseClone();
+        view.CaptionPalette = MainPalette; view.CaptionTranscriptColor = MainTranscriptColor; view.CaptionTextColor = MainTextColor;
+        view.CaptionBackground = MainBackground; view.CaptionSurfaceColor = MainSurfaceColor; view.CaptionLineGap = MainLineGap; view.CaptionLineHeight = MainLineHeight;
+        return view;
+    }
     /// <summary>Width of the summary pane beside the transcript (pixels at 100%).</summary>
     public double SummaryPaneWidth { get; set; } = 340;
     /// <summary>System-wide shortcut that toggles <see cref="KeepOnTop"/>: "ctrl-alt-t", "ctrl-shift-t", "ctrl-alt-f12" or "none".</summary>
@@ -212,9 +232,25 @@ public sealed class Settings
                 if (settings.CaptionPalette == "cyan-white") settings.CaptionPalette = "white-cyan";
                 settings.AppearanceVersion = 9;
             }
+            if (settings.AppearanceVersion < 10)
+            {
+                // From 1.0.61 the main window no longer stays in front by default (Ctrl+Alt+T turns it on), and
+                // speaker colors are on by default.
+                settings.KeepOnTop = false;
+                settings.SpeakerDiarization = true;
+                settings.AppearanceVersion = 10;
+            }
+            if (settings.AppearanceVersion < 11)
+            {
+                // From 1.0.61 the main window has its own look; start from what the shared settings showed.
+                settings.MainPalette = settings.CaptionPalette; settings.MainTranscriptColor = settings.CaptionTranscriptColor; settings.MainTextColor = settings.CaptionTextColor;
+                settings.MainBackground = settings.CaptionBackground; settings.MainSurfaceColor = settings.CaptionSurfaceColor;
+                settings.MainLineGap = settings.CaptionLineGap; settings.MainLineHeight = settings.CaptionLineHeight;
+                settings.AppearanceVersion = 11;
+            }
             return settings;
         }
-        catch { return new() { AppearanceVersion = 9 }; }
+        catch { return new() { AppearanceVersion = 11 }; }
     }
     public void Save()
     {
