@@ -8,6 +8,11 @@ export const updates = {
     latest: '最新',
     all: 'すべての変更履歴を見る（GitHub）',
     items: [
+      ['1.0.62', '範囲録画・録画対象の切り替え・続きの録音', [
+        '画面の**一部だけを録画**できます。プレビューをドラッグするか、座標を入力して範囲を決めます。',
+        '録画中に「対象を変更」で、録画する画面・ウィンドウ・範囲を切り替えられます。停止すると1つの動画にまとまります。',
+        '保存済み・復元した録音や録画は、**同じファイルの続きとして**録れます。録画中に強制終了しても、それまでの動画を復元できます。',
+        '上部のボタンの列を折りたためます（Ctrl+Shift+M）。録画対象の選択画面が見切れる問題も修正しました。']],
       ['1.0.61', '編集が解除されない・見た目を個別に・復元を強化', [
         '文字起こし中に始めた編集は、新しい文章が来ても解除されません。AIが同じ言葉を繰り返す問題も防ぎました。',
         '**本体と字幕の見た目を別々に**設定できます。文字起こし中に見た目を変えると終了する問題を修正し、クラッシュレポートを追加しました。',
@@ -71,6 +76,11 @@ export const updates = {
     latest: 'Latest',
     all: 'See the full changelog (GitHub)',
     items: [
+      ['1.0.62', 'Region recording, target switching, continue a recording', [
+        'Record **part of the screen** by dragging on the preview or typing coordinates.',
+        'While recording, switch the recorded screen, window or region; the parts become one video when you stop.',
+        'A saved or restored recording can be **continued in the same file**. A video cut off by a crash is recovered up to that point.',
+        'The button rows fold into a slim bar (Ctrl+Shift+M), and the recording target dialog is no longer cut off.']],
       ['1.0.61', 'Edits stay open, separate looks, fuller restore', [
         'An edit started during transcription stays open as new text arrives. AI output no longer loops on the same words.',
         '**The main window and the captions have separate appearance settings.** Changing the appearance during transcription no longer closes the app, and a crash report is saved if it ever does.',
