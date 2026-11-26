@@ -537,7 +537,15 @@ public sealed partial class MainWindow
         {
             var selects = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(0, 6, 0, 0) }; selects.Children.Add(framerate); selects.Children.Add(quality); selects.Children.Add(countdown);
             options.Children.Add(selects);
-            foreach (var box in new[] { systemAudio, microphone, cursor, clicks, transcribe, hide }) options.Children.Add(box);
+            // Two columns, so the dialog fits on a laptop screen without scrolling.
+            var boxes = new Grid { ColumnSpacing = 16 };
+            boxes.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); boxes.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var shortOnes = new[] { systemAudio, microphone, cursor, clicks };
+            for (int i = 0; i < 4; i++) boxes.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (int i = 0; i < shortOnes.Length; i++) { Grid.SetRow(shortOnes[i], i / 2); Grid.SetColumn(shortOnes[i], i % 2); boxes.Children.Add(shortOnes[i]); }
+            // The long ones take a whole row.
+            foreach (var (box, row) in new[] { (transcribe, 2), (hide, 3) }) { Grid.SetRow(box, row); Grid.SetColumnSpan(box, 2); boxes.Children.Add(box); }
+            options.Children.Add(boxes);
         }
         var layout = new Grid { ColumnSpacing = 18 };
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -545,9 +553,12 @@ public sealed partial class MainWindow
         left.Children.Add(new TextBlock { Text = switching is null ? "録画する画面全体、またはウィンドウを選んでください。" : "録画を止めずに切り替えます。同じ画面の範囲の変更はその場で、別の画面やウィンドウへの切り替えは録画を区切って行い、停止したときに1つの動画にまとめます。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Width = 460 });
         left.Children.Add(list);
         Grid.SetColumn(options, 1); layout.Children.Add(left); layout.Children.Add(options);
-        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = switching is null ? "録画する対象を選ぶ" : "録画する対象を変更", Content = new ScrollViewer { Content = layout, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+        var dialogScroll = new ScrollViewer { Content = layout, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        captureDialogScrollForVerification = dialogScroll;
+        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = switching is null ? "録画する対象を選ぶ" : "録画する対象を変更", Content = dialogScroll,
             PrimaryButtonText = switching is null ? "録画を開始" : "切り替える", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Primary, RequestedTheme = Root.RequestedTheme };
-        dialog.Resources["ContentDialogMaxWidth"] = 1100.0;
+        dialog.Resources["ContentDialogMaxWidth"] = 1600.0; dialog.Resources["ContentDialogMaxHeight"] = 1600.0;
+        FitWindowToDialog(dialog, layout);
         CaptureTarget? selected = null; WriteableBitmap? previewBitmap = null;
         // The region in the selected display's pixels while 「範囲を指定」 is chosen.
         CaptureRegion? region = switching?.Region ?? CaptureRegion.Parse(settings.VideoRegion);

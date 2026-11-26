@@ -131,6 +131,12 @@ public sealed partial class MainWindow
                 targetsForVerification = [sampleDisplay, sampleWindow];
                 snapshotForVerification = (t, width) => { int w = Math.Min(width, t.Width), h = Math.Max(1, t.Height * w / t.Width); using var image = SampleScreen(t.IsDisplay ? "desktop" : "slide", w, h, "定例会議：リリース日程"); return Pixels(image); };
                 (bool Drawn, CaptureRegion? Region, string Hint) part = default, window = default, whole = default;
+                // A narrow window like the one the dialog was cut off in: it grows while the dialog is open.
+                if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: not Microsoft.UI.Windowing.OverlappedPresenterState.Restored } shownState) { shownState.Restore(); await Task.Delay(300); }
+                var sizeBefore = AppWindow.Size; var positionBefore = AppWindow.Position;
+                double pixelScale = Root.XamlRoot.RasterizationScale;
+                AppWindow.Resize(new((int)(740 * pixelScale), (int)(640 * pixelScale))); await Task.Delay(300);
+                var smallSize = AppWindow.Size; Windows.Graphics.SizeInt32 openSize = default; double scrollableWidth = -1, scrollableHeight = -1;
                 captureDialogForVerification = async dialog =>
                 {
                     await Task.Delay(200);
@@ -139,11 +145,18 @@ public sealed partial class MainWindow
                     part = regionChoiceForVerification!(sampleDisplay, new(101, 50, 641, 361));
                     // Shown once for a picture of the region over the preview.
                     var showing = dialog.ShowAsync(); await Task.Delay(900);
+                    openSize = AppWindow.Size; captureDialogScrollForVerification!.UpdateLayout();
+                    scrollableWidth = captureDialogScrollForVerification.ScrollableWidth; scrollableHeight = captureDialogScrollForVerification.ScrollableHeight;
                     await CaptureComposedAsync(Path.Combine(artifacts, "video-region-picker.png"));
                     dialog.Hide(); await showing;
                     return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
                 };
                 var picked = await ChooseCaptureAsync();
+                await Task.Delay(300);
+                log.Add($"picker window {smallSize.Width}×{smallSize.Height} → {openSize.Width}×{openSize.Height} → {AppWindow.Size.Width}×{AppWindow.Size.Height}; scrollable {scrollableWidth:F0}×{scrollableHeight:F0}");
+                Check(openSize.Width > smallSize.Width && openSize.Height > smallSize.Height && scrollableWidth < 1 && scrollableHeight < 1, "a small window grows so the target dialog is not cut off");
+                Check(AppWindow.Size.Width == smallSize.Width && AppWindow.Size.Height == smallSize.Height, "the window goes back to its size when the dialog closes");
+                AppWindow.MoveAndResize(new(positionBefore.X, positionBefore.Y, sizeBefore.Width, sizeBefore.Height)); await Task.Delay(200);
                 Check(part.Drawn && part.Region == new CaptureRegion(101, 50, 640, 360) && (part.Hint ?? "").Contains("640×360"), $"region drawn on the preview and made even ({part.Region}; {part.Hint})");
                 Check(!window.Drawn && window.Region is null && (window.Hint ?? "").Contains("画面全体"), "no region for a window");
                 Check(!whole.Drawn && whole.Region is null, "a region covering the whole display records the whole display");
