@@ -271,7 +271,12 @@ public sealed partial class MainWindow
                 // What a recording cut off by Locaptio closing looks like: the end missing and no total length yet
                 // (the file is locked while recording, so the finished one is cut back the same way).
                 string crashCopy = Path.Combine(work, "強制終了の録画.mp4");
-                byte[] cutBytes = File.ReadAllBytes(firstVideo); cutBytes = cutBytes[..(int)(cutBytes.Length * .7)];
+                // Cut halfway into the last fragment: the fragments before it are complete, as when recording is killed.
+                byte[] cutBytes = File.ReadAllBytes(firstVideo);
+                int lastFragment = cutBytes.AsSpan().LastIndexOf("moof"u8), fragments = 0;
+                for (int scan = 0, found; (found = cutBytes.AsSpan(scan).IndexOf("moof"u8)) >= 0; scan += found + 4) fragments++;
+                log.Add($"recorded video: {cutBytes.Length} bytes, {fragments} fragments");
+                cutBytes = cutBytes[..(lastFragment > 0 && fragments > 1 ? lastFragment + (cutBytes.Length - lastFragment) / 2 : (int)(cutBytes.Length * .7))];
                 int mvhdAt = cutBytes.AsSpan().IndexOf("mvhd"u8) + 4;
                 if (cutBytes[mvhdAt] == 1) cutBytes.AsSpan(mvhdAt + 24, 8).Clear(); else cutBytes.AsSpan(mvhdAt + 16, 4).Clear();
                 File.WriteAllBytes(crashCopy, cutBytes);

@@ -299,6 +299,8 @@ public sealed partial class MainWindow
         finally
         {
             videoSwitchRequest = null;
+            // Until the file is saved (and joined to a continued recording), a new recording cannot start.
+            RecordToggle.IsEnabled = VideoToggle.IsEnabled = false;
             if (run is not null) await StopVideoRunAsync(run);
             ExcludeFromCapture(false);
             videoRecorder = null; videoSource = null; videoPaused = false; videoChoice = null;

@@ -911,7 +911,7 @@ public sealed partial class MainWindow : Window
         var recorder = new AudioRecording(SelectedAudio()); recorder.Status += Status;
         try { await Task.Run(() => recorder.RunAsync(path, token)); StatusText.Text = "録音を保存しました: " + path; }
         catch (Exception ex) { StatusText.Text = "録音に失敗しました: " + ex.Message; ShowStatusDetails(pin: true); }
-        finally { recordingStop?.Dispose(); recordingStop = null; SyncLiveSummaryPane(); await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
+        finally { RecordToggle.IsEnabled = VideoToggle.IsEnabled = false; recordingStop?.Dispose(); recordingStop = null; SyncLiveSummaryPane(); await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; RecordToggle.IsEnabled = VideoToggle.IsEnabled = !closing; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
     }
     private async Task StopRecordingAsync()
     {
