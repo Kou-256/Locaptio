@@ -61,10 +61,12 @@ public sealed partial class MainWindow
             bool confirmedExistingText = history.Count > 0;
             if (!await ConfirmNewRecordingAsync("新規録画") || closing) return;
             var choice = captureChoiceForVerification is not null ? await captureChoiceForVerification() : await ChooseCaptureAsync();
-            if (choice is null || closing) return;
+            if (choice is null || closing) { continuation = null; return; }
             string directory = RecordingRoot; Directory.CreateDirectory(directory);
             string? path;
-            if (recordingFilePickerForVerification is not null) path = await recordingFilePickerForVerification();
+            // Continuing the open recording: the new part records next to it, no new file or folder is asked for.
+            if (continuation is { } continued) path = continued.Part;
+            else if (recordingFilePickerForVerification is not null) path = await recordingFilePickerForVerification();
             else
             {
                 var picker = new Microsoft.Windows.Storage.Pickers.FileSavePicker(AppWindow.Id) { Title = "新規録画：名前を指定（専用フォルダーを作成）", SuggestedFileName = DateTime.Now.ToString("yyyyMMdd") + "_録画" };
@@ -74,11 +76,15 @@ public sealed partial class MainWindow
             }
             if (string.IsNullOrWhiteSpace(path) || closing) return;
             if (!path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)) path = Path.ChangeExtension(path, ".mp4");
-            if (!confirmedExistingText && !await ConfirmNewRecordingAsync("新規録画")) return;
+            var continuing = continuation;
+            if (continuing is null && !confirmedExistingText && !await ConfirmNewRecordingAsync("新規録画")) return;
             bool keepWindowsConnection = windowsSession is not null && captionStop is { IsCancellationRequested: false };
             if (!keepWindowsConnection) await StopAsync();
-            settings.RecordingSaveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!; settings.Save();
-            path = RecordingLibrary.CreateSessionPath(path);
+            if (continuing is null)
+            {
+                settings.RecordingSaveDirectory = Path.GetDirectoryName(Path.GetFullPath(path))!; settings.Save();
+                path = RecordingLibrary.CreateSessionPath(path);
+            }
             PrepareTextForNewRecording();
             if (choice.CountdownSeconds > 0)
             {
@@ -89,10 +95,12 @@ public sealed partial class MainWindow
             if (closing) return;
             StartVideoRecording(path, choice);
             if (choice.Transcribe && !keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
+            if (continuing is not null) SessionTitle.Text = "続きを録画中：" + Path.GetFileName(Path.GetDirectoryName(continuing.Target)) + " / " + Path.GetFileName(continuing.Target);
         }
         catch (Exception ex) { Status("録画を開始できません: " + VideoErrorText(ex)); ShowStatusDetails(pin: true); }
         finally
         {
+            if (recordingStop is null) continuation = null;
             CountdownOverlay.Visibility = Visibility.Collapsed;
             dialogOpen = false; SetVideoChecked(VideoRecording);
             RecordToggle.IsEnabled = VideoToggle.IsEnabled = !closing;
@@ -156,7 +164,9 @@ public sealed partial class MainWindow
             AudioOptions = audio,
             VideoEncoderOptions = new VideoEncoderOptions
             {
-                Framerate = choice.Framerate, Quality = quality, IsHardwareEncodingEnabled = true, IsMp4FastStartEnabled = true,
+                // Fragments are written as they are made: if Locaptio is closed while recording, the video up to that
+                // point can be recovered (Mp4Repair). A single-piece MP4 would keep its index until the end and be lost.
+                Framerate = choice.Framerate, Quality = quality, IsHardwareEncodingEnabled = true, IsMp4FastStartEnabled = false, IsFragmentedMp4Enabled = true,
                 Encoder = new H264VideoEncoder { BitrateMode = H264BitrateControlMode.Quality }
             },
             MouseOptions = new MouseOptions { IsMousePointerEnabled = choice.Cursor, IsMouseClicksDetected = choice.Cursor && choice.Clicks }
@@ -340,7 +350,8 @@ public sealed partial class MainWindow
         profile.Video.Width = w; profile.Video.Height = h;
         profile.Video.FrameRate.Numerator = (uint)framerate; profile.Video.FrameRate.Denominator = 1;
         profile.Video.PixelAspectRatio.Numerator = 1; profile.Video.PixelAspectRatio.Denominator = 1;
-        profile.Video.Bitrate = (uint)Math.Clamp(w * h * framerate * .12, 2_000_000, 40_000_000);
+        // About 3.7 Mbps for 1080p at 60 fps: plenty for screens, which change little between frames.
+        profile.Video.Bitrate = (uint)Math.Clamp(w * h * framerate * .03, 1_000_000, 12_000_000);
         profile.Audio = audio ? Windows.Media.MediaProperties.AudioEncodingProperties.CreateAac(48000, 2, 192000) : null;
         return profile;
     }

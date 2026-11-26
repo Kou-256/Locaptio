@@ -19,27 +19,36 @@ public sealed partial class MainWindow
     /// Before a new recording: keep the text and continue after it, or clear it (offering to save first).
     /// Returns false when cancelled. Sets <see cref="keepExistingText"/>.
     /// </summary>
-    private async Task<bool> ChooseExistingTextAsync(string action)
+    private async Task<bool> ChooseExistingTextAsync(string action, string? continuable = null)
     {
         keepExistingText = false;
-        if (history.Count == 0) return true;
-        if (settings.ExistingTextOnRecording == "keep") { keepExistingText = true; return true; }
-        if (settings.ExistingTextOnRecording == "clear") return await ConfirmTranscriptReplacementAsync(action + "のため、表示中のテキストをクリアします。");
+        if (history.Count == 0 && continuable is null) return true;
+        // With a saved recording open, continuing it is a different choice from the remembered one: always ask.
+        if (continuable is null && settings.ExistingTextOnRecording == "keep") { keepExistingText = true; return true; }
+        if (continuable is null && settings.ExistingTextOnRecording == "clear") return await ConfirmTranscriptReplacementAsync(action + "のため、表示中のテキストをクリアします。");
         bool previousDialog = dialogOpen; dialogOpen = true;
         int choice; bool remember;
         try
         {
-            var keep = new RadioButton { Content = "引き継ぐ：表示中のテキストの続きに記録する", IsChecked = true, GroupName = "existing" };
+            string kind = action == "新規録画" ? "録画" : "録音";
+            // Offered first, and chosen by default for a recording restored after Locaptio closed unexpectedly.
+            var resume = new RadioButton { Content = $"続きを{kind}する：開いている{kind}「{Path.GetFileName(continuable)}」の後ろに追記（同じファイル・同じフォルダーのまま）", GroupName = "existing", Visibility = continuable is null ? Visibility.Collapsed : Visibility.Visible,
+                IsChecked = continuable is not null && string.Equals(continuable, restoredInterruptedPath, StringComparison.OrdinalIgnoreCase) };
+            var keep = new RadioButton { Content = "引き継ぐ：表示中のテキストの続きに記録する（新しいファイル）", IsChecked = resume.IsChecked != true, GroupName = "existing", IsEnabled = history.Count > 0 };
             var save = new RadioButton { Content = "保存してからクリアする", GroupName = "existing" };
             var discard = new RadioButton { Content = "保存せずにクリアする", GroupName = "existing" };
             var always = new CheckBox { Content = "次回からこの選択を使う（設定の「保存先・録音」で変更できます）" };
             var content = new StackPanel { Spacing = 8, MaxWidth = 520 };
             content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Text = $"{action}を始めます。表示中のテキスト（{history.Count} 件）をどうしますか？" });
-            content.Children.Add(keep); content.Children.Add(save); content.Children.Add(discard);
+            content.Children.Add(resume); content.Children.Add(keep); content.Children.Add(save); content.Children.Add(discard);
             content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = .8, Text = "引き継いだテキストは画面と保存するテキストに残ります。録音・録画ファイルの文字起こしには、ここから話した内容が保存されます。" });
             content.Children.Add(always);
+            // Continuing is not remembered: it depends on which recording is open.
+            void ShowAlways() { if (resume.IsChecked == true) always.IsChecked = false; always.Visibility = resume.IsChecked == true ? Visibility.Collapsed : Visibility.Visible; }
+            ShowAlways(); resume.Checked += (_, _) => ShowAlways(); resume.Unchecked += (_, _) => ShowAlways();
             var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "表示中のテキスト", Content = content, PrimaryButtonText = "開始", CloseButtonText = "キャンセル", DefaultButton = ContentDialogButton.Primary, RequestedTheme = Root.RequestedTheme };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary || closing) return false;
+            if (resume.IsChecked == true) { keepExistingText = true; BeginContinuation(continuable!); return true; }
             choice = keep.IsChecked == true ? 0 : save.IsChecked == true ? 1 : 2; remember = always.IsChecked == true;
         }
         finally { dialogOpen = previousDialog; }

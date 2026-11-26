@@ -73,6 +73,8 @@ public static class SessionAutosave
             // Also reached when recovery is offered again after an earlier attempt already moved the checkpoint.
             if (File.Exists(recovered)) return RepairWave(recovered) ? recovered : null;
             if (!File.Exists(recordingPath)) return null;
+            // A video cut off while recording: everything up to its last complete fragment is kept.
+            if (Path.GetExtension(recordingPath).Equals(".mp4", StringComparison.OrdinalIgnoreCase)) return Mp4Repair.Repair(recordingPath) ? recordingPath : null;
             return !Path.GetExtension(recordingPath).Equals(".wav", StringComparison.OrdinalIgnoreCase) || RepairWave(recordingPath) ? recordingPath : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return null; }

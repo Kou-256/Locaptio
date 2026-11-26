@@ -753,9 +753,17 @@ public sealed partial class MainWindow : Window
     private Func<Task<bool>>? confirmNewRecordingForVerification;
     private async Task<bool> ConfirmNewRecordingAsync(string action = "新規録音")
     {
-        if (history.Count == 0) { keepExistingText = false; return true; }
+        continuation = null;
+        // A saved recording is open: it can be continued in the same file instead of a new one.
+        string? continuable = ContinuableRecording(action == "新規録画");
+        if (continuable is not null && continueRecordingForVerification is not null)
+        {
+            if (continueRecordingForVerification()) { keepExistingText = true; BeginContinuation(continuable); return true; }
+            continuable = null;
+        }
+        if (history.Count == 0 && continuable is null) { keepExistingText = false; return true; }
         if (confirmNewRecordingForVerification is not null) { keepExistingText = settings.ExistingTextOnRecording == "keep"; return await confirmNewRecordingForVerification(); }
-        return await ChooseExistingTextAsync(action);
+        return await ChooseExistingTextAsync(action, continuable);
     }
     private async void RecordChanged(object sender, RoutedEventArgs e)
     {
@@ -768,6 +776,23 @@ public sealed partial class MainWindow : Window
         {
             bool confirmedExistingText = history.Count > 0;
             if (!await ConfirmNewRecordingAsync() || closing) { SetRecordingChecked(false); return; }
+            if (continuation is { } continued)
+            {
+                // The new part records next to the recording and is appended to it when recording stops.
+                bool keepConnection = windowsSession is not null && captionStop is { IsCancellationRequested: false };
+                if (UseWindowsCaptionEngine && captionsForVerification is null)
+                {
+                    WindowsOperationText.Visibility = Visibility.Visible;
+                    try { await new WindowsCaptionWindow().EnsureStartedAsync(captionStop?.Token ?? CancellationToken.None); }
+                    finally { WindowsOperationText.Visibility = Visibility.Collapsed; }
+                }
+                if (!keepConnection) await StopAsync();
+                PrepareTextForNewRecording();
+                StartRecording(continued.Part);
+                if (!keepConnection) await StartAsync(allowRecordingDialog: true);
+                SessionTitle.Text = "続きを録音中：" + Path.GetFileName(Path.GetDirectoryName(continued.Target)) + " / " + Path.GetFileName(continued.Target);
+                return;
+            }
             string directory = string.IsNullOrWhiteSpace(settings.RecordingSaveDirectory)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "Locaptio")
                 : settings.RecordingSaveDirectory;
@@ -799,7 +824,7 @@ public sealed partial class MainWindow : Window
             if (!keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
             if (keepWindowsConnection) SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path));
         }
-        catch (Exception ex) { SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
+        catch (Exception ex) { if (recordingStop is null) continuation = null; SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
         finally
         {
             dialogOpen = false; RecordToggle.IsEnabled = !closing;
