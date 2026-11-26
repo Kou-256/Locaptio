@@ -106,6 +106,7 @@
    <StackPanel x:Name="VideoControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" Visibility="Collapsed" VerticalAlignment="Center">
     <Button x:Name="VideoPauseButton" Click="VideoPauseClick" Padding="8,3" FontSize="12" AutomationProperties.Name="録画を一時停止" ToolTipService.ToolTip="録画を一時停止・再開します。一時停止中の映像と発話は動画に入りません。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon x:Name="VideoPauseIcon" Glyph="&#xE769;" FontSize="12"/><TextBlock x:Name="VideoPauseText" Text="一時停止"/></StackPanel></Button>
     <Button x:Name="ScreenshotButton" Click="ScreenshotClick" Padding="8,3" FontSize="12" AutomationProperties.Name="スクリーンショット" ToolTipService.ToolTip="録画中の画面を画像（PNG）で録画フォルダーに保存し、その時刻にブックマークを付けます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE722;" FontSize="12"/><TextBlock Text="スクリーンショット"/></StackPanel></Button>
+    <Button x:Name="VideoTargetButton" Click="VideoTargetClick" Padding="8,3" FontSize="12" AutomationProperties.Name="録画する対象を変更" ToolTipService.ToolTip="録画を止めずに、録画する画面・ウィンドウ・範囲を切り替えます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE7F4;" FontSize="12"/><TextBlock Text="対象を変更"/></StackPanel></Button>
    </StackPanel>
   </Grid>
   <StackPanel x:Name="PlaybackPanel" Visibility="Collapsed" Spacing="4">

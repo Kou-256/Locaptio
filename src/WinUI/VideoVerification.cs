@@ -8,7 +8,7 @@ using Windows.Storage;
 
 namespace Locaptio.WinUI;
 
-// --verify-video: records Locaptio's own window (synthetic text, no sound, nothing else on screen),
+// --verify-video: records Locaptio's own window (synthetic text, no sound, nothing else on screen; the region test keeps it on top),
 // pauses, takes a screenshot, replays the video with captions, burns subtitles into a copy and
 // checks the caption is in the frames, and reads the audio track of an MP4. Files go to a temp folder.
 public sealed partial class MainWindow
@@ -123,10 +123,94 @@ public sealed partial class MainWindow
             }
             else log.Add("skip MP4 audio check: artifacts/test-ja.wav not found");
             ClosePlayback();
+
+            // Region picker: sample targets (no real screen), drag/number region drawn over the preview and saved.
+            {
+                var sampleDisplay = new CaptureTarget(true, @"\\.\SAMPLE1", 0, "ディスプレイ1（サンプル）", 1920, 1080);
+                var sampleWindow = new CaptureTarget(false, "", 1, "サンプルのウィンドウ", 800, 600);
+                targetsForVerification = [sampleDisplay, sampleWindow];
+                snapshotForVerification = (t, width) => { int w = Math.Min(width, t.Width), h = Math.Max(1, t.Height * w / t.Width); using var image = SampleScreen(t.IsDisplay ? "desktop" : "slide", w, h, "定例会議：リリース日程"); return Pixels(image); };
+                (bool Drawn, CaptureRegion? Region, string Hint) part = default, window = default, whole = default;
+                captureDialogForVerification = async dialog =>
+                {
+                    await Task.Delay(200);
+                    window = regionChoiceForVerification!(sampleWindow, new(10, 10, 300, 200));
+                    whole = regionChoiceForVerification!(sampleDisplay, new(0, 0, 1920, 1080));
+                    part = regionChoiceForVerification!(sampleDisplay, new(101, 50, 641, 361));
+                    // Shown once for a picture of the region over the preview.
+                    var showing = dialog.ShowAsync(); await Task.Delay(900);
+                    await CaptureComposedAsync(Path.Combine(artifacts, "video-region-picker.png"));
+                    dialog.Hide(); await showing;
+                    return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
+                };
+                var picked = await ChooseCaptureAsync();
+                Check(part.Drawn && part.Region == new CaptureRegion(101, 50, 640, 360) && (part.Hint ?? "").Contains("640×360"), $"region drawn on the preview and made even ({part.Region}; {part.Hint})");
+                Check(!window.Drawn && window.Region is null && (window.Hint ?? "").Contains("画面全体"), "no region for a window");
+                Check(!whole.Drawn && whole.Region is null, "a region covering the whole display records the whole display");
+                Check(picked?.Region == new CaptureRegion(101, 50, 640, 360) && settings.VideoRegion == "101,50,640,360" && picked.Label.Contains("範囲"), "chosen region returned and remembered: " + picked?.Label);
+                captureDialogForVerification = async dialog => { await Task.Delay(200); regionChoiceForVerification!(sampleDisplay, new(0, 0, 960, 540)); return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary; };
+                var switched = await ChooseCaptureAsync(picked);
+                Check(switched is not null && switched.Region == new CaptureRegion(0, 0, 960, 540) && switched.Framerate == picked!.Framerate && switched.Microphone == picked.Microphone, "while recording, only the target and region change");
+                captureDialogForVerification = null; targetsForVerification = null; snapshotForVerification = null;
+            }
+
+            // Recording a region of the display (Locaptio's own window, kept on top), switching the region in place and
+            // then to the window itself (a new part), joined into one video on stop.
+            {
+                var display = CaptureTargets.List().FirstOrDefault(t => t.IsDisplay && CaptureTargets.DisplayBounds(t.DeviceName) is { } b
+                    && AppWindow.Position.X + AppWindow.Size.Width / 2 >= b.Left && AppWindow.Position.X + AppWindow.Size.Width / 2 < b.Left + b.Width
+                    && AppWindow.Position.Y + AppWindow.Size.Height / 2 >= b.Top && AppWindow.Position.Y + AppWindow.Size.Height / 2 < b.Top + b.Height);
+                if (display is not null && CaptureTargets.DisplayBounds(display.DeviceName) is { } bounds)
+                {
+                    SetKeepOnTop(true); Activate(); await Task.Delay(400);
+                    var window = AppWindow; var windowTarget = new CaptureTarget(false, "", hwnd, "Locaptio（検証）", window.Size.Width, window.Size.Height);
+                    var start = CaptureRegion.Fit(new(window.Position.X - bounds.Left + 40, window.Position.Y - bounds.Top + 40, Math.Min(640, window.Size.Width - 80), Math.Min(400, window.Size.Height - 80)), bounds.Width, bounds.Height)!.Value;
+                    string requested2 = Path.Combine(work, "範囲録画.mp4");
+                    recordingFilePickerForVerification = () => Task.FromResult<string?>(requested2);
+                    var choice = new CaptureChoice(display, false, false, false, false, 30, "standard", 0, false, false, start);
+                    captureChoiceForVerification = () => Task.FromResult<CaptureChoice?>(choice);
+                    VideoToggleClick(VideoToggle, new RoutedEventArgs());
+                    for (int i = 0; i < 200 && !(VideoRecording && recordingTranscript?.Started != long.MaxValue && videoSource is not null); i++) await Task.Delay(100);
+                    Check(VideoRecording && videoSource?.SourceRect is { } rect && (int)rect.Width == start.Width && SessionTitle.Text.Contains("範囲"), $"region recording started ({start}; {SessionTitle.Text})");
+                    captionStop = new();
+                    UpdateCaption(new(11, 1, "範囲を録画しています。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    await Task.Delay(1200);
+                    var smaller = new CaptureRegion(start.X, start.Y, start.Width / 2 & ~1, start.Height / 2 & ~1);
+                    switchChoiceForVerification = () => Task.FromResult<CaptureChoice?>(choice with { Region = smaller });
+                    VideoTargetClick(VideoTargetButton, new RoutedEventArgs()); await Task.Delay(800);
+                    Check(videoChoice?.Region == smaller && StatusText.Text.Contains("範囲を切り替えました") && videoSource?.SourceRect is { } r2 && (int)r2.Width == smaller.Width, "region switched in place: " + StatusText.Text);
+                    var source = videoSource;
+                    switchChoiceForVerification = () => Task.FromResult<CaptureChoice?>(choice with { Target = windowTarget, Region = null });
+                    VideoTargetClick(VideoTargetButton, new RoutedEventArgs());
+                    for (int i = 0; i < 200 && !(videoSource is ScreenRecorderLib.WindowRecordingSource && !ReferenceEquals(videoSource, source) && recordingTranscript?.Paused == false && videoChoice?.Target == windowTarget); i++) await Task.Delay(100);
+                    await Task.Delay(300); // the status line is updated through the dispatcher queue
+                    Check(videoSource is ScreenRecorderLib.WindowRecordingSource && videoChoice?.Target == windowTarget && StatusText.Text.Contains("切り替えました") && File.Exists(VideoPartPath(recordingPath, 1)) && !recordingTranscript!.Paused,
+                        "switched to another target in a new part: " + StatusText.Text);
+                    await Task.Delay(500);
+                    UpdateCaption(new(12, 1, "ウィンドウに切り替えた後の発話です。", null, true, Stopwatch.GetTimestamp(), 0, 0, "ja"));
+                    await Task.Delay(1200);
+                    captionStop.Dispose(); captionStop = null;
+                    string recorded2 = recordingPath;
+                    await StopAllAsync();
+                    for (int i = 0; i < 600 && (recordingStop is not null || !reviewingRecording); i++) await Task.Delay(100);
+                    var joined = File.Exists(recorded2) ? await (await StorageFile.GetFileFromPathAsync(recorded2)).Properties.GetVideoPropertiesAsync() : null;
+                    log.Add($"joined video {joined?.Width}x{joined?.Height} {joined?.Duration}");
+                    Check(joined is not null && joined.Width == start.Width && joined.Height == start.Height && joined.Duration.TotalSeconds is > 2.5 and < 8
+                        && Directory.GetFiles(Path.GetDirectoryName(recorded2)!, "*.part*.mp4").Length == 0, "parts joined into one video at the first region's size, part files removed");
+                    var phrases = playbackDocument?.Phrases ?? [];
+                    Check(reviewingRecording && playbackPath == recorded2 && phrases.Length == 2 && phrases[1].Seconds > phrases[0].Seconds && phrases[1].Seconds < joined!.Duration.TotalSeconds,
+                        "speech on both sides of the switch is on the joined video's clock: " + string.Join(", ", phrases.Select(p => $"{p.Seconds:F2}")));
+                    await CaptureElementAsync(Root, Path.Combine(artifacts, "video-switch-review.png"));
+                    switchChoiceForVerification = null; SetKeepOnTop(false);
+                    ClosePlayback();
+                }
+                else log.Add("skip region recording: Locaptio's display not found");
+            }
         }
         catch (Exception ex) { failures.Add("exception: " + ex); }
         finally
         {
+            switchChoiceForVerification = null; captureDialogForVerification = null; targetsForVerification = null; snapshotForVerification = null;
             captureChoiceForVerification = null; recordingFilePickerForVerification = null; burnChoiceForVerification = null; confirmReplacementForVerification = null; confirmNewRecordingForVerification = null;
             if (System.Text.Json.JsonSerializer.Deserialize<Locaptio.App.Settings>(saved) is { } original)
                 foreach (var property in typeof(Locaptio.App.Settings).GetProperties().Where(p => p.CanWrite)) property.SetValue(settings, property.GetValue(original));

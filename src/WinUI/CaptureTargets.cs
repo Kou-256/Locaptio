@@ -54,6 +54,10 @@ internal static class CaptureTargets
         return result;
     }
 
+    /// <summary>A display's position on the desktop and size, in pixels.</summary>
+    public static (int Left, int Top, int Width, int Height)? DisplayBounds(string deviceName) =>
+        Monitors().TryGetValue(deviceName, out var rect) ? (rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top) : null;
+
     /// <summary>Displays first, then visible, non-minimized windows of other apps.</summary>
     public static List<CaptureTarget> List()
     {

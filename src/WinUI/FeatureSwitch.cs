@@ -16,10 +16,19 @@ public sealed class FeatureSwitch : UserControl
     public event RoutedEventHandler? Click;
     public FeatureSwitch()
     {
-        Content = toggle; IsTabStop = false;
+        Content = toggle; IsTabStop = false; WhiteKnob(toggle);
         toggle.Toggled += (_, _) => { if (!settingFromCode) Click?.Invoke(this, new RoutedEventArgs()); };
         RegisterPropertyChangedCallback(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty,
             (_, _) => Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(this)));
+    }
+    /// <summary>
+    /// A switch that is on shows a white knob on the accent color in both themes (the dark theme's default knob is black).
+    /// Set on the switch itself: an app-wide override is not used by the dark theme of the WinUI style.
+    /// </summary>
+    public static void WhiteKnob(ToggleSwitch toggle)
+    {
+        foreach (string key in new[] { "ToggleSwitchKnobFillOn", "ToggleSwitchKnobFillOnPointerOver", "ToggleSwitchKnobFillOnPressed" })
+            toggle.Resources[key] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
     }
     /// <summary>The hosted switch (self-checks and styling).</summary>
     public ToggleSwitch Switch => toggle;

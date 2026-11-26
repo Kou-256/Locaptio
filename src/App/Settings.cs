@@ -142,6 +142,8 @@ public sealed class Settings
     public int VideoCountdownSeconds { get; set; } = 3;
     /// <summary>The display or window recorded last ("display:" + device, "window:" + title).</summary>
     public string VideoLastTarget { get; set; } = "";
+    /// <summary>The part of the display recorded last time ("x,y,width,height"); empty records the whole display.</summary>
+    public string VideoRegion { get; set; } = "";
     public bool VideoCursor { get; set; } = true;
     public bool VideoClicks { get; set; } = true;
     public bool VideoSystemAudio { get; set; } = true;

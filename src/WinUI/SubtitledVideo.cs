@@ -77,7 +77,10 @@ public sealed partial class MainWindow
             composition.OverlayLayers.Add(layer);
             if (File.Exists(output)) File.Delete(output);
             await File.WriteAllBytesAsync(output, [], token);
-            var render = composition.RenderToFileAsync(await StorageFile.GetFileFromPathAsync(output), MediaTrimmingPreference.Precise);
+            // The frame rate the video was recorded at (a still screen records only a few frames; 30 then).
+            double fps = properties.FrameRate.Denominator > 0 ? properties.FrameRate.Numerator / (double)properties.FrameRate.Denominator : 0;
+            var profile = EncodingProfile(videoWidth, videoHeight, fps >= 10 ? (int)Math.Round(fps) : 30, clip.EmbeddedAudioTracks.Count > 0);
+            var render = composition.RenderToFileAsync(await StorageFile.GetFileFromPathAsync(output), MediaTrimmingPreference.Precise, profile);
             render.Progress = (_, percent) => progress?.Report(10 + percent * .9);
             using (token.Register(() => { try { render.Cancel(); } catch (Exception) { } }))
             {

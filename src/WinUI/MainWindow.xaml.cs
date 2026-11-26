@@ -1407,7 +1407,7 @@ public sealed partial class MainWindow : Window
             ((OverlappedPresenter)AppWindow.Presenter).Restore(); await Task.Delay(100);
             var mainTexts = RealizedCaptionRows.SelectMany(g => g.Children.OfType<TextBlock>()).Where(t => t.Visibility == Visibility.Visible).ToArray();
             bool mirrored = captionWindow.RenderedPositions().All(p => mainTexts.Any(t => t.Text == p.Text)) && mainTexts.Length == 2 && CaptionList.Visibility == Visibility.Visible && Header.Visibility == Visibility.Visible
-                && mainTexts.All(t => ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color == CaptionWindow.OrdinaryBrush(settings, false).Color);
+                && mainTexts.All(t => ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color == CaptionWindow.OrdinaryBrush(settings.MainView(), false).Color);
             bool liveDefaults = CaptionWindow.SurfaceBrush(new Settings()).Color == Windows.UI.Color.FromArgb(255, 54, 54, 54) && CaptionWindow.OrdinaryBrush(new Settings(), false).Color == Windows.UI.Color.FromArgb(255, 255, 255, 255) && CaptionWindow.OrdinaryBrush(new Settings(), true).Color == Windows.UI.Color.FromArgb(255, 0x7D, 0xE3, 0xFF);
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(200);
             var navigation = settingsNavigation!;
@@ -1441,7 +1441,7 @@ public sealed partial class MainWindow : Window
             bool shownWithoutFrame = captionWindow.AppWindow.IsVisible && captionWindow.HasNoNativeFrame() && captionWindow.HasTextOnlyShape();
             captionWindow.AppWindow.Resize(captionSize);
             passed = clipped && spacing && colored && ordinary && defaultSame && mirrored && liveDefaults && customColors && noMarker && noNativeFrame && wrappedClipped && shownWithoutFrame;
-            File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), $"PASS={passed}; textOnlyRegion={clipped} ({shapeDebug}); adjustableGap={spacing}; customCorrectionColor={colored}; sameColor={ordinary}; defaultSame={defaultSame}; mainAndPopout={mirrored}; liveDefaults={liveDefaults}; colorSettings={customColors} ({colorDebug}); noAIMarker={noMarker}; noNativeFrame={noNativeFrame}; opaqueComposition={WindowAppearance.IsOpaque(hwnd)}; neutralBorder={settings.CaptionBorderColor}; longTextClipped={wrappedClipped}; redisplayWithoutFrame={shownWithoutFrame}");
+            File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), $"PASS={passed}; textOnlyRegion={clipped} ({shapeDebug}); adjustableGap={spacing}; customCorrectionColor={colored}; sameColor={ordinary}; defaultSame={defaultSame}; mainAndPopout={mirrored}{(mirrored ? "" : $" [popout={string.Join("|", captionWindow.RenderedPositions().Select(p => p.Text))}; main={string.Join("|", mainTexts.Select(t => t.Text + "@" + ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color))}; mainOrdinary={CaptionWindow.OrdinaryBrush(settings.MainView(), false).Color}; list={CaptionList.Visibility}; header={Header.Visibility}]")}; liveDefaults={liveDefaults}; colorSettings={customColors} ({colorDebug}); noAIMarker={noMarker}; noNativeFrame={noNativeFrame}; opaqueComposition={WindowAppearance.IsOpaque(hwnd)}; neutralBorder={settings.CaptionBorderColor}; longTextClipped={wrappedClipped}; redisplayWithoutFrame={shownWithoutFrame}");
             if (Environment.GetCommandLineArgs().Contains("--preview-caption-frame"))
             {
                 for (int i = 0; i < 45; i++)
