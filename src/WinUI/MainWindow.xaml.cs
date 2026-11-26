@@ -109,7 +109,7 @@ public sealed partial class MainWindow : Window
         };
         ModeSelector.OwnerWindow = this; TargetSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; RefreshModeLabels();
         settingsSaveTimer.Tick += (_, _) => { settingsSaveTimer.Stop(); settings.Save(); }; Closed += (_, _) => { if (settingsSaveTimer.IsEnabled) { settingsSaveTimer.Stop(); settings.Save(); } };
-        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeKeepOnTop(); ShowCrashNoticeIfAny(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
+        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeToolbarCollapse(); InitializeKeepOnTop(); ShowCrashNoticeIfAny(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
         Root.Loaded += async (_, _) =>
         {
             ApplyMainTextOpacity(Root);

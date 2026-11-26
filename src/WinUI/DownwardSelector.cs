@@ -27,6 +27,8 @@ public sealed class DownwardSelector : UserControl
     private int selectedIndex = -1;
     public Window? OwnerWindow { get; set; }
     public event EventHandler? SelectionChanged;
+    /// <summary>The text shown for the selected item.</summary>
+    public string Text => label.Text;
     public event EventHandler? DropDownOpened;
     public IEnumerable? ItemsSource
     {
