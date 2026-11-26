@@ -70,6 +70,7 @@ public sealed partial class MainWindow
     {
         content.Children.Add(new TextBlock { Text = "ウィンドウの重なり", Margin = new Thickness(0, 8, 0, 0) });
         settingsKeepOnTopToggle = new ToggleSwitch { Header = "本体を常に手前に表示する（ほかのウィンドウより前に出す）", IsOn = settings.KeepOnTop };
+        FeatureSwitch.WhiteKnob(settingsKeepOnTopToggle);
         settingsKeepOnTopToggle.Toggled += (_, _) => { if (settingsKeepOnTopToggle.IsOn != settings.KeepOnTop) SetKeepOnTop(settingsKeepOnTopToggle.IsOn); };
         content.Children.Add(settingsKeepOnTopToggle);
         choice("ON/OFFを切り替えるショートカット（ほかのアプリを使っていても有効）", KeepOnTopHotkeys.Select(h => h.Label).ToArray(),

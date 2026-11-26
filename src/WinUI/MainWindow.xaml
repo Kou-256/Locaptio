@@ -45,6 +45,7 @@
    <MenuBarItem Title="設定(S)">
     <MenuFlyoutItem Text="設定を開く…" Click="SettingsClick"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;"/></MenuFlyoutItem.Icon></MenuFlyoutItem>
     <ToggleMenuFlyoutItem x:Name="KeepOnTopMenuItem" Text="常に手前に表示" Click="KeepOnTopMenuClick"/>
+    <ToggleMenuFlyoutItem x:Name="ToolbarCollapsedMenuItem" Text="ボタンの列を折りたたむ" Click="ToolbarCollapsedMenuClick"/>
    </MenuBarItem>
    <MenuBarItem Title="ヘルプ(H)">
     <MenuFlyoutItem Text="モデルの説明" Click="ModelHelpClick"/>
@@ -55,7 +56,9 @@
     <MenuFlyoutItem Text="クラッシュレポートを表示…" Click="CrashReportClick"/>
    </MenuBarItem>
   </MenuBar>
-  <StackPanel Grid.Row="1" Spacing="6">
+  <Grid Grid.Row="1" ColumnSpacing="8">
+  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+  <StackPanel x:Name="ToolbarArea" Spacing="6">
   <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><local:DownwardSelector x:Name="ModeSelector" Width="170" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="話す言語" ToolTipService.ToolTip="音声の言語（日本語・英語・イタリア語・スペイン語）。切り替え前にテキストの保存を確認します。"></local:DownwardSelector><local:DownwardSelector x:Name="TargetSelector" Grid.Column="1" Width="200" HorizontalAlignment="Left" SelectionChanged="ModeChanged" AutomationProperties.Name="翻訳" ToolTipService.ToolTip="文字起こしのみ、または翻訳先の言語。英語→日本語以外は設定でダウンロードする翻訳モデルを使います。"></local:DownwardSelector><local:DownwardSelector x:Name="AudioSelector" Grid.Column="2" HorizontalAlignment="Stretch" MaxWidth="500" SelectionChanged="AudioChanged" DropDownOpened="AudioMenuOpened" AutomationProperties.Name="音声入力" ToolTipService.ToolTip="Windows字幕連携ではPC内音声／PC内音声＋マイクを選択し、Windows側のマイク設定も自動で切り替えます。Whisperではマイク単独・指定アプリも選べます。入力を切り替えても会話履歴は保持します。録音中は同じ録音フォルダーの別ファイルに分割します。"/></Grid>
   <local:ToolbarPanel x:Name="MainToolbar" RightTapped="ToolbarRightTapped">
    <local:ToolbarPanel.Resources>
@@ -93,6 +96,14 @@
    <local:FeatureSwitch x:Name="LiveSummaryToggle" Label="ライブ要約" MinWidth="0" Click="LiveSummaryToggleClick" AutomationProperties.Name="ライブ要約" ToolTipService.ToolTip="録音・文字起こし中に、数分ごとの発話をローカルAIが要約して右の欄に追加します。長くなると古いまとまりは「ここまでの流れ」にまとめ直します。録音中でもON/OFFできます。"/>
    <Button x:Name="SearchButton" Click="SearchRecordingClick" AutomationProperties.Name="録音内の文字を検索" ToolTipService.ToolTip="録音の文字起こしを検索し、その発話から再生"><FontIcon Glyph="&#xE721;"/></Button>
   </local:ToolbarPanel></StackPanel>
+  <Grid x:Name="CollapsedToolbar" Visibility="Collapsed" ColumnSpacing="8">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Button x:Name="CollapsedStartButton" Style="{StaticResource AccentButtonStyle}" MinHeight="32" Padding="12,4" CornerRadius="4" Click="StartClick" AutomationProperties.Name="開始" ToolTipService.ToolTip="選んだ音声の文字起こしを開始します。"><FontIcon Glyph="&#xE768;" FontSize="14"/></Button>
+   <Button x:Name="CollapsedStopButton" Grid.Column="1" MinHeight="32" Padding="12,4" CornerRadius="4" IsEnabled="False" Click="StopClick" AutomationProperties.Name="停止" ToolTipService.ToolTip="文字起こしと録音を停止します。"><FontIcon Glyph="&#xE71A;" FontSize="14"/></Button>
+   <TextBlock x:Name="CollapsedToolbarText" Grid.Column="2" VerticalAlignment="Center" FontSize="13" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
+  </Grid>
+  <Button x:Name="ToolbarCollapseButton" Grid.Column="1" VerticalAlignment="Top" MinHeight="32" Padding="8,4" CornerRadius="4" Click="ToolbarCollapseClick" AutomationProperties.Name="メニューを折りたたむ" ToolTipService.ToolTip="言語・音声の選択とボタンの列を折りたたみます（Ctrl+Shift+M）"><FontIcon x:Name="ToolbarCollapseGlyph" Glyph="&#xE70E;" FontSize="14"/></Button>
+  </Grid>
   <StackPanel Grid.Row="2" Spacing="4">
   <TextBlock x:Name="SessionTitle" Text="文字起こし（録音なし）／音声も残すときは「新規録音」、保存済みデータは「録音一覧」から" FontSize="11" TextWrapping="Wrap"/>
   <Grid x:Name="RecordingIndicator" Visibility="Collapsed" ColumnSpacing="8">
@@ -106,6 +117,7 @@
    <StackPanel x:Name="VideoControls" Grid.Column="4" Orientation="Horizontal" Spacing="6" Visibility="Collapsed" VerticalAlignment="Center">
     <Button x:Name="VideoPauseButton" Click="VideoPauseClick" Padding="8,3" FontSize="12" AutomationProperties.Name="録画を一時停止" ToolTipService.ToolTip="録画を一時停止・再開します。一時停止中の映像と発話は動画に入りません。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon x:Name="VideoPauseIcon" Glyph="&#xE769;" FontSize="12"/><TextBlock x:Name="VideoPauseText" Text="一時停止"/></StackPanel></Button>
     <Button x:Name="ScreenshotButton" Click="ScreenshotClick" Padding="8,3" FontSize="12" AutomationProperties.Name="スクリーンショット" ToolTipService.ToolTip="録画中の画面を画像（PNG）で録画フォルダーに保存し、その時刻にブックマークを付けます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE722;" FontSize="12"/><TextBlock Text="スクリーンショット"/></StackPanel></Button>
+    <Button x:Name="VideoTargetButton" Click="VideoTargetClick" Padding="8,3" FontSize="12" AutomationProperties.Name="録画する対象を変更" ToolTipService.ToolTip="録画を止めずに、録画する画面・ウィンドウ・範囲を切り替えます。"><StackPanel Orientation="Horizontal" Spacing="5"><FontIcon Glyph="&#xE7F4;" FontSize="12"/><TextBlock Text="対象を変更"/></StackPanel></Button>
    </StackPanel>
   </Grid>
   <StackPanel x:Name="PlaybackPanel" Visibility="Collapsed" Spacing="4">

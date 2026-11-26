@@ -645,7 +645,7 @@ public sealed partial class MainWindow
             var preview = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsTextSelectionEnabled = true,
                 Text = string.Join("\n", (snapshot.Rows.Length <= 8 ? snapshot.Rows : snapshot.Rows.Take(4).Append(new AutosaveRow(0, 0, "…", null, "")).Concat(snapshot.Rows.TakeLast(3))).Select(r => r.Id == 0 ? r.Text : $"[{FormatMediaTime(r.Seconds)}] {r.Text}")) };
             content.Children.Add(new ScrollViewer { Content = preview, MaxHeight = 220, Padding = new Thickness(0, 0, 14, 0) });
-            content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Text = snapshot.RecordingPath is null ? "復元すると、この文章を本体に表示します。続けて保存・編集・開始ができます。" : "復元すると、中断された録音を再生できる状態に直し、文章と対応付けて開きます。録音は最後に書き込まれた位置までです。" });
+            content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Text = snapshot.RecordingPath is null ? "復元すると、この文章を本体に表示します。続けて保存・編集・開始ができます。" : "復元すると、中断された録音・録画を再生できる状態に直し、文章と対応付けて開きます。最後に書き込まれた位置までです。そのあと「新規録音」「新規録画」を押すと、新しいファイルを作らずに同じファイルの続きとして録れます。" });
             var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "前回の未保存セッション", Content = content, PrimaryButtonText = "復元する", SecondaryButtonText = "破棄する", CloseButtonText = "あとで決める", DefaultButton = ContentDialogButton.Primary, RequestedTheme = Root.RequestedTheme };
             choice = await dialog.ShowAsync();
             if (choice == ContentDialogResult.Secondary)
@@ -718,7 +718,8 @@ public sealed partial class MainWindow
                 SaveReviewDocument();
             }
             RenderCaptions();
-            Status("中断された録音と文字起こしを復元しました: " + audio); return;
+            restoredInterruptedPath = audio;
+            Status("中断された録音と文字起こしを復元しました: " + audio + "（「新規録音」「新規録画」で、この続きを同じファイルに録れます）"); return;
         }
         ClearCaptions(); reviewingRecording = false; playbackDocument = null; playbackPath = "";
         PlaybackPanel.Visibility = RecordingSearchPanel.Visibility = Visibility.Collapsed;

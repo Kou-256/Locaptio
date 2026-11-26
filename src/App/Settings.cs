@@ -91,6 +91,8 @@ public sealed class Settings
     public string[] ToolbarOrder { get; set; } = [];
     /// <summary>Main toolbar items the user has hidden (control names).</summary>
     public string[] ToolbarHidden { get; set; } = [];
+    /// <summary>The language/input selectors and the main toolbar are folded away (a slim bar remains).</summary>
+    public bool ToolbarCollapsed { get; set; }
     /// <summary>Live summary: summarize after this many minutes of speech…</summary>
     public double LiveSummaryMinutes { get; set; } = 2.5;
     /// <summary>…or once this many characters have been said.</summary>
@@ -142,6 +144,8 @@ public sealed class Settings
     public int VideoCountdownSeconds { get; set; } = 3;
     /// <summary>The display or window recorded last ("display:" + device, "window:" + title).</summary>
     public string VideoLastTarget { get; set; } = "";
+    /// <summary>The part of the display recorded last time ("x,y,width,height"); empty records the whole display.</summary>
+    public string VideoRegion { get; set; } = "";
     public bool VideoCursor { get; set; } = true;
     public bool VideoClicks { get; set; } = true;
     public bool VideoSystemAudio { get; set; } = true;

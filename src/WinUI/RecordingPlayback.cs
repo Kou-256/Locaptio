@@ -79,6 +79,8 @@ public sealed partial class MainWindow
     {
         recordingIndexTimer.Stop(); await indexWrite;
         await SaveRecordingIndexAsync();
+        // The continuation of an open recording is appended to it (and that recording opened) instead.
+        if (continuation is not null && await FinishContinuationAsync(path)) return;
         if (recordingTranscript?.AudioPath == Path.GetFullPath(path) && File.Exists(path))
         {
             playbackDocument = recordingTranscript.Snapshot(); playbackPath = path;

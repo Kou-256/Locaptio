@@ -21,6 +21,23 @@ public sealed partial class MainWindow
             for (int i = 0; i < 6; i++) { AiCorrectionToggle.IsChecked = i % 2 == 0; await Task.Delay(30); }
             AiCorrectionToggle.IsChecked = true; await Task.Delay(300);
             Check(AiCorrectionToggle.Switch.IsOn, "the switch follows the setting after rapid changes");
+            // An "on" switch has a white knob in both themes (the dark theme's default knob is black).
+            static Border? Knob(DependencyObject node)
+            {
+                if (node is Border { Name: "SwitchKnobOn" } knob) return knob;
+                for (int i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(node); i++)
+                    if (Knob(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(node, i)) is { } found) return found;
+                return null;
+            }
+            var originalTheme = Root.RequestedTheme; var knobColors = new List<string>();
+            foreach (var theme in new[] { ElementTheme.Dark, ElementTheme.Light })
+            {
+                WindowAppearance.SetTheme(Root, theme); await Task.Delay(250);
+                knobColors.Add(Knob(AiCorrectionToggle.Switch)?.Background is Microsoft.UI.Xaml.Media.SolidColorBrush brush ? brush.Color.ToString() : "none");
+                if (theme == ElementTheme.Dark) await CaptureComposedAsync(Path.Combine(shots, "toolbar-switches-dark.png"));
+            }
+            WindowAppearance.SetTheme(Root, originalTheme); await Task.Delay(250);
+            Check(knobColors.All(c => c == "#FFFFFFFF"), "switch knob is white when on, dark and light: " + string.Join(", ", knobColors));
             await CaptureComposedAsync(Path.Combine(shots, "toolbar-switches.png"));
 
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(400);

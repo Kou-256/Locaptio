@@ -109,7 +109,7 @@ public sealed partial class MainWindow : Window
         };
         ModeSelector.OwnerWindow = this; TargetSelector.OwnerWindow = this; AudioSelector.OwnerWindow = this; RefreshModeLabels();
         settingsSaveTimer.Tick += (_, _) => { settingsSaveTimer.Stop(); settings.Save(); }; Closed += (_, _) => { if (settingsSaveTimer.IsEnabled) { settingsSaveTimer.Stop(); settings.Save(); } };
-        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeKeepOnTop(); ShowCrashNoticeIfAny(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
+        root = FindRoot(); ModeSelector.SelectedIndex = ModeIndex(settings.CaptionMode); RefreshAudioInputs(); ApplySettings(); ApplyToolbarLayout(); InitializeToolbarCollapse(); InitializeKeepOnTop(); ShowCrashNoticeIfAny(); initialized = true; timer.Tick += (_, _) => { UpdateDiagnostics(); UpdatePreparationDisplay(); }; timer.Start();
         Root.Loaded += async (_, _) =>
         {
             ApplyMainTextOpacity(Root);
@@ -753,9 +753,17 @@ public sealed partial class MainWindow : Window
     private Func<Task<bool>>? confirmNewRecordingForVerification;
     private async Task<bool> ConfirmNewRecordingAsync(string action = "新規録音")
     {
-        if (history.Count == 0) { keepExistingText = false; return true; }
+        continuation = null;
+        // A saved recording is open: it can be continued in the same file instead of a new one.
+        string? continuable = ContinuableRecording(action == "新規録画");
+        if (continuable is not null && continueRecordingForVerification is not null)
+        {
+            if (continueRecordingForVerification()) { keepExistingText = true; BeginContinuation(continuable); return true; }
+            continuable = null;
+        }
+        if (history.Count == 0 && continuable is null) { keepExistingText = false; return true; }
         if (confirmNewRecordingForVerification is not null) { keepExistingText = settings.ExistingTextOnRecording == "keep"; return await confirmNewRecordingForVerification(); }
-        return await ChooseExistingTextAsync(action);
+        return await ChooseExistingTextAsync(action, continuable);
     }
     private async void RecordChanged(object sender, RoutedEventArgs e)
     {
@@ -768,6 +776,23 @@ public sealed partial class MainWindow : Window
         {
             bool confirmedExistingText = history.Count > 0;
             if (!await ConfirmNewRecordingAsync() || closing) { SetRecordingChecked(false); return; }
+            if (continuation is { } continued)
+            {
+                // The new part records next to the recording and is appended to it when recording stops.
+                bool keepConnection = windowsSession is not null && captionStop is { IsCancellationRequested: false };
+                if (UseWindowsCaptionEngine && captionsForVerification is null)
+                {
+                    WindowsOperationText.Visibility = Visibility.Visible;
+                    try { await new WindowsCaptionWindow().EnsureStartedAsync(captionStop?.Token ?? CancellationToken.None); }
+                    finally { WindowsOperationText.Visibility = Visibility.Collapsed; }
+                }
+                if (!keepConnection) await StopAsync();
+                PrepareTextForNewRecording();
+                StartRecording(continued.Part);
+                if (!keepConnection) await StartAsync(allowRecordingDialog: true);
+                SessionTitle.Text = "続きを録音中：" + Path.GetFileName(Path.GetDirectoryName(continued.Target)) + " / " + Path.GetFileName(continued.Target);
+                return;
+            }
             string directory = string.IsNullOrWhiteSpace(settings.RecordingSaveDirectory)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "Locaptio")
                 : settings.RecordingSaveDirectory;
@@ -799,7 +824,7 @@ public sealed partial class MainWindow : Window
             if (!keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
             if (keepWindowsConnection) SessionTitle.Text = "新規録音中：" + Path.GetFileName(Path.GetDirectoryName(path));
         }
-        catch (Exception ex) { SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
+        catch (Exception ex) { if (recordingStop is null) continuation = null; SetRecordingChecked(recordingStop is not null); StatusText.Text = "録音を開始できません: " + ex.Message; ShowStatusDetails(pin: true); }
         finally
         {
             dialogOpen = false; RecordToggle.IsEnabled = !closing;
@@ -886,7 +911,7 @@ public sealed partial class MainWindow : Window
         var recorder = new AudioRecording(SelectedAudio()); recorder.Status += Status;
         try { await Task.Run(() => recorder.RunAsync(path, token)); StatusText.Text = "録音を保存しました: " + path; }
         catch (Exception ex) { StatusText.Text = "録音に失敗しました: " + ex.Message; ShowStatusDetails(pin: true); }
-        finally { recordingStop?.Dispose(); recordingStop = null; SyncLiveSummaryPane(); await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; RecordToggle.IsEnabled = true; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
+        finally { RecordToggle.IsEnabled = VideoToggle.IsEnabled = false; recordingStop?.Dispose(); recordingStop = null; SyncLiveSummaryPane(); await FinishRecordingIndexAsync(path); SetRecordingChecked(false); RecordToggleText.Text = "新規録音"; RecordToggle.IsEnabled = VideoToggle.IsEnabled = !closing; RecordingIndicator.Visibility = Visibility.Collapsed; StopButton.IsEnabled = captionStop is not null; StartButton.IsEnabled = !closing && captionStop is null; }
     }
     private async Task StopRecordingAsync()
     {
@@ -1407,7 +1432,7 @@ public sealed partial class MainWindow : Window
             ((OverlappedPresenter)AppWindow.Presenter).Restore(); await Task.Delay(100);
             var mainTexts = RealizedCaptionRows.SelectMany(g => g.Children.OfType<TextBlock>()).Where(t => t.Visibility == Visibility.Visible).ToArray();
             bool mirrored = captionWindow.RenderedPositions().All(p => mainTexts.Any(t => t.Text == p.Text)) && mainTexts.Length == 2 && CaptionList.Visibility == Visibility.Visible && Header.Visibility == Visibility.Visible
-                && mainTexts.All(t => ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color == CaptionWindow.OrdinaryBrush(settings, false).Color);
+                && mainTexts.All(t => ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color == CaptionWindow.OrdinaryBrush(settings.MainView(), false).Color);
             bool liveDefaults = CaptionWindow.SurfaceBrush(new Settings()).Color == Windows.UI.Color.FromArgb(255, 54, 54, 54) && CaptionWindow.OrdinaryBrush(new Settings(), false).Color == Windows.UI.Color.FromArgb(255, 255, 255, 255) && CaptionWindow.OrdinaryBrush(new Settings(), true).Color == Windows.UI.Color.FromArgb(255, 0x7D, 0xE3, 0xFF);
             SettingsClick(this, new RoutedEventArgs()); await Task.Delay(200);
             var navigation = settingsNavigation!;
@@ -1441,7 +1466,7 @@ public sealed partial class MainWindow : Window
             bool shownWithoutFrame = captionWindow.AppWindow.IsVisible && captionWindow.HasNoNativeFrame() && captionWindow.HasTextOnlyShape();
             captionWindow.AppWindow.Resize(captionSize);
             passed = clipped && spacing && colored && ordinary && defaultSame && mirrored && liveDefaults && customColors && noMarker && noNativeFrame && wrappedClipped && shownWithoutFrame;
-            File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), $"PASS={passed}; textOnlyRegion={clipped} ({shapeDebug}); adjustableGap={spacing}; customCorrectionColor={colored}; sameColor={ordinary}; defaultSame={defaultSame}; mainAndPopout={mirrored}; liveDefaults={liveDefaults}; colorSettings={customColors} ({colorDebug}); noAIMarker={noMarker}; noNativeFrame={noNativeFrame}; opaqueComposition={WindowAppearance.IsOpaque(hwnd)}; neutralBorder={settings.CaptionBorderColor}; longTextClipped={wrappedClipped}; redisplayWithoutFrame={shownWithoutFrame}");
+            File.WriteAllText(Path.Combine(root, "artifacts", "caption-style-verification.txt"), $"PASS={passed}; textOnlyRegion={clipped} ({shapeDebug}); adjustableGap={spacing}; customCorrectionColor={colored}; sameColor={ordinary}; defaultSame={defaultSame}; mainAndPopout={mirrored}{(mirrored ? "" : $" [popout={string.Join("|", captionWindow.RenderedPositions().Select(p => p.Text))}; main={string.Join("|", mainTexts.Select(t => t.Text + "@" + ((Microsoft.UI.Xaml.Media.SolidColorBrush)t.Foreground).Color))}; mainOrdinary={CaptionWindow.OrdinaryBrush(settings.MainView(), false).Color}; list={CaptionList.Visibility}; header={Header.Visibility}]")}; liveDefaults={liveDefaults}; colorSettings={customColors} ({colorDebug}); noAIMarker={noMarker}; noNativeFrame={noNativeFrame}; opaqueComposition={WindowAppearance.IsOpaque(hwnd)}; neutralBorder={settings.CaptionBorderColor}; longTextClipped={wrappedClipped}; redisplayWithoutFrame={shownWithoutFrame}");
             if (Environment.GetCommandLineArgs().Contains("--preview-caption-frame"))
             {
                 for (int i = 0; i < 45; i++)

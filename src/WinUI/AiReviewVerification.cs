@@ -213,6 +213,27 @@ public sealed partial class MainWindow
             }
             finally { settings.ToolbarOrder = savedOrder; settings.ToolbarHidden = savedHidden; settings.Save(); ApplyToolbarLayout(); }
 
+            // 6b. Folding the selectors and toolbar away leaves a slim bar with 開始・停止; it is saved and unfolds again.
+            bool savedCollapsed = settings.ToolbarCollapsed;
+            try
+            {
+                SetToolbarCollapsed(false); await Task.Delay(200); Root.UpdateLayout();
+                double fullHeight = ToolbarArea.ActualHeight;
+                ToolbarCollapseClick(ToolbarCollapseButton, new RoutedEventArgs()); await Task.Delay(300); Root.UpdateLayout();
+                double slimHeight = CollapsedToolbar.ActualHeight;
+                Check(settings.ToolbarCollapsed && ToolbarArea.Visibility == Visibility.Collapsed && CollapsedToolbar.Visibility == Visibility.Visible && ToolbarCollapsedMenuItem.IsChecked
+                    && slimHeight > 0 && slimHeight < fullHeight / 2 && CollapsedToolbarText.Text.Contains(ModeSelector.Text) && CollapsedToolbarText.Text.Contains(AudioSelector.Text)
+                    && CollapsedStartButton.IsEnabled == StartButton.IsEnabled && CollapsedStopButton.IsEnabled == StopButton.IsEnabled,
+                    $"the toolbar folds into a slim bar ({fullHeight:F0} → {slimHeight:F0} px): {CollapsedToolbarText.Text}");
+                StopButton.IsEnabled = true; await Task.Delay(100); bool mirrored = CollapsedStopButton.IsEnabled; StopButton.IsEnabled = false; await Task.Delay(100);
+                Check(mirrored && !CollapsedStopButton.IsEnabled, "the slim bar's 停止 follows the toolbar's");
+                await CaptureComposedAsync(Path.Combine(shots, "toolbar-collapsed.png"));
+                ToolbarCollapseClick(ToolbarCollapseButton, new RoutedEventArgs()); await Task.Delay(300); Root.UpdateLayout();
+                Check(!settings.ToolbarCollapsed && ToolbarArea.Visibility == Visibility.Visible && CollapsedToolbar.Visibility == Visibility.Collapsed && !ToolbarCollapsedMenuItem.IsChecked, "the toolbar unfolds again");
+                await CaptureComposedAsync(Path.Combine(shots, "toolbar-expanded.png"));
+            }
+            finally { SetToolbarCollapsed(savedCollapsed); }
+
             // 7. Live summary settings, clear, keep-on-top with its shortcut, pane width and separate window.
             double savedMinutes = settings.LiveSummaryMinutes; int savedChars = settings.LiveSummaryChars; string savedDetail = settings.LiveSummaryDetail, savedHotkey = settings.KeepOnTopHotkey;
             bool savedTop = settings.KeepOnTop; double savedWidth = settings.SummaryPaneWidth;
