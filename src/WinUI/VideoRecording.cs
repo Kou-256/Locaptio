@@ -88,12 +88,20 @@ public sealed partial class MainWindow
             PrepareTextForNewRecording();
             if (choice.CountdownSeconds > 0)
             {
+                // The recorder gets ready during the countdown (paused), so recording starts the moment it reaches zero.
+                var countdown = videoCountdown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                StartVideoRecording(path, choice);
                 CountdownOverlay.Visibility = Visibility.Visible;
-                for (int i = choice.CountdownSeconds; i > 0 && !closing; i--) { CountdownText.Text = i.ToString(); await Task.Delay(VerificationRun ? 150 : 1000); }
+                for (int i = choice.CountdownSeconds; i > 0 && !closing && recordingStop is { IsCancellationRequested: false }; i--) { CountdownText.Text = i.ToString(); await Task.Delay(VerificationRun ? countdownStepForVerification : 1000); }
                 CountdownOverlay.Visibility = Visibility.Collapsed;
+                countdown.TrySetResult();
+                if (closing || recordingStop is null) return;
             }
-            if (closing) return;
-            StartVideoRecording(path, choice);
+            else
+            {
+                if (closing) return;
+                StartVideoRecording(path, choice);
+            }
             if (choice.Transcribe && !keepWindowsConnection) await StartAsync(allowRecordingDialog: true);
             if (continuing is not null) SessionTitle.Text = "続きを録画中：" + Path.GetFileName(Path.GetDirectoryName(continuing.Target)) + " / " + Path.GetFileName(continuing.Target);
         }
@@ -103,7 +111,7 @@ public sealed partial class MainWindow
             if (recordingStop is null) continuation = null;
             CountdownOverlay.Visibility = Visibility.Collapsed;
             dialogOpen = false; SetVideoChecked(VideoRecording);
-            RecordToggle.IsEnabled = VideoToggle.IsEnabled = !closing;
+            VideoToggle.IsEnabled = !closing; RecordToggle.IsEnabled = !closing && !VideoRecording;
             StartButton.IsEnabled = !closing && captionStop is null;
             ModeSelector.IsEnabled = AudioSelector.IsEnabled = !closing && !inputChanging && !modeChanging;
         }
@@ -127,8 +135,13 @@ public sealed partial class MainWindow
 
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush RecordingRed = new(Windows.UI.Color.FromArgb(255, 0xFF, 0x8F, 0x8F)), PreparingAmber = new(Windows.UI.Color.FromArgb(255, 0xFF, 0xC8, 0x57));
     /// <summary>Not recording yet (starting or switching target): amber, so speaking now is not expected to be in the video.</summary>
-    private void ShowVideoPreparing(string text) { RecordingLabel.Text = text; RecordingLabel.Foreground = PreparingAmber; }
-    private void ShowVideoRecordingLabel() { RecordingLabel.Text = videoPaused ? "Ⅱ 一時停止中" : "● 録画中"; RecordingLabel.Foreground = RecordingRed; }
+    private void ShowVideoPreparing(string text) { RecordingLabel.Text = text; RecordingLabel.Foreground = PreparingAmber; VideoPauseButton.IsEnabled = false; }
+    private void ShowVideoRecordingLabel() { RecordingLabel.Text = videoPaused ? "Ⅱ 一時停止中" : "● 録画中"; RecordingLabel.Foreground = RecordingRed; VideoPauseButton.IsEnabled = true; }
+    /// <summary>Set while a countdown runs: the recorder waits paused until it completes.</summary>
+    private TaskCompletionSource? videoCountdown;
+    /// <summary>Self-check: length of one countdown step, and when the recorder was ready (paused) during it.</summary>
+    private int countdownStepForVerification = 150;
+    private long countdownReadyForVerification;
     internal static readonly string[] QualityKeys = ["best", "high", "standard", "small"];
     internal static readonly string[] QualityLabels = ["最高画質", "高画質", "標準", "ファイルサイズ優先"];
     internal static readonly int[] CountdownChoices = [0, 1, 2, 3, 5, 10];
@@ -257,11 +270,26 @@ public sealed partial class MainWindow
         try
         {
             if (choice.HideLocaptio) ExcludeFromCapture(true);
+            var countdown = videoCountdown; videoCountdown = null;
             Status("録画の準備をしています。「● 録画中」に変わってから録画されます…");
             run = await StartVideoRunAsync(path, choice, token);
-            ShowVideoRecordingLabel();
             if (recordingTranscript is not null) recordingTranscript.Started = run.Started;
             recordingStarted = run.Started;
+            if (countdown is { Task.IsCompleted: false })
+            {
+                // Ready before the countdown ended: wait paused (nothing is recorded) and start at zero.
+                var ready = run.Recorder; await Task.Run(() => ready.Pause());
+                recordingTranscript?.Pause(Stopwatch.GetTimestamp());
+                countdownReadyForVerification = Stopwatch.GetTimestamp();
+                Status("録画の準備ができました。カウントダウンが終わると録画を始めます。");
+                await Task.WhenAny(countdown.Task, Task.Delay(Timeout.Infinite, token)).ContinueWith(_ => { }, TaskScheduler.Default);
+                if (!token.IsCancellationRequested)
+                {
+                    await Task.Run(() => ready.Resume());
+                    recordingTranscript?.Resume(Stopwatch.GetTimestamp());
+                }
+            }
+            ShowVideoRecordingLabel();
             Status("録画を開始しました：" + choice.Label + (choice.Transcribe ? "。文字起こしも同時に行います。" : "。") + run.Note);
             var stopped = Task.Delay(Timeout.Infinite, token).ContinueWith(_ => { }, TaskScheduler.Default);
             while (true)
