@@ -520,7 +520,9 @@ public sealed partial class MainWindow
 
         CheckBox Option(string text, bool value) => new() { Content = text, IsChecked = value, MinWidth = 0 };
         var systemAudio = Option("PC内の音声を録音", settings.VideoSystemAudio);
-        var microphone = Option("マイクの音声を録音", settings.VideoMicrophone);
+        // Follows the input chosen in the main window: PC audio only → off; with the microphone → on.
+        var microphone = Option("マイクの音声を録音", RecordsMicrophone(settings.AudioInputKind));
+        captureMicrophoneForVerification = microphone;
         var cursor = Option("マウスカーソルを映す", settings.VideoCursor);
         var clicks = Option("クリックした位置を強調", settings.VideoClicks);
 
@@ -675,6 +677,10 @@ public sealed partial class MainWindow
     }
     /// <summary>Self-check: picks a target and region in the open dialog; returns whether the region is drawn, the fitted region and the hint.</summary>
     private Func<CaptureTarget, CaptureRegion?, (bool Drawn, CaptureRegion? Region, string Hint)>? regionChoiceForVerification;
+    /// <summary>Whether the main window's audio input includes the microphone (then video records it too by default).</summary>
+    internal static bool RecordsMicrophone(string inputKind) => inputKind is "mixed" or "microphone";
+    /// <summary>Self-check: the target dialog's 「マイクの音声を録音」 checkbox.</summary>
+    private CheckBox? captureMicrophoneForVerification;
     /// <summary>Self-check: answers the target dialog instead of showing it (it is built and laid out first).</summary>
     private Func<ContentDialog, Task<ContentDialogResult>>? captureDialogForVerification;
 }

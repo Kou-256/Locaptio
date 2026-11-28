@@ -151,7 +151,9 @@ public sealed partial class MainWindow
                     dialog.Hide(); await showing;
                     return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
                 };
+                settings.AudioInputKind = "system";
                 var picked = await ChooseCaptureAsync();
+                bool micOffForPcAudio = captureMicrophoneForVerification?.IsChecked == false;
                 await Task.Delay(300);
                 log.Add($"picker window {smallSize.Width}×{smallSize.Height} → {openSize.Width}×{openSize.Height} → {AppWindow.Size.Width}×{AppWindow.Size.Height}; scrollable {scrollableWidth:F0}×{scrollableHeight:F0}");
                 Check(openSize.Width > smallSize.Width && openSize.Height > smallSize.Height && scrollableWidth < 1 && scrollableHeight < 1, "a small window grows so the target dialog is not cut off");
@@ -159,6 +161,16 @@ public sealed partial class MainWindow
                 AppWindow.MoveAndResize(new(positionBefore.X, positionBefore.Y, sizeBefore.Width, sizeBefore.Height)); await Task.Delay(200);
                 Check(part.Drawn && part.Region == new CaptureRegion(101, 50, 640, 360) && (part.Hint ?? "").Contains("640×360"), $"region drawn on the preview and made even ({part.Region}; {part.Hint})");
                 Check(!window.Drawn && window.Region is null && (window.Hint ?? "").Contains("画面全体"), "no region for a window");
+                // 「マイクの音声を録音」 follows the main window's input.
+                var micStates = new List<bool?>();
+                foreach (string kind in new[] { "mixed", "microphone", "application", "system" })
+                {
+                    settings.AudioInputKind = kind;
+                    var answer = captureDialogForVerification;
+                    captureDialogForVerification = _ => { micStates.Add(captureMicrophoneForVerification?.IsChecked); return Task.FromResult(Microsoft.UI.Xaml.Controls.ContentDialogResult.None); };
+                    await ChooseCaptureAsync(); captureDialogForVerification = answer;
+                }
+                Check(micOffForPcAudio && picked?.Microphone == false && micStates.SequenceEqual(new bool?[] { true, true, false, false }), "the microphone option follows the input (PC audio only → off, with microphone → on): " + string.Join(",", micStates));
                 Check(!whole.Drawn && whole.Region is null, "a region covering the whole display records the whole display");
                 Check(picked?.Region == new CaptureRegion(101, 50, 640, 360) && settings.VideoRegion == "101,50,640,360" && picked.Label.Contains("範囲"), "chosen region returned and remembered: " + picked?.Label);
                 captureDialogForVerification = async dialog => { await Task.Delay(200); regionChoiceForVerification!(sampleDisplay, new(0, 0, 960, 540)); return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary; };
