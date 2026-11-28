@@ -52,8 +52,12 @@ public sealed partial class MainWindow
             // The first attempt fails as an unusable hardware encoder would; recording must still start (software encoding).
             videoAttemptsToFailForVerification = 1;
             VideoToggleClick(VideoToggle, new RoutedEventArgs());
-            for (int i = 0; i < 200 && !(VideoRecording && recordingTranscript?.Started != long.MaxValue); i++) await Task.Delay(100);
+            var labels = new List<string>();
+            for (int i = 0; i < 200 && !(VideoRecording && recordingTranscript?.Started != long.MaxValue); i++) { if (VideoRecording && labels.LastOrDefault() != RecordingLabel.Text) labels.Add(RecordingLabel.Text); await Task.Delay(100); }
             videoAttemptsToFailForVerification = 0;
+            await Task.Delay(100); labels.Add(RecordingLabel.Text);
+            // The recorder needs a moment to start: until it does, the window says it is preparing, not recording.
+            Check(labels.FirstOrDefault() == "● 録画の準備中…" && labels.Last() == "● 録画中", "shows 録画の準備中 until the recorder has started: " + string.Join(" → ", labels));
             Check(VideoRecording && recordingTranscript!.Started != long.MaxValue && VideoControls.Visibility == Visibility.Visible && VideoToggle.IsChecked == true && !RecordToggle.IsEnabled, "recording started");
             Check(StatusText.Text.Contains("ソフトウェアで録画"), "fell back to software encoding after a failed start: " + StatusText.Text);
             Check(new Locaptio.App.Settings().VideoMicrophone, "microphone on by default for video");

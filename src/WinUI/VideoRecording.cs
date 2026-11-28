@@ -116,7 +116,8 @@ public sealed partial class MainWindow
         // Nothing is in the video until its first frame; captions before that are not part of it.
         recordingTranscript!.Started = long.MaxValue;
         SetVideoChecked(true); RecordToggle.IsEnabled = false;
-        RecordingLabel.Text = "● 録画中"; VideoControls.Visibility = Visibility.Visible; VideoPauseText.Text = "一時停止"; VideoPauseIcon.Glyph = "";
+        // The recorder takes a few seconds to start; nothing before "● 録画中" is in the video.
+        ShowVideoPreparing("● 録画の準備中…"); VideoControls.Visibility = Visibility.Visible; VideoPauseText.Text = "一時停止"; VideoPauseIcon.Glyph = "";
         LivePreviewFrame.Visibility = Visibility.Visible; livePreviewBitmap = null;
         if (Snap(choice.Target, 320) is { } still) LivePreview.Source = livePreviewBitmap = CaptureTargets.ToBitmap(still);
         SessionTitle.Text = "新規録画中：" + Path.GetFileName(Path.GetDirectoryName(path)) + "（" + choice.Label + "）";
@@ -124,6 +125,10 @@ public sealed partial class MainWindow
         recordingTask = RecordVideoAsync(path, choice, recordingStop.Token);
     }
 
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush RecordingRed = new(Windows.UI.Color.FromArgb(255, 0xFF, 0x8F, 0x8F)), PreparingAmber = new(Windows.UI.Color.FromArgb(255, 0xFF, 0xC8, 0x57));
+    /// <summary>Not recording yet (starting or switching target): amber, so speaking now is not expected to be in the video.</summary>
+    private void ShowVideoPreparing(string text) { RecordingLabel.Text = text; RecordingLabel.Foreground = PreparingAmber; }
+    private void ShowVideoRecordingLabel() { RecordingLabel.Text = videoPaused ? "Ⅱ 一時停止中" : "● 録画中"; RecordingLabel.Foreground = RecordingRed; }
     internal static readonly string[] QualityKeys = ["best", "high", "standard", "small"];
     internal static readonly string[] QualityLabels = ["最高画質", "高画質", "標準", "ファイルサイズ優先"];
     internal static readonly int[] CountdownChoices = [0, 1, 2, 3, 5, 10];
@@ -252,7 +257,9 @@ public sealed partial class MainWindow
         try
         {
             if (choice.HideLocaptio) ExcludeFromCapture(true);
+            Status("録画の準備をしています。「● 録画中」に変わってから録画されます…");
             run = await StartVideoRunAsync(path, choice, token);
+            ShowVideoRecordingLabel();
             if (recordingTranscript is not null) recordingTranscript.Started = run.Started;
             recordingStarted = run.Started;
             Status("録画を開始しました：" + choice.Label + (choice.Transcribe ? "。文字起こしも同時に行います。" : "。") + run.Note);
@@ -266,7 +273,7 @@ public sealed partial class MainWindow
                 // Another display or window: the current file is closed and the next part starts on the new target.
                 // The moments in between are not in the video, like a pause.
                 var next = await request.Task; videoSwitchRequest = null;
-                Status("録画する対象を切り替えています…");
+                Status("録画する対象を切り替えています…"); ShowVideoPreparing("● 切り替え中…");
                 recordingTranscript?.Pause(Stopwatch.GetTimestamp());
                 var previous = run; run = null;
                 if (await StopVideoRunAsync(previous) is { } error) throw new IOException(error);
@@ -279,7 +286,7 @@ public sealed partial class MainWindow
                     failure = VideoErrorText(ex); next = videoChoice!;
                     run = await StartVideoRunAsync(part, next, token);
                 }
-                parts.Add(part);
+                parts.Add(part); ShowVideoRecordingLabel();
                 recordingTranscript?.Resume(run.Started);
                 ShowVideoTarget(next);
                 Status(failure.Length > 0
@@ -306,7 +313,7 @@ public sealed partial class MainWindow
             videoRecorder = null; videoSource = null; videoPaused = false; videoChoice = null;
             recordingStop?.Dispose(); recordingStop = null;
             VideoControls.Visibility = LivePreviewFrame.Visibility = Visibility.Collapsed; LivePreview.Source = null; livePreviewBitmap = null;
-            RecordingLabel.Text = "● 録音中";
+            RecordingLabel.Text = "● 録音中"; RecordingLabel.Foreground = RecordingRed;
             if (parts.Count > 0) await JoinRecordedPartsAsync(parts, path, choice.Framerate);
             if (File.Exists(path) && new FileInfo(path).Length > 0) await FinishRecordingIndexAsync(path);
             else Status("録画ファイルが作成されませんでした。");
