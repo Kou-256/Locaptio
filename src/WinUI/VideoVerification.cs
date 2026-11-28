@@ -20,9 +20,15 @@ public sealed partial class MainWindow
     }
     private static async Task<double> BottomBrightnessAsync(string video, double seconds)
     {
-        var composition = new MediaComposition();
-        composition.Clips.Add(await MediaClip.CreateFromFileAsync(await StorageFile.GetFileFromPathAsync(video)));
-        var stream = await composition.GetThumbnailAsync(TimeSpan.FromSeconds(seconds), 640, 0, VideoFramePrecision.NearestFrame);
+        Windows.Storage.Streams.IRandomAccessStream stream;
+        // The file can still be held for a moment after it was written (player, thumbnail cache): try again once.
+        try { stream = await Thumbnail(); } catch (ArgumentException) { await Task.Delay(1500); stream = await Thumbnail(); }
+        async Task<Windows.Storage.Streams.IRandomAccessStream> Thumbnail()
+        {
+            var composition = new MediaComposition();
+            composition.Clips.Add(await MediaClip.CreateFromFileAsync(await StorageFile.GetFileFromPathAsync(video)));
+            return await composition.GetThumbnailAsync(TimeSpan.FromSeconds(seconds), 640, 0, VideoFramePrecision.NearestFrame);
+        }
         var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
         var pixels = (await decoder.GetPixelDataAsync(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Ignore, new(), Windows.Graphics.Imaging.ExifOrientationMode.IgnoreExifOrientation, Windows.Graphics.Imaging.ColorManagementMode.DoNotColorManage)).DetachPixelData();
         int width = (int)decoder.PixelWidth, height = (int)decoder.PixelHeight; long sum = 0, count = 0;
@@ -52,8 +58,12 @@ public sealed partial class MainWindow
             // The first attempt fails as an unusable hardware encoder would; recording must still start (software encoding).
             videoAttemptsToFailForVerification = 1;
             VideoToggleClick(VideoToggle, new RoutedEventArgs());
-            for (int i = 0; i < 200 && !(VideoRecording && recordingTranscript?.Started != long.MaxValue); i++) await Task.Delay(100);
+            var labels = new List<string>();
+            for (int i = 0; i < 200 && !(VideoRecording && recordingTranscript?.Started != long.MaxValue && RecordingLabel.Text == "● 録画中"); i++) { if (VideoRecording && labels.LastOrDefault() != RecordingLabel.Text) labels.Add(RecordingLabel.Text); await Task.Delay(100); }
             videoAttemptsToFailForVerification = 0;
+            await Task.Delay(100); labels.Add(RecordingLabel.Text);
+            // The recorder needs a moment to start: until it does, the window says it is preparing, not recording.
+            Check(labels.FirstOrDefault() == "● 録画の準備中…" && labels.Last() == "● 録画中", "shows 録画の準備中 until the recorder has started: " + string.Join(" → ", labels));
             Check(VideoRecording && recordingTranscript!.Started != long.MaxValue && VideoControls.Visibility == Visibility.Visible && VideoToggle.IsChecked == true && !RecordToggle.IsEnabled, "recording started");
             Check(StatusText.Text.Contains("ソフトウェアで録画"), "fell back to software encoding after a failed start: " + StatusText.Text);
             Check(new Locaptio.App.Settings().VideoMicrophone, "microphone on by default for video");
@@ -151,7 +161,9 @@ public sealed partial class MainWindow
                     dialog.Hide(); await showing;
                     return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary;
                 };
+                settings.AudioInputKind = "system";
                 var picked = await ChooseCaptureAsync();
+                bool micOffForPcAudio = captureMicrophoneForVerification?.IsChecked == false;
                 await Task.Delay(300);
                 log.Add($"picker window {smallSize.Width}×{smallSize.Height} → {openSize.Width}×{openSize.Height} → {AppWindow.Size.Width}×{AppWindow.Size.Height}; scrollable {scrollableWidth:F0}×{scrollableHeight:F0}");
                 Check(openSize.Width > smallSize.Width && openSize.Height > smallSize.Height && scrollableWidth < 1 && scrollableHeight < 1, "a small window grows so the target dialog is not cut off");
@@ -159,6 +171,16 @@ public sealed partial class MainWindow
                 AppWindow.MoveAndResize(new(positionBefore.X, positionBefore.Y, sizeBefore.Width, sizeBefore.Height)); await Task.Delay(200);
                 Check(part.Drawn && part.Region == new CaptureRegion(101, 50, 640, 360) && (part.Hint ?? "").Contains("640×360"), $"region drawn on the preview and made even ({part.Region}; {part.Hint})");
                 Check(!window.Drawn && window.Region is null && (window.Hint ?? "").Contains("画面全体"), "no region for a window");
+                // 「マイクの音声を録音」 follows the main window's input.
+                var micStates = new List<bool?>();
+                foreach (string kind in new[] { "mixed", "microphone", "application", "system" })
+                {
+                    settings.AudioInputKind = kind;
+                    var answer = captureDialogForVerification;
+                    captureDialogForVerification = _ => { micStates.Add(captureMicrophoneForVerification?.IsChecked); return Task.FromResult(Microsoft.UI.Xaml.Controls.ContentDialogResult.None); };
+                    await ChooseCaptureAsync(); captureDialogForVerification = answer;
+                }
+                Check(micOffForPcAudio && picked?.Microphone == false && micStates.SequenceEqual(new bool?[] { true, true, false, false }), "the microphone option follows the input (PC audio only → off, with microphone → on): " + string.Join(",", micStates));
                 Check(!whole.Drawn && whole.Region is null, "a region covering the whole display records the whole display");
                 Check(picked?.Region == new CaptureRegion(101, 50, 640, 360) && settings.VideoRegion == "101,50,640,360" && picked.Label.Contains("範囲"), "chosen region returned and remembered: " + picked?.Label);
                 captureDialogForVerification = async dialog => { await Task.Delay(200); regionChoiceForVerification!(sampleDisplay, new(0, 0, 960, 540)); return Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary; };
@@ -218,6 +240,49 @@ public sealed partial class MainWindow
                     ClosePlayback();
                 }
                 else log.Add("skip region recording: Locaptio's display not found");
+            }
+
+            // A countdown long enough for the recorder to get ready: it waits paused, recording starts at zero, and the
+            // waiting is not in the video.
+            {
+                ClosePlayback(); ClearCaptions();
+                var countdownSize = AppWindow.Size; var countdownTarget = new CaptureTarget(false, "", hwnd, "Locaptio（検証）", countdownSize.Width, countdownSize.Height);
+                string countdownVideo = Path.Combine(work, "カウントダウンの録画.mp4");
+                recordingFilePickerForVerification = () => Task.FromResult<string?>(countdownVideo);
+                captureChoiceForVerification = () => Task.FromResult<CaptureChoice?>(new(countdownTarget, false, false, false, false, 30, "standard", 3, false, false));
+                countdownStepForVerification = 2000; countdownReadyForVerification = 0;
+                VideoToggleClick(VideoToggle, new RoutedEventArgs());
+                var countdownLabels = new List<string>(); long countdownEnded = 0, recordingShown = 0;
+                for (int i = 0; i < 400 && recordingShown == 0; i++)
+                {
+                    if (CountdownOverlay.Visibility == Visibility.Visible && !countdownLabels.Contains(RecordingLabel.Text)) countdownLabels.Add(RecordingLabel.Text);
+                    if (countdownEnded == 0 && VideoRecording && CountdownOverlay.Visibility == Visibility.Collapsed) countdownEnded = Stopwatch.GetTimestamp();
+                    if (countdownEnded != 0 && RecordingLabel.Text == "● 録画中") recordingShown = Stopwatch.GetTimestamp();
+                    await Task.Delay(20);
+                }
+                bool readyDuringCountdown = countdownReadyForVerification != 0 && countdownReadyForVerification < countdownEnded;
+                double startDelay = recordingShown == 0 ? 99 : Stopwatch.GetElapsedTime(countdownEnded, recordingShown).TotalSeconds;
+                captionStop = new();
+                await Task.Delay(1000);
+                long saidAt = Stopwatch.GetTimestamp();
+                UpdateCaption(new(historyIds.LastOrDefault() + 1, 1, "カウントダウンのあとの発話です。", null, true, saidAt, 0, 0, "ja"));
+                double liveOffset = recordingTranscript?.Offset(saidAt) ?? -1; bool approximate = recordingTranscript?.Approximate == true;
+                log.Add($"countdown speech on the live clock: {liveOffset:F2}s (approximate timing {approximate})");
+                await Task.Delay(1500);
+                captionStop.Dispose(); captionStop = null;
+                await StopAllAsync();
+                for (int i = 0; i < 300 && (recordingStop is not null || !reviewingRecording); i++) await Task.Delay(100);
+                string countdownCopy = Path.Combine(work, "カウントダウン_長さ.mp4"); File.Copy(recordingPath.Length > 0 && File.Exists(recordingPath) ? recordingPath : playbackPath, countdownCopy, true);
+                double countdownLength = (await Windows.Media.Editing.MediaClip.CreateFromFileAsync(await StorageFile.GetFileFromPathAsync(countdownCopy))).OriginalDuration.TotalSeconds;
+                var countdownDocument = await RecordingTranscript.LoadAsync(playbackPath);
+                double spoken = countdownDocument.Phrases.FirstOrDefault()?.Seconds ?? -1;
+                log.Add($"countdown: countdownLabels {string.Join(" → ", countdownLabels)}; ready during countdown {readyDuringCountdown}; 録画中 {startDelay:F2}s after zero; video {countdownLength:F2}s; speech at {spoken:F2}s");
+                Check(readyDuringCountdown && countdownLabels.All(l => l.Contains("準備中")) && startDelay < .6, $"the recorder gets ready during the countdown and records from zero ({startDelay:F2}s)");
+                // Spoken 1 s after zero: 1 s into the video (Windows caption timing then subtracts its 1 s estimate).
+                Check(countdownLength > 1.8 && countdownLength < 3.6 && liveOffset > .8 && liveOffset < 1.4 && Math.Abs(spoken - (liveOffset - (approximate ? 1 : 0))) < .3,
+                    $"the wait during the countdown is not in the video ({countdownLength:F2}s; speech at {liveOffset:F2}s, saved {spoken:F2}s)");
+                countdownStepForVerification = 150;
+                ClosePlayback();
             }
 
             // Continuing a saved recording (as after Locaptio closed unexpectedly): the new part is appended to the same
