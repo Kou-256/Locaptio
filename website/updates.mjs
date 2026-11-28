@@ -8,6 +8,10 @@ export const updates = {
     latest: '最新',
     all: 'すべての変更履歴を見る（GitHub）',
     items: [
+      ['1.0.63', 'カウントダウンが終わった瞬間から録画', [
+        'カウントダウンの間に録画の準備を済ませ、**0になった瞬間から録画**が始まります。待っている間は動画に入りません。',
+        '録画が始まるまでは「● 録画の準備中…」と表示します（これまでは準備中も「録画中」と表示していました）。',
+        '録画の「マイクの音声を録音」は、本体の音声入力に合わせて初期状態が決まります。']],
       ['1.0.62', '範囲録画・録画対象の切り替え・続きの録音', [
         '画面の**一部だけを録画**できます。プレビューをドラッグするか、座標を入力して範囲を決めます。',
         '録画中に「対象を変更」で、録画する画面・ウィンドウ・範囲を切り替えられます。停止すると1つの動画にまとまります。',
@@ -76,6 +80,10 @@ export const updates = {
     latest: 'Latest',
     all: 'See the full changelog (GitHub)',
     items: [
+      ['1.0.63', 'Recording starts when the countdown ends', [
+        'The recorder gets ready during the countdown and **records from the moment it reaches zero**; the wait is not in the video.',
+        'Until recording really starts, the window says it is preparing (it used to say recording already).',
+        'The video microphone option follows the main audio input.']],
       ['1.0.62', 'Region recording, target switching, continue a recording', [
         'Record **part of the screen** by dragging on the preview or typing coordinates.',
         'While recording, switch the recorded screen, window or region; the parts become one video when you stop.',
